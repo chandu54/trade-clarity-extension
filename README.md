@@ -92,3 +92,9 @@ To use the "Analyze" feature:
 5.  Save Settings.
 
 The app automatically detects the provider based on the API key format.
+
+## 🔒 Security Note
+
+**API Keys**: Your API keys are stored locally on your device (Local Storage for Web, Chrome Storage for Extension). They are never sent to any server other than the respective AI provider (Google or OpenAI).
+
+**Data Privacy**: All watchlist data resides locally on your machine.
