@@ -12,6 +12,7 @@ import ManageTagsModal from "./components/ManageTagsModal";
 import AnalyzeModal from "./components/AnalyzeModal";
 import GlobalTooltip from "./components/GlobalTooltip";
 import SettingsModal from "./components/SettingsModal";
+import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import { ToastProvider } from "./components/ToastContext";
 import { ConfirmProvider, useConfirm } from "./components/ConfirmContext";
 import "./styles.css";
@@ -32,6 +33,7 @@ function AppContent() {
   const [showManageTags, setShowManageTags] = useState(false);
   const [showAnalyze, setShowAnalyze] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
 
   const { theme, toggleTheme } = useTheme();
   const modals = useModalState();
@@ -161,6 +163,7 @@ function AppContent() {
         setWeekKey={setWeekKey}
         onClearWeek={clearWeekData}
         onAnalyze={() => setShowAnalyze(true)}
+        onShowAnalytics={() => setShowAnalytics(true)}
       />
 
       <StockGrid
@@ -240,6 +243,19 @@ function AppContent() {
         <SettingsModal
           isOpen={showSettings}
           onClose={() => setShowSettings(false)}
+        />
+      )}
+
+      {showAnalytics && (
+        <AnalyticsDashboard
+          stocks={Object.values(data.weeks?.[country]?.[weekKey]?.stocks || {})}
+          allWeeksData={data.weeks?.[country] || {}}
+          parameters={Object.entries(data.paramDefinitions).map(([key, def]) => ({
+            ...def,
+            id: key
+          }))}
+          weekKey={weekKey}
+          onClose={() => setShowAnalytics(false)}
         />
       )}
     </>

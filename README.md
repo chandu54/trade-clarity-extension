@@ -13,12 +13,17 @@ TradeClarity is a powerful React-based application designed for swing traders to
 - **Smart Filtering & Sorting**: Filter stocks by Sector, Tags, Tradable status, or any of your custom parameters.
 - **AI-Powered Analysis**: Integrated with **Google Gemini** and **OpenAI** to generate professional market summaries, identify top sectors, and highlight actionable setups based on your watchlist data.
 - <img width="368" height="377" alt="image" src="https://github.com/user-attachments/assets/b0c3af44-51ad-4fee-9b04-f23fbd0e3844" />
+- **Analytics Dashboard**: Gain visual insights into your watchlist.
+  - **Interactive Charts**: Visualize distributions by Sector, Tags, Tradable status, and custom parameters using Pie and Bar charts.
+  - **Trend Analysis**: Track the size of your stock universe over time.
+  - **Customizable Layout**: Reorder widgets via drag-and-drop and toggle visibility to focus on what matters.
 
 **Stock Management**:
-  - Add stocks in bulk.
-  - Edit details in a focused modal or directly in the grid.
-  - Tag stocks for quick categorization.
-  - Mark stocks as "Tradable" to highlight best setups.
+
+- Add stocks in bulk.
+- Edit details in a focused modal or directly in the grid.
+- Tag stocks for quick categorization.
+- Mark stocks as "Tradable" to highlight best setups.
 - **Data Persistence**: Automatically saves your data to Local Storage (Web) or Chrome Storage (Extension).
 - **Import / Export**: Backup your data to JSON or export watchlists to CSV for external analysis.
 - **Dark / Light Mode**: Toggle themes for comfortable viewing in any environment.
@@ -26,10 +31,9 @@ TradeClarity is a powerful React-based application designed for swing traders to
   - Manage Sectors.
   - Toggle Column Visibility.
   - Set Editing Rules (e.g., Lock previous weeks).
- 
+
 ** Weekly Summary Info**:
 <img width="485" height="705" alt="image" src="https://github.com/user-attachments/assets/281214c2-63bf-48a9-aa14-95bf9d82dd7e" />
-
 
 ## 🛠️ Technology Stack
 
