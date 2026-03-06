@@ -13,6 +13,7 @@ import AnalyzeModal from "./components/AnalyzeModal";
 import GlobalTooltip from "./components/GlobalTooltip";
 import SettingsModal from "./components/SettingsModal";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
+import UserGuideModal from "./components/UserGuideModal";
 import { ToastProvider, useToast } from "./components/ToastContext";
 import { ConfirmProvider, useConfirm } from "./components/ConfirmContext";
 import "./styles.css";
