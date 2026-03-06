@@ -210,7 +210,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
         </div>
 
         <div className="muted small" style={{ marginTop: "16px", lineHeight: "1.4" }}>
-          <strong>Note:</strong> The provider (Google/OpenAI) is automatically detected based on your API key format.
+          <strong>Note:</strong> Currently we are only supporting Google Gemini models. We may add support for other providers in the future based on user demand.
         </div>
       </div>
 
