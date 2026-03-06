@@ -2,17 +2,17 @@ import { useState } from "react";
 import Modal from "./Modal";
 
 import { getAiAnalysis } from "../services/ai";
+import { useToast } from "./ToastContext";
 
 export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, country }) {
   const [isGenerating, setIsGenerating] = useState(false);
-  const [error, setError] = useState(null);
+  const { showToast } = useToast();
 
   const weekData = data.weeks?.[country]?.[weekKey];
   const savedAnalysis = weekData?.analysis;
 
   const handleGenerateAnalysis = async () => {
     setIsGenerating(true);
-    setError(null);
     try {
       const currentWeekData = data.weeks?.[country]?.[weekKey] || { stocks: {} };
       const stockCount = Object.keys(currentWeekData.stocks || {}).length;
@@ -33,7 +33,11 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
         setData(newData);
       }
     } catch (e) {
-      setError(e.message);
+      let msg = e.message;
+      if (msg.includes("429") || msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("limit")) {
+        msg = "Quota or rate limit exceeded. Please try again later or switch to a different model in Settings.";
+      }
+      showToast(msg, "error");
     } finally {
       setIsGenerating(false);
     }
@@ -58,12 +62,6 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
           </div>
         )}
 
-        {error && (
-          <div className="p-4 text-red-500">
-            <p>Error: {error}</p>
-          </div>
-        )}
-
         {analysisToDisplay && !isGenerating && (
           <div className="p-4">
             <div style={{ marginBottom: "12px", fontSize: "12px", color: "var(--muted)", borderBottom: "1px solid var(--border)", paddingBottom: "8px" }}>
@@ -72,27 +70,38 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
 
             <h4 className="font-bold">Market Bias:</h4>
 
-            <p>{analysisToDisplay.marketBias}</p>
+            <p className="mb-3">{analysisToDisplay.marketBias || "N/A"}</p>
 
-            <h4 className="font-bold mt-2">Top Sectors:</h4>
+            <h4 className="font-bold">Top Sectors:</h4>
 
-            <ul className="list-disc list-inside">
-              {analysisToDisplay.topSectors.map((sector) => (
+            <ul className="list-disc list-inside mb-3">
+              {(analysisToDisplay.topSectors || []).map((sector) => (
                 <li key={sector}>{sector}</li>
               ))}
             </ul>
 
-            <h4 className="font-bold mt-2">Actionable Setups:</h4>
+            <h4 className="font-bold">Actionable Setups:</h4>
 
-            <ul className="list-disc list-inside">
-              {analysisToDisplay.actionableSetups.map((setup) => (
+            <ul className="list-disc list-inside mb-3">
+              {(analysisToDisplay.actionableSetups || []).map((setup) => (
                 <li key={setup}>{setup}</li>
               ))}
             </ul>
+
+            {analysisToDisplay.keyRisks && Array.isArray(analysisToDisplay.keyRisks) && analysisToDisplay.keyRisks.length > 0 && (
+              <>
+                <h4 className="font-bold text-red-600">⚠️ Key Risks:</h4>
+                <ul className="list-disc list-inside text-red-600">
+                  {analysisToDisplay.keyRisks.map((risk) => (
+                    <li key={risk}>{risk}</li>
+                  ))}
+                </ul>
+              </>
+            )}
           </div>
         )}
 
-        {!analysisToDisplay && !isGenerating && !error && (
+        {!analysisToDisplay && !isGenerating && (
           <div className="p-4 text-center text-gray-500">
             Click the button to generate AI-powered trading insights.
           </div>

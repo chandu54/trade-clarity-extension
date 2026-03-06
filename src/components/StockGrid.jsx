@@ -2,6 +2,8 @@ import { useMemo, useState, useEffect, useRef } from "react";
 import AddStockModal from "./AddStockModal";
 import EditStockModal from "./EditStockModal";
 import TrashIcon from "./icons/TrashIcon";
+import { useToast } from "./ToastContext";
+import { useConfirm } from "./ConfirmContext";
 
 function getWeekRangeLabel(sundayDateStr) {
   if (!sundayDateStr) return "";
@@ -25,6 +27,8 @@ function getWeekRangeLabel(sundayDateStr) {
 export default function StockGrid({ data, weekKey, setData, isReadOnly, country }) {
   const week = data.weeks?.[country]?.[weekKey];
   const params = data.paramDefinitions;
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
 
   /* =====================
      STATE
@@ -300,6 +304,7 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
         },
       };
     });
+    showToast(`Added ${symbols.length} stock(s) to watchlist`, "success");
   }
 
   function handleUpdateStock(updatedStock) {
@@ -324,8 +329,8 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
     });
   }
 
-  function deleteStock(symbol) {
-    if (!confirm(`Delete ${symbol}?`)) return;
+  async function deleteStock(symbol) {
+    if (!await confirm(`Delete ${symbol}?`)) return;
     setData((prev) => {
       const prevWeek = prev.weeks[country][weekKey];
       const newStocks = { ...prevWeek.stocks };
@@ -400,7 +405,7 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
     const exportData = scope === "all" ? allStocks : sortedStocks;
 
     if (!exportData || exportData.length === 0) {
-      alert("No data to export!");
+      showToast("No data to export!", "warning");
       return;
     }
     const headers = [
@@ -438,13 +443,14 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    showToast("Exported CSV successfully", "success");
   }
 
   function handleExportJSON(scope = "filtered") {
     const exportData = scope === "all" ? allStocks : sortedStocks;
 
     if (!exportData || exportData.length === 0) {
-      alert("No data to export!");
+      showToast("No data to export!", "warning");
       return;
     }
 
@@ -458,13 +464,14 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
+    showToast("Exported JSON successfully", "success");
   }
 
   function handleImport(e) {
     const file = e.target.files[0];
     if (!file) return;
     
-    // Reset input so the same file can be selected again if needed
+    // Reset input value to allow re-importing the same file if needed
     e.target.value = "";
 
     const reader = new FileReader();
@@ -476,11 +483,11 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
         if (Array.isArray(json)) {
           importStocks(json);
         } else {
-          alert("Invalid file format. Expected a JSON array of stocks.");
+          showToast("Invalid file format. Expected a JSON array of stocks.", "error");
         }
       } catch (err) {
         console.error(err);
-        alert("Failed to parse JSON file");
+        showToast("Failed to parse JSON file", "error");
       }
     };
 
@@ -510,7 +517,7 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
       });
 
       if (count > 0) {
-        alert(`Imported ${count} stocks successfully.`);
+        showToast(`Imported ${count} stocks successfully.`, "success");
       }
 
       return {

@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useConfirm } from "./ConfirmContext";
 
 const MENU_ITEMS = [
   {
@@ -81,6 +82,7 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, theme, o
   const [regionOpen, setRegionOpen] = useState(false);
   const menuRef = useRef(null);
   const regionRef = useRef(null);
+  const { confirm } = useConfirm();
 
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -105,8 +107,8 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, theme, o
     }
   };
 
-  const handleClearAll = () => {
-    if (confirm("⚠️ All data will be permanently deleted. Continue?")) {
+  const handleClearAll = async () => {
+    if (await confirm("⚠️ All data will be permanently deleted. Continue?")) {
       onClearAll();
     }
   };

@@ -2324,3 +2324,43 @@ input[type=checkbox]:active {
 .export-dropdown-menu li:hover {
   background-color: #f0f0f0;
 }
+
+/* Toast Component */
+.toast-container {
+  position: fixed;
+  top: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  padding: 12px 20px;
+  border-radius: 6px;
+  color: #fff;
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
+  font-family: inherit;
+  font-size: 14px;
+}
+
+.toast-success { background-color: var(--success, #16a34a); }
+.toast-error { background-color: var(--danger, #dc2626); }
+.toast-warning { background-color: #f59e0b; }
+.toast-info { background-color: var(--primary, #2563eb); }
+
+.toast-message { font-weight: 500; }
+
+.toast-close {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  font-size: 18px;
+  opacity: 0.8;
+  padding: 0;
+  margin-left: 4px;
+}
+
+/* Confirm Modal */
+.confirm-modal-content { padding: 0 0 24px 0; }
+.confirm-modal-text { font-size: 16px; color: var(--text); margin: 0; }

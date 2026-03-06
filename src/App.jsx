@@ -12,6 +12,9 @@ import ManageTagsModal from "./components/ManageTagsModal";
 import AnalyzeModal from "./components/AnalyzeModal";
 import GlobalTooltip from "./components/GlobalTooltip";
 import SettingsModal from "./components/SettingsModal";
+import { ToastProvider } from "./components/ToastContext";
+import { ConfirmProvider, useConfirm } from "./components/ConfirmContext";
+import "./styles.css";
 
 import { loadData, saveData } from "./services/storage";
 import { useModalState } from "./hooks/useModalState";
@@ -22,7 +25,7 @@ import {
   isWeekReadOnly 
 } from "./utils/weekHelpers";
 
-export default function App() {
+function AppContent() {
   const [data, setData] = useState(null);
   const [country, setCountry] = useState("IN");
   const [weekKey, setWeekKey] = useState(null);
@@ -33,6 +36,7 @@ export default function App() {
   const { theme, toggleTheme } = useTheme();
   const modals = useModalState();
   const hasLoaded = useRef(false);
+  const { confirm } = useConfirm();
 
   /* =========================
      LOAD DATA ON MOUNT
@@ -93,17 +97,17 @@ export default function App() {
   /* =========================
      CLEAR DATA HANDLERS
   ========================= */
-  const clearWeekData = () => {
+  const clearWeekData = async () => {
     if (!weekKey) return;
-    if (!confirm("Clear all stocks for this week?")) return;
+    if (!await confirm("Clear all stocks for this week?")) return;
 
     const newData = structuredClone(data);
     newData.weeks[country][weekKey].stocks = {};
     setData(newData);
   };
 
-  const clearAllData = () => {
-    if (!confirm("⚠️ This will delete ALL data. Continue?")) return;
+  const clearAllData = async () => {
+    // Header handles the confirmation for this action usually, but if called directly:
     setData(structuredClone(EMPTY_DATA));
     setWeekKey(null);
   };
@@ -239,5 +243,15 @@ export default function App() {
         />
       )}
     </>
+  );
+}
+
+export default function App() {
+  return (
+    <ToastProvider>
+      <ConfirmProvider>
+        <AppContent />
+      </ConfirmProvider>
+    </ToastProvider>
   );
 }

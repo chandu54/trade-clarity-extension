@@ -1,10 +1,14 @@
 import { useState } from "react";
 import Modal from "./Modal";
+import { useToast } from "./ToastContext";
+import { useConfirm } from "./ConfirmContext";
 
 export default function ManageTagsModal({ data, setData, onClose, isOpen }) {
   const [newTag, setNewTag] = useState("");
   const tags = data.uiConfig?.tags || [];
   const showTags = data.uiConfig?.showTags !== false;
+  const { showToast } = useToast();
+  const { confirm } = useConfirm();
 
   function toggleShowTags() {
     setData({
@@ -20,7 +24,7 @@ export default function ManageTagsModal({ data, setData, onClose, isOpen }) {
     const val = newTag.trim();
     if (!val) return;
     if (tags.includes(val)) {
-      alert("Tag already exists");
+      showToast("Tag already exists", "warning");
       return;
     }
 
@@ -35,8 +39,8 @@ export default function ManageTagsModal({ data, setData, onClose, isOpen }) {
     setNewTag("");
   }
 
-  function handleDelete(tag) {
-    if (!confirm(`Delete tag "${tag}"?`)) return;
+  async function handleDelete(tag) {
+    if (!await confirm(`Delete tag "${tag}"?`)) return;
     const updatedTags = tags.filter((t) => t !== tag);
 
     // Remove this tag from all stocks in all weeks

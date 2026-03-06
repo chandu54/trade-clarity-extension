@@ -1,6 +1,6 @@
 import { getStoredApiKey, getStoredModel } from "./storage";
 
-const DEFAULT_GEMINI_MODEL = "gemini-2.0-flash";
+const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 
 export async function getAiAnalysis(weekData, paramDefinitions) {
@@ -8,9 +8,10 @@ export async function getAiAnalysis(weekData, paramDefinitions) {
   const stocks = Object.values(weekData?.stocks || {});
   if (stocks.length === 0) {
     return {
-      marketBias: "No stocks found in this week's watchlist to analyze.",
+      marketBias: "No stocks found in this week's watchlist.",
       topSectors: ["N/A"],
-      actionableSetups: ["Add stocks to the grid to generate an analysis."],
+      actionableSetups: [],
+      keyRisks: [],
     };
   }
 
@@ -20,15 +21,28 @@ export async function getAiAnalysis(weekData, paramDefinitions) {
   }
   apiKey = apiKey.trim();
 
+  // --- API Key Validation ---
+  const isOpenAI = apiKey.startsWith("sk-");
+  if (isOpenAI) {
+    // OpenAI keys are typically 51 characters long.
+    if (apiKey.length < 40) {
+      throw new Error("Invalid OpenAI API Key format. Key is too short.");
+    }
+  } else {
+    // Google Gemini keys are typically 39 characters long.
+    if (apiKey.length < 30) {
+      throw new Error("Invalid Google API Key format. Key is too short.");
+    }
+  }
+
   let customModel = await getStoredModel();
   if (customModel) customModel = customModel.trim();
 
   // 2. Generate prompt with the extracted stocks
-  const prompt = generatePrompt(stocks, paramDefinitions);
+  const prompt = generatePrompt(stocks);
 
   try {
-    // Simple heuristic: OpenAI keys usually start with "sk-"
-    if (apiKey.startsWith("sk-")) {
+    if (isOpenAI) {
       return await fetchOpenAI(
         apiKey,
         prompt,
@@ -38,15 +52,6 @@ export async function getAiAnalysis(weekData, paramDefinitions) {
       // Use custom model if set, otherwise default.
       let modelToUse = customModel || DEFAULT_GEMINI_MODEL;
 
-      // Fix common invalid model names or expired experimental models
-      if (modelToUse === "gemini-2.0-flash-exp")
-        modelToUse = "gemini-2.0-flash";
-      if (
-        modelToUse === "gemini-1.5-flash" ||
-        modelToUse === "gemini-1.5-flash-001"
-      )
-        modelToUse = "gemini-2.0-flash";
-
       return await fetchGemini(apiKey, prompt, modelToUse);
     }
   } catch (error) {
@@ -55,10 +60,40 @@ export async function getAiAnalysis(weekData, paramDefinitions) {
   }
 }
 
+export async function testConnection(apiKey, model) {
+  apiKey = apiKey ? apiKey.trim() : "";
+  if (!apiKey) {
+    throw new Error("API Key is required");
+  }
+
+  const isOpenAI = apiKey.startsWith("sk-");
+  if (isOpenAI) {
+    if (apiKey.length < 40) {
+      throw new Error("Invalid OpenAI API Key format. Key is too short.");
+    }
+  } else {
+    if (apiKey.length < 30) {
+      throw new Error("Invalid Google API Key format. Key is too short.");
+    }
+  }
+
+  const prompt = 'Test connection. Respond with valid JSON: { "status": "OK" }';
+  let modelToUse = model;
+  if (!modelToUse) {
+    modelToUse = isOpenAI ? DEFAULT_OPENAI_MODEL : DEFAULT_GEMINI_MODEL;
+  }
+
+  if (isOpenAI) {
+    return await fetchOpenAI(apiKey, prompt, modelToUse);
+  } else {
+    return await fetchGemini(apiKey, prompt, modelToUse);
+  }
+}
+
 async function fetchGemini(apiKey, prompt, model) {
   // Ensure model doesn't have 'models/' prefix if user typed it
   const cleanModel = model.replace(/^models\//, "");
-  const url = `https://generativelanguage.googleapis.com/v1/models/${cleanModel}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
 
   const response = await fetch(url, {
     method: "POST",
@@ -72,7 +107,7 @@ async function fetchGemini(apiKey, prompt, model) {
     const err = await response.json().catch(() => ({}));
     throw new Error(
       err.error?.message ||
-        `Gemini API Error: ${response.status} (${cleanModel})`,
+        `Gemini API Error: ${response.status} ${response.statusText} (${cleanModel})`,
     );
   }
 
@@ -139,39 +174,33 @@ function parseResponse(text) {
   }
 }
 
-function generatePrompt(stocks, paramDefinitions) {
-  // Simplify data to save tokens
-  const simplifiedStocks = stocks.map((s) => {
-    const params = {};
-    // Map internal keys to readable labels
-    Object.entries(s.params || {}).forEach(([k, v]) => {
-      // Only include truthy values or explicit booleans to save tokens
-      if (v !== undefined && v !== null && v !== "") {
-        const label = paramDefinitions[k]?.label || k;
-        params[label] = v;
-      }
-    });
-
-    return {
-      symbol: s.symbol,
-      sector: s.sector,
-      tradable: s.tradable,
-      ...params,
-    };
-  });
+function generatePrompt(stocks) {
+  // Simplify data to save tokens and focus on symbols
+  const simplifiedStocks = stocks.map((s) => ({
+    symbol: s.symbol,
+    sector: s.sector || "Unknown",
+  }));
 
   return `
-    Act as a world-class swing trader (referencing Mark Minervini's SEPA methodology). 
-    Analyze the following stock watchlist data. The data contains symbols, sectors, 'tradable' status, and custom technical parameters.
+    Act as a disciplined, risk-aware swing trading mentor (referencing Mark Minervini's SEPA and William O'Neil's CANSLIM). 
+    Analyze the following watchlist to provide a clear, objective, and actionable trading plan. 
+    Be conservative: do not force patterns if they are not clear. Focus on quality over quantity.
     
-    Stocks Data:
+    Watchlist:
     ${JSON.stringify(simplifiedStocks)}
 
-    Based on the provided data points (interpreting them as technical indicators), provide a strategic summary in the following JSON structure:
+    If the sector is "Unknown", infer it based on the ticker symbol.
+
+    Provide a strategic summary in the following JSON structure:
     {
-      "marketBias": "A professional assessment of the market environment based on the breadth of 'tradable' stocks and sector participation. Is it a 'Risk On' or 'Risk Off' environment? (Bullish/Bearish/Neutral)",
-      "topSectors": ["List 2-3 sectors showing the highest relative strength or concentration of setups."],
-      "actionableSetups": ["Identify 3-5 specific symbols that appear to be the strongest 'Power Plays' or 'VCP' candidates based on their parameters. Include a brief, punchy technical reason for each (e.g., 'Strong RS with tight consolidation')."]
+      "marketBias": "Assess the overall market health based on this watchlist. Is it 'Risk-On' (Bullish), 'Risk-Off' (Bearish), or 'Neutral'? Provide a concise reasoning.",
+      "topSectors": ["List the top 2-3 strongest sectors in this list. Format: 'Sector Name: Brief reason'."],
+      "actionableSetups": [
+        "Identify the top 3-5 high-quality setups. Format: 'SYMBOL: Pattern Name - Trigger/Observation'. Example: 'NVDA: Bull Flag - Watch for breakout above $150 on volume'."
+      ],
+      "keyRisks": [
+        "List 1-3 potential risks specific to this watchlist (e.g., 'Earnings approaching for TSLA', 'Sector concentration in Tech', 'Low relative strength')."
+      ]
     }
 
     IMPORTANT: Return ONLY valid JSON. Do not include markdown formatting like \`\`\`json.

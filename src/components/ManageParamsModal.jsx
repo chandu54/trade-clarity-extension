@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Modal from "./Modal";
 import TrashIcon from "./icons/TrashIcon";
+import { useConfirm } from "./ConfirmContext";
 
 export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
   const [editKey, setEditKey] = useState(null);
@@ -14,6 +15,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
   /* 🆕 CHECK CONFIG */
   const [isCheck, setIsCheck] = useState(false);
   const [idealValues, setIdealValues] = useState("");
+  const { confirm } = useConfirm();
 
   /* =========================
      SAVE EDIT
@@ -64,8 +66,8 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
   /* =========================
      DELETE PARAM
   ========================= */
-  function removeParam(key) {
-    if (!confirm("Delete parameter?")) return;
+  async function removeParam(key) {
+    if (!await confirm("Delete parameter?")) return;
 
     delete data.paramDefinitions[key];
 
