@@ -17,6 +17,8 @@ TradeClarity is a powerful React-based application designed for swing traders to
   - **Interactive Charts**: Visualize distributions by Sector, Tags, Tradable status, and custom parameters using Pie and Bar charts.
   - **Trend Analysis**: Track the size of your stock universe over time.
   - **Customizable Layout**: Reorder widgets via drag-and-drop and toggle visibility to focus on what matters.
+  - <img width="316" height="350" alt="image" src="https://github.com/user-attachments/assets/2e56e688-5ebf-4a11-a8f7-10bd1d5c0180" />
+
 
 **Stock Management**:
 
