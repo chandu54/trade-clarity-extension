@@ -25,7 +25,9 @@ TradeClarity is a powerful React-based application designed for swing traders to
 - Tag stocks for quick categorization.
 - Mark stocks as "Tradable" to highlight best setups.
 - **Data Persistence**: Automatically saves your data to Local Storage (Web) or Chrome Storage (Extension).
-- **Import / Export**: Backup your data to JSON or export watchlists to CSV for external analysis.
+- **Import / Export**:
+  - **Watchlist Export**: Export current week's stocks to CSV or JSON for external analysis.
+  - **Full App Backup**: Export/Import the entire application data (all weeks, settings, parameters) to a JSON file for safekeeping or migration.
 - **Dark / Light Mode**: Toggle themes for comfortable viewing in any environment.
 - **Configurable UI**:
   - Manage Sectors.

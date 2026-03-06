@@ -13,17 +13,17 @@ const COLORS = [
 
 const BarChartIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
-    <line x1="2" y1="20" x2="22" y2="20" />
-    <rect x="6" y="10" width="4" height="8" />
-    <rect x="14" y="4" width="4" height="14" />
+    <rect x="3" y="11" width="4" height="10" rx="1" />
+    <rect x="10" y="4" width="4" height="17" rx="1" />
+    <rect x="17" y="8" width="4" height="13" rx="1" />
   </svg>
 );
 
 const PieChartIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={2} strokeLinecap="round" strokeLinejoin="round">
     <circle cx="12" cy="12" r="10" />
-    <path d="M12 12h8" />
-    <path d="M12 12v-8" />
+    <line x1="12" y1="12" x2="20" y2="12" />
+    <line x1="12" y1="12" x2="12" y2="4" />
   </svg>
 );
 
@@ -609,8 +609,8 @@ const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, onClose
               title="Download Report"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                <path d="M12 15V3" />
-                <path d="M8 11l4 4 4-4" />
+                <line x1="12" y1="15" x2="12" y2="3" />
+                <polyline points="8 11 12 15 16 11" />
                 <line x1="4" y1="21" x2="20" y2="21" />
               </svg>
             </button>

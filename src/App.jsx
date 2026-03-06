@@ -13,7 +13,7 @@ import AnalyzeModal from "./components/AnalyzeModal";
 import GlobalTooltip from "./components/GlobalTooltip";
 import SettingsModal from "./components/SettingsModal";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
-import { ToastProvider } from "./components/ToastContext";
+import { ToastProvider, useToast } from "./components/ToastContext";
 import { ConfirmProvider, useConfirm } from "./components/ConfirmContext";
 import "./styles.css";
 
@@ -21,10 +21,7 @@ import { loadData, saveData } from "./services/storage";
 import { useModalState } from "./hooks/useModalState";
 import { useTheme } from "./hooks/useTheme";
 import { EMPTY_DATA } from "./constants/app";
-import { 
-  getLatestWeekKey, 
-  isWeekReadOnly 
-} from "./utils/weekHelpers";
+import { getLatestWeekKey, isWeekReadOnly } from "./utils/weekHelpers";
 
 function AppContent() {
   const [data, setData] = useState(null);
@@ -34,11 +31,13 @@ function AppContent() {
   const [showAnalyze, setShowAnalyze] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showUserGuide, setShowUserGuide] = useState(false);
 
   const { theme, toggleTheme } = useTheme();
   const modals = useModalState();
   const hasLoaded = useRef(false);
   const { confirm } = useConfirm();
+  const { showToast } = useToast();
 
   /* =========================
      LOAD DATA ON MOUNT
@@ -85,8 +84,7 @@ function AppContent() {
   /* =========================
      DERIVED STATE
   ========================= */
-  // const sortedWeeks = data ? Object.keys(data.weeks?.[country] || {}).sort() : [];
-  
+
   // Calculate current week key locally
   const now = new Date();
   const day = now.getDay();
@@ -101,7 +99,7 @@ function AppContent() {
   ========================= */
   const clearWeekData = async () => {
     if (!weekKey) return;
-    if (!await confirm("Clear all stocks for this week?")) return;
+    if (!(await confirm("Clear all stocks for this week?"))) return;
 
     const newData = structuredClone(data);
     newData.weeks[country][weekKey].stocks = {};
@@ -124,6 +122,66 @@ function AppContent() {
   };
 
   /* =========================
+     EXPORT ALL DATA
+  ========================= */
+  const exportAllData = () => {
+    if (!data || !data.weeks || !data.paramDefinitions) {
+      showToast(
+        "Cannot export: Application data is incomplete or corrupted.",
+        "error",
+      );
+      return;
+    }
+
+    const blob = new Blob([JSON.stringify(data, null, 2)], {
+      type: "application/json",
+    });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    const date = new Date().toISOString().split("T")[0];
+    link.setAttribute("download", `trade_clarity_backup_${date}.json`);
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    showToast("Full backup exported successfully", "success");
+  };
+
+  /* =========================
+     IMPORT ALL DATA
+  ========================= */
+  const importAllData = async (importedData) => {
+    const isValid =
+      importedData &&
+      typeof importedData === "object" &&
+      importedData.weeks &&
+      importedData.paramDefinitions;
+
+    if (!isValid) {
+      const exampleFormat = {
+        weeks: { US: { "2024-01-01": { stocks: {} } } },
+        paramDefinitions: { exampleParam: { label: "Example", type: "text" } },
+        uiConfig: {},
+      };
+      alert(
+        `Invalid Backup File.\n\nThe file is missing required 'weeks' or 'paramDefinitions' structures.\n\nExpected Format:\n${JSON.stringify(exampleFormat, null, 2)}`,
+      );
+      return;
+    }
+
+    if (
+      await confirm(
+        "⚠️ Restoring a backup will replace ALL current data. This cannot be undone. Are you sure?",
+      )
+    ) {
+      setData(importedData);
+      const latestWeek = getLatestWeekKey(importedData.weeks?.[country] || {});
+      setWeekKey(latestWeek || null);
+      showToast("Full backup restored successfully", "success");
+    }
+  };
+
+  /* =========================
      INITIAL STATE
   ========================= */
   if (!data) return null;
@@ -143,12 +201,13 @@ function AppContent() {
   return (
     <>
       <GlobalTooltip />
-      
+
       <Header
         onOpenModal={modals.openModal}
         onClearAll={clearAllData}
         onManageTags={() => setShowManageTags(true)}
         onShowSettings={() => setShowSettings(true)}
+        onShowUserGuide={() => setShowUserGuide(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
         country={country}
@@ -172,6 +231,8 @@ function AppContent() {
         country={country}
         weekKey={weekKey}
         isReadOnly={isReadOnly}
+        onExportAll={exportAllData}
+        onImportAll={importAllData}
       />
 
       {modals.showManageParams && (
@@ -250,12 +311,25 @@ function AppContent() {
         <AnalyticsDashboard
           stocks={Object.values(data.weeks?.[country]?.[weekKey]?.stocks || {})}
           allWeeksData={data.weeks?.[country] || {}}
-          parameters={Object.entries(data.paramDefinitions).map(([key, def]) => ({
-            ...def,
-            id: key
-          }))}
+          parameters={Object.entries(data.paramDefinitions).map(
+            ([key, def]) => ({
+              ...def,
+              id: key,
+            }),
+          )}
           weekKey={weekKey}
           onClose={() => setShowAnalytics(false)}
+        />
+      )}
+
+      {showUserGuide && (
+        <UserGuideModal
+          isOpen={showUserGuide}
+          onClose={() => setShowUserGuide(false)}
+          // Add these two lines:
+          onOpenModal={modals.openModal}
+          onShowSettings={() => setShowSettings(true)}
+          onManageTags={() => setShowManageTags(true)}
         />
       )}
     </>

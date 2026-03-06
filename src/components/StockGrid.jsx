@@ -24,7 +24,7 @@ function getWeekRangeLabel(sundayDateStr) {
   return `${formatDate(monday)} to ${formatDate(friday)}`;
 }
 
-export default function StockGrid({ data, weekKey, setData, isReadOnly, country }) {
+export default function StockGrid({ data, weekKey, setData, isReadOnly, country, onExportAll, onImportAll }) {
   const week = data.weeks?.[country]?.[weekKey];
   const params = data.paramDefinitions;
   const { showToast } = useToast();
@@ -45,11 +45,19 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
   const [showAddStock, setShowAddStock] = useState(false);
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef(null);
+  
+  const [importMenuOpen, setImportMenuOpen] = useState(false);
+  const importMenuRef = useRef(null);
+  const fileInputRef = useRef(null);
+  const importTypeRef = useRef("stocks"); // 'stocks' or 'backup'
 
   useEffect(() => {
     function handleClickOutside(event) {
       if (exportMenuRef.current && !exportMenuRef.current.contains(event.target)) {
         setExportMenuOpen(false);
+      }
+      if (importMenuRef.current && !importMenuRef.current.contains(event.target)) {
+        setImportMenuOpen(false);
       }
       // Close tag dropdown if click is outside
       if (!event.target.closest(".add-tag-wrapper")) {
@@ -467,7 +475,7 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
     showToast("Exported JSON successfully", "success");
   }
 
-  function handleImport(e) {
+  function handleFileChange(e) {
     const file = e.target.files[0];
     if (!file) return;
     
@@ -480,10 +488,21 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
       try {
         const json = JSON.parse(event.target.result);
         
-        if (Array.isArray(json)) {
-          importStocks(json);
+        if (importTypeRef.current === 'backup') {
+          onImportAll(json);
         } else {
-          showToast("Invalid file format. Expected a JSON array of stocks.", "error");
+          // Stock Import Validation
+          if (!Array.isArray(json)) {
+            const example = [{ symbol: "AAPL", sector: "Technology", tradable: true }];
+            alert(`Invalid Import File.\n\nExpected a JSON Array of stocks.\n\nExample Format:\n${JSON.stringify(example, null, 2)}`);
+            return;
+          }
+          if (json.length > 0 && !json[0].symbol) {
+             const example = [{ symbol: "AAPL", sector: "Technology" }];
+             alert(`Invalid Stock Data.\n\nItems in the array are missing the 'symbol' property.\n\nExample Format:\n${JSON.stringify(example, null, 2)}`);
+             return;
+          }
+          importStocks(json);
         }
       } catch (err) {
         console.error(err);
@@ -492,6 +511,14 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
     };
 
     reader.readAsText(file);
+  }
+
+  function triggerImport(type) {
+    importTypeRef.current = type;
+    setImportMenuOpen(false);
+    if (fileInputRef.current) {
+      fileInputRef.current.click();
+    }
   }
 
   function importStocks(stocksArray) {
@@ -685,24 +712,45 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country 
                 <li onClick={() => handleExport("json", "filtered")}>
                   JSON / Filtered Stocks
                 </li>
+                <li style={{ borderTop: "1px solid var(--border)", margin: "4px 0", height: 0, padding: 0, pointerEvents: "none" }} />
+                <li onClick={() => { setExportMenuOpen(false); onExportAll(); }}>
+                  JSON / Full App Backup
+                </li>
               </ul>
             )}
           </div>
           
-          <label className="primary-btn" style={{ margin: 0 }}>
-            <svg
-              xmlns="http://www.w3.org/2000/svg"
-              fill="none"
-              viewBox="0 0 24 24"
-              strokeWidth={1.5}
-              stroke="currentColor"
-              style={{ width: "16px", height: "16px" }}
+          <div className="export-dropdown-wrapper" ref={importMenuRef}>
+            <button
+              className="primary-btn"
+              onClick={() => setImportMenuOpen(!importMenuOpen)}
+              title="Import options"
             >
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M12 3v13.5m0 0-4.5-4.5M12 16.5l4.5-4.5" />
-            </svg>
-            Import
-            <input type="file" accept=".json" onChange={handleImport} hidden />
-          </label>
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={1.5}
+                stroke="currentColor"
+                style={{ width: "16px", height: "16px" }}
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M12 3v13.5m0 0-4.5-4.5M12 16.5l4.5-4.5" />
+              </svg>
+              Import
+            </button>
+            {importMenuOpen && (
+              <ul className="export-dropdown-menu">
+                <li onClick={() => triggerImport('stocks')}>
+                  JSON / Stocks to Current Week
+                </li>
+                <li style={{ borderTop: "1px solid var(--border)", margin: "4px 0", height: 0, padding: 0, pointerEvents: "none" }} />
+                <li onClick={() => triggerImport('backup')}>
+                  JSON / Restore Full Backup
+                </li>
+              </ul>
+            )}
+            <input ref={fileInputRef} type="file" accept=".json" onChange={handleFileChange} hidden />
+          </div>
 
           <button
             className="primary-btn"
