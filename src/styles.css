@@ -3354,3 +3354,20 @@ input[type=checkbox]:active {
 [data-theme=dark] .clear-search-btn:hover {
   background: rgba(255,255,255,0.15);
 }
+
+/* User Guide Tip */
+.guide-tip {
+  margin-top: 12px;
+  padding: 12px 14px;
+  background-color: rgba(37, 99, 235, 0.08);
+  border: 1px solid rgba(37, 99, 235, 0.15);
+  border-radius: 8px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.guide-tip strong {
+  color: var(--primary);
+  margin-right: 4px;
+}
