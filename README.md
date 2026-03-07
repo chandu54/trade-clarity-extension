@@ -10,7 +10,7 @@ TradeClarity is a powerful React-based application designed for swing traders to
 - **Weekly Watchlists**: Organize your stock ideas by week. Navigate through history to review past setups.
 - **Multi-Region Support**: Switch seamlessly between **US** 🇺🇸 and **India** 🇮🇳 markets with isolated data contexts.
 - **Customizable Parameters**: Define your own technical criteria (e.g., "Relative Strength", "Stage 2", "VCP Pattern") using Text, Dropdown, or Checkbox inputs.
-- **Smart Filtering & Sorting**: Filter stocks by Sector, Tags, Tradable status, or any of your custom parameters.
+- **Smart Filtering, Sorting & Search**: Quickly find stocks by symbol or notes. Filter by Sector, Tags, Tradable status, or any of your custom parameters.
 - **AI-Powered Analysis**: Integrated with **Google Gemini** and **OpenAI** to generate professional market summaries, identify top sectors, and highlight actionable setups based on your watchlist data.
 - <img width="368" height="377" alt="image" src="https://github.com/user-attachments/assets/b0c3af44-51ad-4fee-9b04-f23fbd0e3844" />
 - **Analytics Dashboard**: Gain visual insights into your watchlist.
@@ -19,16 +19,16 @@ TradeClarity is a powerful React-based application designed for swing traders to
   - **Customizable Layout**: Reorder widgets via drag-and-drop and toggle visibility to focus on what matters.
   - <img width="316" height="350" alt="image" src="https://github.com/user-attachments/assets/2e56e688-5ebf-4a11-a8f7-10bd1d5c0180" />
 
-
 **Stock Management**:
 
-- Add stocks in bulk.
+- Add stocks in bulk (Manual entry or TradingView Import).
 - Edit details in a focused modal or directly in the grid.
 - Tag stocks for quick categorization.
 - Mark stocks as "Tradable" to highlight best setups.
 - **Data Persistence**: Automatically saves your data to Local Storage (Web) or Chrome Storage (Extension).
 - **Import / Export**:
   - **Watchlist Export**: Export current week's stocks to CSV or JSON for external analysis.
+  - **TradingView Import**: Import watchlists directly from TradingView text exports.
   - **Full App Backup**: Export/Import the entire application data (all weeks, settings, parameters) to a JSON file for safekeeping or migration.
 - **Dark / Light Mode**: Toggle themes for comfortable viewing in any environment.
 - **Configurable UI**:

@@ -96,7 +96,7 @@ export default function UserGuideModal({ isOpen, onClose, onOpenModal, onShowSet
           <p>Populate your watchlist easily. You can add stocks manually or import them.</p>
           <ul className="guide-list">
              <li><strong>Bulk Add:</strong> Click <em>+ Add Stock</em> and paste a comma-separated list (e.g., <code>AAPL, MSFT, NVDA</code>) to add multiple at once.</li>
-             <li><strong>Import:</strong> Use the <em>Import</em> button to load a JSON list of stocks if you are migrating data.</li>
+             <li><strong>TradingView Import:</strong> In the Add Stock popup, switch to the "TradingView Import" tab to paste exported watchlist data directly.</li>
           </ul>
         </Section>
 
@@ -155,15 +155,17 @@ export default function UserGuideModal({ isOpen, onClose, onOpenModal, onShowSet
         </Section>
 
         <Section 
-          title="8. Filters" 
+          title="8. Search & Filters" 
           icon="🔍"
           actionLabel="Configure Filters →"
           actionKey="filter"
           location="Settings > Filters"
         >
-          <p>As your watchlist grows, use filters to zero in on specific setups.</p>
+          <p>As your watchlist grows, use search and filters to zero in on specific setups.</p>
           <ul className="guide-list">
-            <li><strong>Usage:</strong> Enable filters for specific parameters (e.g., show only stocks where "Pattern" is "Flag") to hide noise and focus on quality.</li>
+            <li><strong>Search:</strong> Use the search bar at the top left of the grid to instantly find stocks by <em>Symbol</em> or text within <em>Notes</em>.</li>
+            <li><strong>Configuration:</strong> By default, filters are hidden. Click <em>Configure Filters</em> to select which parameters (e.g., Sector, Pattern) you want to filter by.</li>
+            <li><strong>Filters:</strong> Once enabled in settings, Filter Criteria appear above the grid. Use them to hide noise and focus on quality.</li>
           </ul>
         </Section>
 
@@ -205,6 +207,7 @@ export default function UserGuideModal({ isOpen, onClose, onOpenModal, onShowSet
           <h5 className="guide-subsection-title">📥 Import & Export</h5>
           <ul className="guide-list">
             <li><strong>Full Backup (JSON):</strong> Saves everything (weeks, settings, history).</li>
+            <li><strong>TradingView Watchlist:</strong> Import a text file exported from TradingView watchlist to populate your grid.</li>
             <li><strong>Export CSV:</strong> Exports the current grid view for use in Excel or trading platforms.</li>
           </ul>
 

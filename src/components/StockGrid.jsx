@@ -24,6 +24,62 @@ function getWeekRangeLabel(sundayDateStr) {
   return `${formatDate(monday)} to ${formatDate(friday)}`;
 }
 
+function parseTradingViewData(content, sectorList) {
+  // We split by comma or newline to handle both:
+  // 1. Single-line comma-separated strings (like TradingView export Case 2)
+  // 2. Multi-line strings (if pasted from a file)
+  const parts = content.split(/[\n,]+/).map(p => p.trim()).filter(Boolean);
+  const parsedStocks = [];
+  let currentSector = "";
+  let hasInvalidFormat = false;
+
+  for (const part of parts) {
+    // Check for section header (e.g. ###AUTO)
+    if (part.startsWith("###")) {
+      const rawSector = part.replace(/^###/, "").trim();
+      const match = sectorList.find(s => s.toLowerCase() === rawSector.toLowerCase());
+      if (match) {
+        currentSector = match;
+      } else {
+        currentSector = ""; 
+      }
+      continue;
+    }
+
+    // Parse stock symbol (e.g. NSE:RELIANCE -> RELIANCE)
+    let symbol = part;
+    if (part.includes(":")) {
+      const split = part.split(":");
+      if (split.length > 1) {
+        symbol = split[1].trim();
+      }
+    }
+    
+    // Strict validation: Reject if symbol contains invalid characters
+    // Allowed: Alphanumeric, dot, hyphen, underscore, ampersand, exclamation, caret, slash, asterisk, plus
+    if (/[^A-Z0-9.\-_&!^/*+]/i.test(symbol) || symbol.length > 20) {
+      hasInvalidFormat = true;
+      break;
+    }
+    
+    if (symbol) {
+      if (!parsedStocks.some(s => s.symbol === symbol)) {
+        parsedStocks.push({ symbol, sector: currentSector });
+      }
+    }
+  }
+
+  if (hasInvalidFormat) {
+    throw new Error("Invalid format. Please ensure it is a valid TradingView export.");
+  }
+
+  if (parsedStocks.length === 0) {
+    throw new Error("No valid stocks found in the input.");
+  }
+
+  return parsedStocks;
+}
+
 export default function StockGrid({ data, weekKey, setData, isReadOnly, country, onExportAll, onImportAll }) {
   const week = data.weeks?.[country]?.[weekKey];
   const params = data.paramDefinitions;
@@ -34,6 +90,7 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
      STATE
   ===================== */
   const [filters, setFilters] = useState({});
+  const [searchQuery, setSearchQuery] = useState("");
   const [sortBy, setSortBy] = useState("symbol");
   const [sortDir, setSortDir] = useState("asc");
 
@@ -49,7 +106,7 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const importMenuRef = useRef(null);
   const fileInputRef = useRef(null);
-  const importTypeRef = useRef("stocks"); // 'stocks' or 'backup'
+  const importTypeRef = useRef("stocks"); // 'stocks', 'backup', or 'tv'
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -75,7 +132,7 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
   ===================== */
   useEffect(() => {
     setCurrentPage(1);
-  }, [weekKey, pageSize, filters, sortBy, sortDir]);
+  }, [weekKey, pageSize, filters, sortBy, sortDir, searchQuery]);
 
   /* =====================
      BASE DATASET
@@ -156,6 +213,14 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
   ===================== */
   const filteredStocks = useMemo(() => {
     return allStocks.filter((stock) => {
+      /* SEARCH FILTER */
+      if (searchQuery) {
+        const q = searchQuery.toLowerCase();
+        const symbolMatch = stock.symbol.toLowerCase().includes(q);
+        const notesMatch = (stock.notes || "").toLowerCase().includes(q);
+        if (!symbolMatch && !notesMatch) return false;
+      }
+
       /*SECTOR FILTER*/
       if (isSectorFilterable) {
         const sectorFilter = filters.__sector__;
@@ -203,7 +268,7 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
         return true;
       });
     });
-  }, [allStocks, filters, filterableParams, isSectorFilterable, isTagFilterable]);
+  }, [allStocks, filters, filterableParams, isSectorFilterable, isTagFilterable, searchQuery]);
 
   /* =====================
      SORT LOGIC (FULL FILTERED DATA)
@@ -268,6 +333,7 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
 
   function clearFilters() {
     setFilters({});
+    setSearchQuery("");
   }
 
   /* =====================
@@ -485,8 +551,22 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
     const reader = new FileReader();
 
     reader.onload = (event) => {
+      const content = event.target.result;
+
+      if (importTypeRef.current === 'tv') {
+        try {
+          const sectorList = data.uiConfig?.sectors || [];
+          const parsedStocks = parseTradingViewData(content, sectorList);
+          importStocks(parsedStocks);
+        } catch (err) {
+          console.error(err);
+          showToast(err.message || "Failed to parse text file", "error");
+        }
+        return;
+      }
+
       try {
-        const json = JSON.parse(event.target.result);
+        const json = JSON.parse(content);
         
         if (importTypeRef.current === 'backup') {
           onImportAll(json);
@@ -517,6 +597,11 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
     importTypeRef.current = type;
     setImportMenuOpen(false);
     if (fileInputRef.current) {
+      if (type === 'tv') {
+        fileInputRef.current.accept = ".txt,.csv";
+      } else {
+        fileInputRef.current.accept = ".json";
+      }
       fileInputRef.current.click();
     }
   }
@@ -533,7 +618,18 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
         if (s.symbol) {
           // Merge params if the stock already exists, otherwise just overwrite/add
           const existing = newStocks[s.symbol];
+          
+          const base = {
+            symbol: s.symbol,
+            sector: "",
+            tradable: false,
+            notes: "",
+            tags: [],
+            params: {},
+          };
+
           newStocks[s.symbol] = {
+            ...base,
             ...existing,
             ...s,
             params: { ...(existing?.params || {}), ...(s.params || {}) },
@@ -677,7 +773,28 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
       )}
 
       <div className="grid-header">
-        <div className="grid-header-left" />
+        <div className="grid-header-left">
+          <div className="search-box">
+            <span className="search-icon">
+              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                <path fillRule="evenodd" d="M9 3.5a5.5 5.5 0 100 11 5.5 5.5 0 000-11zM2 9a7 7 0 1112.452 4.391l3.328 3.329a.75.75 0 11-1.06 1.06l-3.329-3.328A7 7 0 012 9z" clipRule="evenodd" />
+              </svg>
+            </span>
+            <input 
+              type="text" 
+              placeholder="Search stocks..." 
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button className="clear-search-btn" onClick={() => setSearchQuery("")}>
+                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor">
+                  <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+                </svg>
+              </button>
+            )}
+          </div>
+        </div>
         <div className="grid-header-right">
           <div className="export-dropdown-wrapper" ref={exportMenuRef}>
             <button
@@ -743,6 +860,9 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
                 <li onClick={() => triggerImport('stocks')}>
                   JSON / Stocks to Current Week
                 </li>
+                <li onClick={() => triggerImport('tv')}>
+                  Text / TradingView Watchlist
+                </li>
                 <li style={{ borderTop: "1px solid var(--border)", margin: "4px 0", height: 0, padding: 0, pointerEvents: "none" }} />
                 <li onClick={() => triggerImport('backup')}>
                   JSON / Restore Full Backup
@@ -773,8 +893,11 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
         <AddStockModal
           isOpen={true}
           onAdd={handleAddStock}
+          onImport={importStocks}
           onClose={() => setShowAddStock(false)}
           existingStocks={week?.stocks}
+          sectors={sectors}
+          onParseTv={(content) => parseTradingViewData(content, sectors)}
         />
       )}
 

@@ -89,7 +89,7 @@ const SettingsModal = ({ isOpen, onClose }) => {
         <div className="form-field">
           <label htmlFor="apiKey">
             API Key
-            <span className="info-icon" title="Your API key is stored locally in your browser and sent directly to the AI provider.">ℹ️</span>
+            <span className="info-icon" title="Your API key is stored locally in your browser and used to communicate with the AI provider. This is required for the AI Analysis to function.">ℹ️</span>
           </label>
           <div style={{ display: "flex", gap: "8px" }}>
             <input
@@ -105,10 +105,10 @@ const SettingsModal = ({ isOpen, onClose }) => {
               className="outline"
               onClick={handleTest} 
               disabled={isTesting || !apiKey} 
-              title="Verify API Key"
+              title="Test your API key and model configuration to ensure everything is set up correctly."
               style={{ padding: "0 16px", whiteSpace: "nowrap" }}
             >
-              {isTesting ? "Verifying..." : "Verify Key"}
+              {isTesting ? "Testing..." : "Test Connection"}
             </button>
           </div>
           {saveStatus && (
