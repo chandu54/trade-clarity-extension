@@ -129,6 +129,8 @@ This project includes a Chrome Extension content script that injects a helper wi
   - Configure custom parameters (defined in the Dashboard).
 - **Floating UI**: A draggable, collapsible widget that stays out of your way.
 - **Region Support**: Toggle between market regions (e.g., US, IN).
+- <img width="928" height="473" alt="image" src="https://github.com/user-attachments/assets/70419318-1dcf-430a-bf16-f3c9b19dd5d3" />
+
 
 ### Development
 
