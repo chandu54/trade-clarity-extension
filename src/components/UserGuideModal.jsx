@@ -344,6 +344,30 @@ export default function UserGuideModal({
             </li>
           </ul>
         </Section>
+
+        <Section
+          title="12. TradingView Integration"
+          icon="📈"
+          location="TradingView.com"
+        >
+          <p>
+            Journal setups in real-time without leaving your charts. The extension automatically injects a floating widget into TradingView.
+          </p>
+          <ul className="guide-list">
+            <li>
+              <strong>Instant Sync:</strong> Add stocks, notes, tags, and parameters directly from the chart. Data is instantly saved to your dashboard.
+            </li>
+            <li>
+              <strong>Smart Context:</strong> The widget automatically detects the active ticker symbol from the page title.
+            </li>
+            <li>
+              <strong>Floating UI:</strong> The widget is draggable and collapsible, so it stays out of your way while analyzing price action.
+            </li>
+          </ul>
+          <div className="guide-tip">
+            <strong>💡 How to use:</strong> Open any chart on TradingView. The widget appears automatically. Ensure the <strong>Region</strong> (US/IN) and <strong>Date</strong> in the widget header match your current trading plan.
+          </div>
+        </Section>
       </div>
       <div className="modal-footer">
         <button className="outline" onClick={onClose}>

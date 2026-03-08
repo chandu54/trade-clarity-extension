@@ -139,3 +139,49 @@ Hover over the **"i" icon** next to the week dropdown.
 4.  **Mark** the best 5-10 stocks as **Tradable**.
 5.  **Run AI Analysis** to get a macro view of your list.
 6.  **Export** the "Tradable" list to your broker.
+
+# TradeClarity User Guide
+
+## TradingView Widget
+
+The TradeClarity Widget allows you to manage your weekly watchlist directly from TradingView.
+
+### 1. Accessing the Widget
+
+- Navigate to any chart on TradingView.
+- The **TradeClarity** widget will appear automatically as a floating panel.
+- **Symbol Detection**: The widget automatically updates to match the ticker symbol of the chart you are viewing.
+
+### 2. Interface Controls
+
+- **Minimize/Maximize**: Click the header bar (where the logo and symbol are) to toggle the widget open or closed.
+- **Move**: Click and drag the header to reposition the widget anywhere on your screen. The position is saved for your session.
+- **Region**: Use the dropdown in the header to switch between market regions (e.g., `IN` for India, `US` for USA).
+- **Date**: The date picker defaults to the current week. Change this if you are planning for a future week or reviewing a past one.
+
+### 3. Managing a Setup
+
+Once the correct symbol is detected, you can input your trade plan:
+
+- **Custom Parameters**: If you have defined custom fields in the Dashboard (like "Entry Price", "Stop Loss", "Strategy"), they will appear here as input fields or dropdowns.
+- **Tags**:
+  - **Add**: Select from existing tags or type a new tag and press `Enter` (or click `+`).
+  - **Remove**: Click the `×` on a tag to remove it.
+- **Notes**: Enter your analysis, thesis, or execution plan in the text area.
+- **Tradable**: Check the **"Mark as Tradable"** box if this stock meets your criteria for the week.
+
+### 4. Saving
+
+- Click the **"Save to Watchlist"** button.
+- A confirmation message will appear.
+- The data is instantly saved to your Chrome Storage and will be visible in the main TradeClarity Dashboard.
+
+### Troubleshooting
+
+- **Widget not appearing?**
+  - Refresh the TradingView page.
+  - Ensure the extension is enabled in Chrome.
+- **Symbol not updating?**
+  - The widget relies on the document title. Wait for the chart to fully load.
+- **Data not saving?**
+  - Ensure you have initialized the main Dashboard at least once to set up the data structure.
