@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 
-// Helper to calculate the Sunday-based week key (Matches App.jsx logic)
+// Helper to calculate the Sunday-based week key
 function getWeekKey(dateStr) {
   let date;
   if (dateStr) {
@@ -9,7 +9,6 @@ function getWeekKey(dateStr) {
   } else {
     date = new Date();
   }
-  // Safety check for invalid dates
   if (isNaN(date.getTime())) {
     date = new Date();
   }
@@ -20,37 +19,35 @@ function getWeekKey(dateStr) {
 }
 
 const TradeClarityWidget = () => {
-  const [isOpen, setIsOpen] = useState(true);
+  const [isOpen, setIsOpen] = useState(false);
   const [symbol, setSymbol] = useState(null);
   const [appData, setAppData] = useState(null);
   const [stockData, setStockData] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [region, setRegion] = useState('IN'); // Default to IN based on your data, or keep US
+  const [region, setRegion] = useState('IN');
   const [targetDate, setTargetDate] = useState(() => {
     const now = new Date();
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [saveMessage, setSaveMessage] = useState('');
+  const [saveMessage, setSaveMessage] = useState(false); 
   const [newTag, setNewTag] = useState('');
 
-  // Dragging State
+  // 1. Position & Dragging State
   const [position, setPosition] = useState({ top: 80, right: 16 });
   const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, startTop: 0, startRight: 0, hasMoved: false });
 
+  // 2. Custom Resize State
+  const [size, setSize] = useState({ w: 300, h: 480 });
+  const isResizing = useRef(false);
+
+  // --- DRAG LOGIC ---
   const handleMouseMove = useCallback((e) => {
     if (!dragRef.current.isDragging) return;
     const deltaX = e.clientX - dragRef.current.startX;
     const deltaY = e.clientY - dragRef.current.startY;
-    
-    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) {
-      dragRef.current.hasMoved = true;
-    }
-
-    setPosition({
-      top: dragRef.current.startTop + deltaY,
-      right: dragRef.current.startRight - deltaX
-    });
+    if (Math.abs(deltaX) > 3 || Math.abs(deltaY) > 3) dragRef.current.hasMoved = true;
+    setPosition({ top: dragRef.current.startTop + deltaY, right: dragRef.current.startRight - deltaX });
   }, []);
 
   const handleMouseUp = useCallback(() => {
@@ -60,160 +57,148 @@ const TradeClarityWidget = () => {
   }, [handleMouseMove]);
 
   const handleMouseDown = (e) => {
-    if (e.button !== 0) return; // Left click only
+    if (e.button !== 0) return;
     dragRef.current = {
-      isDragging: true,
-      startX: e.clientX,
-      startY: e.clientY,
-      startTop: position.top,
-      startRight: position.right,
-      hasMoved: false
+      isDragging: true, startX: e.clientX, startY: e.clientY,
+      startTop: position.top, startRight: position.right, hasMoved: false
     };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
 
-  const handleHeaderClick = () => {
-    if (!dragRef.current.hasMoved) {
-      setIsOpen(!isOpen);
-    }
+  // --- RESIZE LOGIC ---
+  const startResize = (direction) => (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizing.current = true;
+    const startX = e.clientX;
+    const startY = e.clientY;
+    const startW = size.w;
+    const startH = size.h;
+    const startTop = position.top;
+    const startRight = position.right;
+
+    const onMouseMove = (moveEvent) => {
+      if (!isResizing.current) return;
+      const deltaX = moveEvent.clientX - startX;
+      const deltaY = moveEvent.clientY - startY;
+      
+      let newW = startW;
+      let newH = startH;
+      let newTop = startTop;
+      let newRight = startRight;
+
+      if (direction.includes('w')) {
+        newW = Math.max(260, startW - deltaX);
+      } else if (direction.includes('e')) {
+        newW = Math.max(260, startW + deltaX);
+        newRight = startRight + (startW - newW);
+      }
+
+      if (direction.includes('n')) {
+        newH = Math.max(250, startH - deltaY);
+        newTop = startTop + (startH - newH);
+      } else if (direction.includes('s')) {
+        newH = Math.max(250, startH + deltaY);
+      }
+
+      setSize({ w: newW, h: newH });
+      setPosition({ top: newTop, right: newRight });
+    };
+
+    const onMouseUp = () => {
+      isResizing.current = false;
+      document.removeEventListener('mousemove', onMouseMove);
+      document.removeEventListener('mouseup', onMouseUp);
+    };
+
+    document.addEventListener('mousemove', onMouseMove);
+    document.addEventListener('mouseup', onMouseUp);
   };
 
-  // DEBUG: Verify Mount
-  useEffect(() => {
-    console.log("[TradeClarity] Widget Mounted");
-  }, []);
+  const toggleWidget = () => {
+    if (!dragRef.current.hasMoved) setIsOpen(!isOpen);
+  };
 
-  // Listen for storage changes (e.g. if user updates settings in dashboard)
+  const openDashboard = () => {
+    chrome.runtime.sendMessage({ action: 'OPEN_DASHBOARD' });
+  };
+
+  // The Bubble Firewall
+  const handleWidgetKeyDown = (e) => {
+    e.stopPropagation(); 
+    e.nativeEvent.stopImmediatePropagation();
+    if ((e.metaKey || e.ctrlKey) && e.key === 'Enter') handleSave();
+  };
+
+  // Settings & Storage Listeners
   useEffect(() => {
     const handleStorageChange = (changes, area) => {
-      if (area === 'local' && changes.trading_app_data) {
-        console.log("[TradeClarity] AppData updated from storage");
-        setAppData(changes.trading_app_data.newValue);
-      }
+      if (area === 'local' && changes.trading_app_data) setAppData(changes.trading_app_data.newValue);
     };
-    chrome.storage.onChanged.addListener(handleStorageChange);
-    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+    chrome.storage.onChanged.addListener(handleStorageChange); return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, []);
 
-  // Load saved settings (Date & Region) on mount
   useEffect(() => {
     chrome.storage.local.get('widget_settings', (result) => {
       if (result.widget_settings) {
-        const { lastDate, lastRegion } = result.widget_settings;
-        if (lastDate) setTargetDate(lastDate);
-        if (lastRegion) setRegion(lastRegion);
+        if (result.widget_settings.lastDate) setTargetDate(result.widget_settings.lastDate);
+        if (result.widget_settings.lastRegion) setRegion(result.widget_settings.lastRegion);
       }
       setSettingsLoaded(true);
     });
   }, []);
 
-  // Save settings when Date or Region changes
   useEffect(() => {
     if (!settingsLoaded) return;
-    chrome.storage.local.set({
-      widget_settings: {
-        lastDate: targetDate,
-        lastRegion: region
-      }
-    });
+    chrome.storage.local.set({ widget_settings: { lastDate: targetDate, lastRegion: region } });
   }, [targetDate, region, settingsLoaded]);
 
-  // 1. Watch for Ticker Changes via Document Title
+  // Ticker Observation
   useEffect(() => {
     const handleTitleChange = () => {
-      const title = document.title;
-      console.log("[TradeClarity] Title changed:", title);
-      
-      // TradingView titles usually look like "SYMBOL 123.45 ..."
-      // We grab the first word as the ticker.
-      const match = title.match(/^([A-Z0-9]+)/);
-      if (match && match[1]) {
-        const newSymbol = match[1];
-        console.log("[TradeClarity] Symbol detected:", newSymbol);
-        setSymbol((prev) => (prev !== newSymbol ? newSymbol : prev));
-      } else {
-        console.log("[TradeClarity] No symbol matched in title");
-      }
+      const match = document.title.match(/^([A-Z0-9]+)/);
+      if (match && match[1]) setSymbol((prev) => (prev !== match[1] ? match[1] : prev));
     };
-
-    handleTitleChange(); // Initial check
-    
+    handleTitleChange();
     const observer = new MutationObserver(handleTitleChange);
     const titleEl = document.querySelector('title');
-    if (titleEl) {
-        observer.observe(titleEl, { childList: true });
-    }
-
+    if (titleEl) observer.observe(titleEl, { childList: true });
     return () => observer.disconnect();
   }, []);
 
-  // 2. Load App Data & Stock Data when Symbol changes
+  // Load Data
   useEffect(() => {
-    if (!symbol) return;
-    // Prevent loading data for incomplete/invalid dates (e.g. while typing)
-    if (!targetDate || targetDate.length !== 10) return;
+    if (!symbol || !targetDate || targetDate.length !== 10) return;
     setLoading(true);
-    setSaveMessage(''); // Clear any previous messages
+    setSaveMessage(false);
 
     chrome.storage.local.get('trading_app_data', (result) => {
-      console.log("[TradeClarity] Storage result:", result);
       const data = result.trading_app_data;
-      
-      // Handle case where app hasn't been initialized yet
       if (!data) {
-        console.warn("[TradeClarity] No appData found. Please open the main extension dashboard once to initialize.");
         setLoading(false);
-        setAppData({ paramDefinitions: {} }); // Prevent crash
+        setAppData({ paramDefinitions: {} });
         return;
       }
-
-      // Ensure tags array exists in uiConfig
       if (!data.uiConfig) data.uiConfig = {};
       if (!data.uiConfig.tags) data.uiConfig.tags = [];
 
       setAppData(data);
-
       const weekKey = getWeekKey(targetDate);
-      let weekBucket = null;
-
-      // Handle both flat structure and regional structure
-      if (data.weeks?.US || data.weeks?.IN) {
-        weekBucket = data.weeks[region]?.[weekKey];
-      } else {
-        weekBucket = data.weeks?.[weekKey];
-      }
+      let weekBucket = data.weeks?.US || data.weeks?.IN ? data.weeks[region]?.[weekKey] : data.weeks?.[weekKey];
 
       if (weekBucket && weekBucket.stocks && weekBucket.stocks[symbol]) {
-        console.log("[TradeClarity] Loaded existing data for", symbol);
         setStockData(weekBucket.stocks[symbol]);
       } else {
-        console.log("[TradeClarity] Initializing new data for", symbol);
-        setStockData({
-          symbol: symbol,
-          sector: "",
-          tradable: false,
-          notes: "",
-          tags: [],
-          params: {}
-        });
+        setStockData({ symbol: symbol, sector: "", tradable: false, notes: "", tags: [], params: {} });
       }
       setLoading(false);
     });
   }, [symbol, region, targetDate]);
 
-  // 3. Handle Input Changes
-  const handleParamChange = (key, value) => {
-    setStockData(prev => ({
-      ...prev,
-      params: { ...prev.params, [key]: value }
-    }));
-  };
-
-  const handleFieldChange = (field, value) => {
-    setStockData(prev => ({ ...prev, [field]: value }));
-  };
-
+  // Handlers
+  const handleParamChange = (key, value) => setStockData(prev => ({ ...prev, params: { ...prev.params, [key]: value } }));
+  const handleFieldChange = (field, value) => setStockData(prev => ({ ...prev, [field]: value }));
   const handleAddTag = (tag) => {
     if (!tag) return;
     setStockData(prev => {
@@ -222,289 +207,335 @@ const TradeClarityWidget = () => {
       return { ...prev, tags: [...currentTags, tag] };
     });
   };
-
   const handleCreateTag = () => {
     if (!newTag.trim()) return;
     const tag = newTag.trim();
-    
-    // 1. Add to current stock
     handleAddTag(tag);
-
-    // 2. Add to global appData tags if not present
     setAppData(prev => {
       const uiConfig = prev.uiConfig || {};
       const currentGlobalTags = uiConfig.tags || [];
       if (currentGlobalTags.includes(tag)) return prev;
-      return { 
-        ...prev, 
-        uiConfig: { ...uiConfig, tags: [...currentGlobalTags, tag] }
-      };
+      return { ...prev, uiConfig: { ...uiConfig, tags: [...currentGlobalTags, tag] } };
     });
-
     setNewTag("");
   };
+  const handleRemoveTag = (tagToRemove) => setStockData(prev => ({ ...prev, tags: (prev.tags || []).filter(t => t !== tagToRemove) }));
 
-  const handleRemoveTag = (tagToRemove) => {
-    setStockData(prev => ({
-      ...prev,
-      tags: (prev.tags || []).filter(t => t !== tagToRemove)
-    }));
-  };
-
-  // 4. Save to Chrome Storage
   const handleSave = useCallback(() => {
     if (!appData || !symbol || !stockData) return;
-
     const newData = structuredClone(appData);
     const weekKey = getWeekKey(targetDate);
-
-    // Ensure structure exists
     let targetWeeks = newData.weeks;
+    
     if (newData.weeks.US || newData.weeks.IN) {
       if (!newData.weeks[region]) newData.weeks[region] = {};
       targetWeeks = newData.weeks[region];
     }
-
-    if (!targetWeeks[weekKey]) {
-      targetWeeks[weekKey] = { displayName: `Week of ${weekKey}`, stocks: {} };
-    }
-
+    if (!targetWeeks[weekKey]) targetWeeks[weekKey] = { displayName: `Week of ${weekKey}`, stocks: {} };
     targetWeeks[weekKey].stocks[symbol] = stockData;
 
     chrome.storage.local.set({ trading_app_data: newData }, () => {
-      console.log(`[TradeClarity] Saved ${symbol}`);
       setAppData(newData);
-      setSaveMessage("Saved successfully!");
-      setTimeout(() => setSaveMessage(''), 2000);
+      setSaveMessage(true);
+      setTimeout(() => { setSaveMessage(false); setIsOpen(false); }, 1200); 
     });
   }, [appData, symbol, stockData, region, targetDate]);
 
-  // FALLBACK UI: If no symbol is detected, show a red box so we know injection worked.
-  if (!symbol) {
-      return (
-          <div className="fixed top-20 right-4 z-50 bg-red-600 text-white p-4 rounded shadow-lg font-sans text-xs border border-white">
-              <strong>TradeClarity Debug</strong><br/>
-              No Symbol Detected.<br/>
-              Page Title: {document.title || 'Empty'}
-          </div>
-      );
+  if (!symbol) return null; 
+
+  // --- FAB STATE (CLOSED) ---
+  if (!isOpen) {
+    return (
+      <div
+        className="fixed z-[9999] cursor-move backdrop-blur-md rounded-full shadow-2xl p-3 border transition-all flex items-center justify-center gap-2 group bg-slate-900/80 border-slate-700/50 hover:bg-slate-800 text-white"
+        style={{ top: position.top, right: position.right }}
+        onMouseDown={handleMouseDown}
+        onClick={toggleWidget}
+      >
+         <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+         <span className="text-xs font-bold hidden group-hover:block px-1">TC: {symbol}</span>
+      </div>
+    );
   }
 
+  // --- WIDGET STATE (OPEN) ---
   return (
-    <div 
-      className="fixed z-[9999] w-80 bg-slate-900/95 text-slate-200 rounded-xl shadow-2xl border border-slate-700/50 font-sans text-sm backdrop-blur-sm transition-all duration-200 ease-in-out"
-      style={{ top: position.top, right: position.right }}
+    <div
+      className="fixed z-[9999] backdrop-blur-xl rounded-xl border font-sans text-sm flex flex-col transition-colors duration-200 bg-slate-900/95 text-slate-200 border-slate-700/50 shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+      style={{ 
+        top: position.top, 
+        right: position.right, 
+        width: `${size.w}px`, 
+        height: `${size.h}px`,
+        maxHeight: '90vh'
+      }}
+      onKeyDown={handleWidgetKeyDown}
+      onKeyUp={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
+      onKeyPress={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
     >
+      <style>{`
+        .themed-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
+        .themed-scroll::-webkit-scrollbar-track { background: transparent; }
+        .themed-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
+        .themed-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
+        .themed-scroll::-webkit-scrollbar-corner { background: transparent; }
+        .no-scrollbar::-webkit-scrollbar { display: none; }
+      `}</style>
+
+      {/* Invisible Edge Resize Handles */}
+      <div onMouseDown={startResize('n')} className="absolute top-0 left-0 w-full h-1 z-50 cursor-n-resize" />
+      <div onMouseDown={startResize('s')} className="absolute bottom-0 left-0 w-full h-1 z-50 cursor-s-resize" />
+      <div onMouseDown={startResize('e')} className="absolute top-0 right-0 w-1 h-full z-50 cursor-e-resize" />
+      <div onMouseDown={startResize('w')} className="absolute top-0 left-0 w-1 h-full z-50 cursor-w-resize" />
+      <div onMouseDown={startResize('nw')} className="absolute top-0 left-0 w-3 h-3 z-50 cursor-nw-resize" />
+      <div onMouseDown={startResize('ne')} className="absolute top-0 right-0 w-3 h-3 z-50 cursor-ne-resize" />
+      <div onMouseDown={startResize('sw')} className="absolute bottom-0 left-0 w-3 h-3 z-50 cursor-sw-resize" />
+
+      {/* Header */}
       {/* Header */}
       <div 
-        className="flex flex-col p-3 border-b border-slate-700/50 bg-slate-800/50 rounded-t-xl cursor-move select-none hover:bg-slate-800/80 transition-colors" 
+        className="flex flex-col px-3 pt-3 pb-2 border-b rounded-t-xl cursor-move select-none shrink-0 transition-colors duration-200 border-slate-700/50 bg-slate-800/50" 
         onMouseDown={handleMouseDown} 
-        onClick={handleHeaderClick}
       >
-        <div className="flex items-center justify-between mb-3">
-          <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.5)]"></div>
-            <span className="font-bold text-slate-100 tracking-tight">TradeClarity</span>
-            <span className="bg-slate-800 border border-slate-600/50 px-2 py-0.5 rounded text-[11px] font-mono text-blue-300">{symbol}</span>
+        {/* Top Row: Title + Window Controls (Proper Flexbox Layout) */}
+        <div className="flex items-center justify-between mb-2">
+          
+          {/* Left: Branding & Symbol */}
+          <div className="flex items-center gap-2 overflow-hidden pr-2">
+            <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+            <span className="font-bold tracking-tight shrink-0 text-white">TradeClarity</span>
+            <span 
+              className="border px-1.5 py-0.5 rounded text-[10px] font-mono shadow-sm font-bold truncate bg-slate-800 border-slate-600 text-blue-400" 
+              title={symbol}
+            >
+              {symbol}
+            </span>
           </div>
-          <button className="text-slate-400 hover:text-white transition-colors p-1 hover:bg-slate-700 rounded">
-            {isOpen ? (
-               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                 <path fillRule="evenodd" d="M4 10a.75.75 0 01.75-.75h10.5a.75.75 0 010 1.5H4.75A.75.75 0 014 10z" clipRule="evenodd" />
-               </svg>
-            ) : (
-              <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4">
-                <path d="M10.75 4.75a.75.75 0 00-1.5 0v4.5h-4.5a.75.75 0 000 1.5h4.5v4.5a.75.75 0 001.5 0v-4.5h4.5a.75.75 0 000-1.5h-4.5v-4.5z" />
-              </svg>
-            )}
-          </button>
+
+          {/* Right: Window Controls */}
+          <div 
+            className="flex items-center gap-0.5 rounded-lg px-1 py-0.5 border shrink-0 bg-slate-800/50 border-slate-600/50"
+            onMouseDown={(e) => e.stopPropagation()}
+          >
+              <button onClick={openDashboard} className="transition-colors p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-700/50" title="Open Main App">
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
+              </button>
+              <div className="w-px h-3 mx-0.5 bg-slate-600"></div>
+              <button onClick={toggleWidget} className="transition-colors p-1 rounded text-slate-400 hover:text-red-400 hover:bg-slate-700/50" title="Minimize">
+                 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
+              </button>
+          </div>
         </div>
         
-        {/* Controls Row: Region + Date */}
-        <div className="flex items-center gap-2" onClick={(e) => e.stopPropagation()}>
+        {/* Controls Row */}
+        <div className="flex items-center gap-2">
            <select 
               value={region} 
               onChange={(e) => setRegion(e.target.value)}
-              className="bg-slate-950 text-slate-300 text-xs border border-slate-700 rounded-md px-2 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all"
-              title="Select Market Region"
+              className="text-xs border rounded px-1.5 py-1 focus:border-blue-500 outline-none shadow-sm transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
             >
-              <option value="US">🇺🇸 US</option>
-              <option value="IN">🇮🇳 IN</option>
+              <option value="US">US</option>
+              <option value="IN">IN</option>
             </select>
-
            <input 
              type="date" 
              value={targetDate}
              onChange={(e) => setTargetDate(e.target.value)}
-             className="bg-slate-950 text-slate-300 text-xs border border-slate-700 rounded-md px-2 py-1.5 flex-1 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none transition-all"
+             className="text-xs border rounded px-2 py-1 flex-1 focus:border-blue-500 outline-none shadow-sm transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
              style={{ colorScheme: "dark" }}
            />
         </div>
       </div>
 
-      {/* Body */}
-      {isOpen && (
-        <div className="p-4 max-h-[70vh] overflow-y-auto custom-scrollbar">
-          {loading ? (
-            <div className="flex flex-col items-center justify-center py-8 text-slate-500 gap-2">
-                <div className="w-5 h-5 border-2 border-slate-600 border-t-blue-500 rounded-full animate-spin"></div>
-                <span className="text-xs">Loading data...</span>
-            </div>
-          ) : (
-            <div className="space-y-4">
-              
-              {/* Dynamic Parameters */}
-              {appData?.paramDefinitions && Object.entries(appData.paramDefinitions).map(([key, def]) => {
-                if (!def) return null;
+      {/* Scrollable Body */}
+      <div className="p-3 overflow-y-auto flex-1 themed-scroll">
+        <div className="space-y-3">
+          
+          {/* Sector Dropdown */}
+          <div className="flex items-center gap-2 py-1">
+            <label className="text-[11px] font-bold w-1/3 truncate text-slate-400" title="Sector">Sector</label>
+            <select
+              className="flex-1 border rounded px-1.5 py-1 outline-none text-[11px] appearance-none min-w-0 shadow-sm focus:border-blue-500 transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
+              value={stockData?.sector || ''}
+              onChange={(e) => handleFieldChange('sector', e.target.value)}
+            >
+              <option value="">Select Sector...</option>
+              {(appData?.uiConfig?.sectors || []).map(sector => (
+                <option key={sector} value={sector}>{sector}</option>
+              ))}
+            </select>
+          </div>
 
-                // Match logic from EditStockModal.jsx
-                if (def.type === 'checkbox') {
-                  return (
-                    <div key={key} className="flex items-center justify-between gap-2 group">
-                      <label className="text-xs font-medium text-slate-400 group-hover:text-slate-300 transition-colors truncate" title={def.label}>{def.label}</label>
-                      <select
-                        className="w-20 bg-slate-800 border border-slate-700 rounded px-2 py-1 focus:border-blue-500 outline-none text-slate-200 text-xs"
-                        value={stockData?.params?.[key] === true ? "true" : "false"}
-                        onChange={(e) => handleParamChange(key, e.target.value === "true")}
-                      >
-                        <option value="false">No</option>
-                        <option value="true">Yes</option>
-                      </select>
-                    </div>
-                  );
-                }
+          {/* Dynamic Parameters */}
+          {appData?.paramDefinitions && Object.entries(appData.paramDefinitions).map(([key, def]) => {
+            if (!def) return null;
 
-                if (def.type === 'select') {
-                  return (
-                    <div key={key} className="flex items-center justify-between gap-2">
-                      <label className="text-xs font-medium text-slate-400 truncate" title={def.label}>{def.label}</label>
-                      <select
-                        className="flex-1 max-w-[60%] bg-slate-950 border border-slate-700 rounded-md px-2 py-1 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none text-slate-200 text-xs transition-all appearance-none"
-                        value={stockData?.params?.[key] || ''}
-                        onChange={(e) => handleParamChange(key, e.target.value)}
-                      >
-                        <option value="" className="text-slate-500">Select...</option>
-                        {(Array.isArray(def.options) ? def.options : (typeof def.options === 'string' ? def.options.split(',') : []))
-                          .map(opt => typeof opt === 'string' ? opt.trim() : opt)
-                          .filter(Boolean)
-                          .map((opt) => (
-                            <option key={opt} value={opt}>{opt}</option>
-                          ))}
-                      </select>
-                    </div>
-                  );
-                }
-
-                return (
-                <div key={key} className="flex items-center justify-between gap-2">
-                  <label className="text-xs font-medium text-slate-400 truncate" title={def.label}>{def.label}</label>
-                    <input
-                      type="text"
-                      className="flex-1 max-w-[60%] bg-slate-950 border border-slate-700 rounded-md px-2 py-1 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none text-slate-200 text-xs transition-all placeholder-slate-600"
-                      value={stockData?.params?.[key] || ''}
-                      onChange={(e) => handleParamChange(key, e.target.value)}
-                      placeholder="..."
-                    />
+            if (def.type === 'checkbox') {
+              return (
+                <div key={key} className="flex items-center gap-2 py-1">
+                  <label className="text-[11px] font-bold w-1/3 truncate text-slate-400" title={def.label}>{def.label}</label>
+                  <input
+                    type="checkbox"
+                    style={{ WebkitAppearance: 'checkbox', appearance: 'checkbox' }}
+                    className="h-4 w-4 cursor-pointer accent-blue-500"
+                    checked={stockData?.params?.[key] === true}
+                    onChange={(e) => handleParamChange(key, e.target.checked)}
+                  />
                 </div>
-                );
-              })}
+              );
+            }
 
-              {/* Tags Section */}
-              <div className="space-y-2">
-                <label className="block text-xs font-medium text-slate-400 ml-0.5">Tags</label>
-                <div className="flex flex-wrap gap-2 mb-2">
-                  {(stockData?.tags || []).map(tag => (
-                    <span key={tag} className="bg-blue-500/10 text-blue-300 border border-blue-500/20 text-[11px] px-2.5 py-1 rounded-full flex items-center gap-1.5 transition-colors hover:bg-blue-500/20">
-                      {tag}
-                      <button onClick={() => handleRemoveTag(tag)} className="hover:text-white text-blue-300/70 font-bold leading-none focus:outline-none">×</button>
-                    </span>
-                  ))}
-                  {(stockData?.tags || []).length === 0 && (
-                      <span className="text-slate-600 text-xs italic px-1">No tags added</span>
-                  )}
+            if (def.type === 'select') {
+              return (
+                <div key={key} className="flex items-center gap-2 py-1">
+                  <label className="text-[11px] font-bold w-1/3 truncate text-slate-400" title={def.label}>{def.label}</label>
+                  <select
+                    className="flex-1 border rounded px-1.5 py-1 outline-none text-[11px] appearance-none min-w-0 shadow-sm focus:border-blue-500 transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
+                    value={stockData?.params?.[key] || ''}
+                    onChange={(e) => handleParamChange(key, e.target.value)}
+                  >
+                    <option value="">Select...</option>
+                    {(Array.isArray(def.options) ? def.options : (typeof def.options === 'string' ? def.options.split(',') : [])).map(opt => typeof opt === 'string' ? opt.trim() : opt).filter(Boolean).map((opt) => (
+                        <option key={opt} value={opt}>{opt}</option>
+                    ))}
+                  </select>
                 </div>
-                
-                <div className="flex gap-2">
-                  {appData?.uiConfig?.tags && appData.uiConfig.tags.length > 0 && (
-                    <div className="relative flex-1 min-w-0">
-                        <select
-                        className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none text-slate-300 text-xs h-8 appearance-none"
-                        value=""
-                        onChange={(e) => handleAddTag(e.target.value)}
-                        >
-                        <option value="">Select existing...</option>
-                        {appData.uiConfig.tags.filter(t => !(stockData?.tags || []).includes(t)).map(t => (
-                            <option key={t} value={t}>{t}</option>
-                        ))}
-                        </select>
-                        <div className="absolute inset-y-0 right-0 flex items-center px-2 pointer-events-none">
-                            <svg className="w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 9l-7 7-7-7"></path></svg>
-                        </div>
-                    </div>
-                  )}
-                  <div className="flex-1 flex gap-1 min-w-0">
-                      <input 
-                          type="text" 
-                          value={newTag}
-                          onChange={(e) => setNewTag(e.target.value)}
-                          onKeyDown={(e) => e.key === 'Enter' && handleCreateTag()}
-                          placeholder="New tag..."
-                          className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-1.5 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none text-slate-200 text-xs h-8 placeholder-slate-600"
-                      />
-                      <button onClick={handleCreateTag} className="bg-slate-800 hover:bg-slate-700 border border-slate-700 text-slate-300 px-3 rounded-md text-xs h-8 flex items-center justify-center transition-colors">
-                        +
-                      </button>
-                  </div>
-                </div>
-              </div>
+              );
+            }
 
-              {/* Notes */}
-              <div className="space-y-1.5">
-                <label className="block text-xs font-medium text-slate-400 ml-0.5">Notes</label>
-                <textarea
-                  rows={3}
-                  className="w-full bg-slate-950 border border-slate-700 rounded-md px-3 py-2 focus:border-blue-500 focus:ring-1 focus:ring-blue-500/50 outline-none resize-none text-xs text-slate-200 placeholder-slate-600 leading-relaxed"
-                  value={stockData?.notes || ''}
-                  onChange={(e) => handleFieldChange('notes', e.target.value)}
-                  placeholder="Enter setup details, entry/exit points..."
+            return (
+              <div key={key} className="flex items-center gap-2 py-1">
+                <label className="text-[11px] font-bold w-1/3 truncate text-slate-400" title={def.label}>{def.label}</label>
+                <input
+                  type="text"
+                  className="flex-1 border rounded px-1.5 py-1 outline-none text-[11px] shadow-sm focus:border-blue-500 transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
+                  value={stockData?.params?.[key] || ''}
+                  onChange={(e) => handleParamChange(key, e.target.value)}
                 />
               </div>
+            );
+          })}
 
-              {/* Tradable Checkbox */}
-              <div className="flex items-center gap-3 py-2 px-1">
-                <div className="relative flex items-center">
-                    <input
-                    type="checkbox"
-                    id="tradable-check"
-                    checked={stockData?.tradable || false}
-                    onChange={(e) => handleFieldChange('tradable', e.target.checked)}
-                    className="peer h-4 w-4 cursor-pointer appearance-none rounded border border-slate-600 bg-slate-900 checked:border-emerald-500 checked:bg-emerald-500 transition-all"
-                    />
-                    <svg className="pointer-events-none absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 w-3 h-3 text-white opacity-0 peer-checked:opacity-100 transition-opacity" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12"></polyline>
-                    </svg>
-                </div>
-                <label htmlFor="tradable-check" className="font-medium text-xs text-slate-300 cursor-pointer select-none hover:text-white transition-colors">Mark as Tradable</label>
-              </div>
-
-              {/* Save Button */}
-              <div className="pt-2">
-                {saveMessage && (
-                  <div className="mb-3 text-center text-emerald-400 text-xs font-bold bg-emerald-950/50 py-2 rounded-md border border-emerald-900/50 animate-fade-in">
-                    {saveMessage}
-                  </div>
-                )}
-                <button
-                  onClick={handleSave}
-                  className="w-full bg-gradient-to-r from-emerald-600 to-emerald-500 hover:from-emerald-500 hover:to-emerald-400 text-white font-bold py-2.5 rounded-md transition-all text-sm shadow-lg shadow-emerald-900/20 border border-emerald-500/20 active:scale-[0.98]"
+         {/* Unified Inline Tags Container */}
+          <div className="pt-2 border-t border-slate-700/50">
+            <div 
+              className="w-full flex flex-wrap items-center gap-1.5 border rounded px-1.5 py-1 min-h-[28px] cursor-text focus-within:border-blue-500 transition-colors shadow-sm bg-slate-800 border-slate-600"
+              onClick={() => document.getElementById('tag-input')?.focus()}
+            >
+              {/* Active Pills */}
+              {(stockData?.tags || []).map(tag => (
+                <span 
+                  key={tag} 
+                  className="text-[10px] pl-1.5 pr-1 h-[18px] rounded flex items-center gap-1 shadow-sm border bg-slate-700 text-blue-300 border-slate-600/50"
                 >
-                  Save to Watchlist
+                  <span className="leading-none mt-[1px]">{tag}</span>
+                  <button 
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag); }} 
+                    className="leading-none font-bold text-[11px] flex items-center justify-center w-3 h-3 rounded transition-colors hover:text-red-400 hover:bg-slate-600"
+                  >×</button>
+                </span>
+              ))}
+              
+              {/* Vertical Divider */}
+              {((stockData?.tags || []).length > 0 && appData?.uiConfig?.tags?.filter(t => !(stockData?.tags || []).includes(t)).length > 0) && (
+                <div className="w-[1px] h-3.5 mx-0.5 bg-slate-600"></div>
+              )}
+
+              {/* Available Tags */}
+              {appData?.uiConfig?.tags?.filter(t => !(stockData?.tags || []).includes(t)).map(t => (
+                <button 
+                  key={t}
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); handleAddTag(t); }}
+                  className="group flex items-center gap-0.5 border text-[10px] px-1.5 h-[18px] rounded transition-all shadow-sm bg-indigo-900/30 border-indigo-700/50 text-indigo-300 hover:bg-indigo-600 hover:border-indigo-500 hover:text-white"
+                >
+                  <span className="opacity-70 group-hover:opacity-100 font-bold leading-none">+</span>
+                  <span className="leading-none mt-[1px]">{t}</span>
                 </button>
-              </div>
+              ))}
+
+              {/* Seamless Input */}
+              <input 
+                  id="tag-input"
+                  type="text" 
+                  value={newTag}
+                  onChange={(e) => setNewTag(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter') {
+                      e.preventDefault(); 
+                      e.stopPropagation(); 
+                      if (newTag.trim()) handleCreateTag();
+                    }
+                  }}
+                  placeholder="Type tag & Enter..."
+                  className="flex-1 min-w-[80px] bg-transparent text-[11px] outline-none h-[18px] ml-0.5 font-medium text-slate-200 placeholder-slate-500"
+              />
             </div>
-          )}
+          </div>
+          
+          {/* Auto-Expanding Notes */}
+          <div className="pt-1">
+            <textarea
+              rows={1}
+              className="w-full border rounded px-2 py-1.5 outline-none resize-none text-[11px] min-h-[28px] themed-scroll shadow-sm focus:border-blue-500 transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
+              value={stockData?.notes || ''}
+              onChange={(e) => {
+                handleFieldChange('notes', e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = e.target.scrollHeight + 'px';
+              }}
+              placeholder="Add notes..."
+            />
+          </div>
+
+          {/* Tradable Checkbox */}
+          <div className="flex items-center gap-2 py-1 px-2 rounded border bg-slate-800/50 border-slate-700/50">
+            <label htmlFor="tradable-check" className="font-bold text-[11px] cursor-pointer w-1/3 truncate text-slate-400" title="Mark as Tradable">Mark as Tradable</label>
+            <input
+              type="checkbox"
+              id="tradable-check"
+              style={{ WebkitAppearance: 'checkbox', appearance: 'checkbox' }}
+              className="h-4 w-4 cursor-pointer accent-emerald-500"
+              checked={stockData?.tradable || false}
+              onChange={(e) => handleFieldChange('tradable', e.target.checked)}
+            />
+          </div>
+
         </div>
-      )}
+      </div>
+
+      {/* Pinned Footer & Resize Handle */}
+      {/* Pinned Footer & Resize Handle */}
+      <div className="relative p-2 border-t rounded-b-xl shrink-0 bg-slate-900 border-slate-700/50">
+        <button
+          onClick={handleSave}
+          style={{ backgroundColor: saveMessage ? '#16A34A' : '' }}
+          className={`w-full font-bold py-2 rounded text-xs transition-all flex justify-center items-center gap-1.5 ${
+            saveMessage 
+              ? 'text-white shadow-[0_0_10px_rgba(22,163,74,0.4)]' 
+              : 'bg-indigo-600 hover:bg-indigo-500 shadow-[0_0_10px_rgba(79,70,229,0.3)] text-white'
+          }`}
+        >
+          {saveMessage ? (
+            <>
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+              Saved successfully!
+            </>
+          ) : 'Save (Cmd+Enter)'}
+        </button>
+
+        {/* Custom Drag-to-Resize Handle */}
+        <div 
+          onMouseDown={startResize('se')}
+          className="absolute bottom-0 right-0 w-5 h-5 flex items-end justify-end p-1 opacity-50 hover:opacity-100 transition-opacity z-50 cursor-se-resize text-slate-400"
+          title="Drag to resize"
+        >
+          <svg viewBox="0 0 10 10" className="w-2.5 h-2.5">
+            <polygon points="10,0 10,10 0,10" fill="currentColor"/>
+          </svg>
+        </div>
+      </div>
     </div>
   );
 }
