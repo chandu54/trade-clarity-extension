@@ -4,7 +4,6 @@ import Toast from "../components/Toast";
 const ToastContext = createContext({
   showToast: (message) => {
     // Fallback to native alert if Provider is missing
-    console.warn("ToastProvider missing:", message);
     if (typeof window !== 'undefined') window.alert(message);
   },
   hideToast: () => {},

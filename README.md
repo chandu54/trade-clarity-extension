@@ -131,7 +131,6 @@ This project includes a Chrome Extension content script that injects a helper wi
 - **Region Support**: Toggle between market regions (e.g., US, IN).
 - <img width="928" height="473" alt="image" src="https://github.com/user-attachments/assets/70419318-1dcf-430a-bf16-f3c9b19dd5d3" />
 
-
 ### Development
 
 1. **Install Dependencies**:
@@ -142,8 +141,8 @@ This project includes a Chrome Extension content script that injects a helper wi
    ```bash
    npm run build
    ```
-   This generates the `extension` folder containing the Dashboard and the Content Script.
+   This generates the `dist` folder containing the Dashboard and the Content Script.
 3. **Load in Chrome**:
    - Go to `chrome://extensions/`
    - Enable "Developer mode".
-   - Click "Load unpacked" and select the `extension` folder.
+   - Click "Load unpacked" and select the `dist` folder.

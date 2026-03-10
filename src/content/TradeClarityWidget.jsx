@@ -18,6 +18,37 @@ function getWeekKey(dateStr) {
   return `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, "0")}-${String(sunday.getDate()).padStart(2, "0")}`;
 }
 
+// --- ENVIRONMENT HELPERS ---
+const isExtension = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
+
+const safeStorage = {
+  get: (keys, callback) => {
+    if (isExtension) {
+      chrome.storage.local.get(keys, callback);
+    } else {
+      // Web Fallback: localStorage
+      const result = {};
+      const keyList = Array.isArray(keys) ? keys : [keys];
+      keyList.forEach(k => {
+        const val = localStorage.getItem(k);
+        if (val) {
+          try { result[k] = JSON.parse(val); } catch { result[k] = val; }
+        }
+      });
+      if (callback) callback(result);
+    }
+  },
+  set: (items, callback) => {
+    if (isExtension) {
+      chrome.storage.local.set(items, callback);
+    } else {
+      // Web Fallback: localStorage
+      Object.entries(items).forEach(([k, v]) => localStorage.setItem(k, JSON.stringify(v)));
+      if (callback) callback();
+    }
+  }
+};
+
 const TradeClarityWidget = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [symbol, setSymbol] = useState(null);
@@ -120,8 +151,24 @@ const TradeClarityWidget = () => {
     if (!dragRef.current.hasMoved) setIsOpen(!isOpen);
   };
 
-  const openDashboard = () => {
-    chrome.runtime.sendMessage({ action: 'OPEN_DASHBOARD' });
+  const openDashboard = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    if (isExtension) {
+      try {
+        chrome.runtime.sendMessage({ action: 'OPEN_DASHBOARD' }, (response) => {
+          if (chrome.runtime.lastError) {
+            console.warn("Background worker asleep or disconnected. Firing fallback...", chrome.runtime.lastError.message);
+            const fallbackUrl = `chrome-extension://${chrome.runtime.id}/dashboard.html`;
+            window.open(fallbackUrl, '_blank');
+          }
+        });
+      } catch (err) {
+        console.error("Extension connection lost.", err);
+        alert("TradeClarity updated. Please refresh this TradingView page to reconnect.");
+      }
+    }
   };
 
   // The Bubble Firewall
@@ -133,6 +180,7 @@ const TradeClarityWidget = () => {
 
   // Settings & Storage Listeners
   useEffect(() => {
+    if (!isExtension) return; // Skip chrome listeners in web mode
     const handleStorageChange = (changes, area) => {
       if (area === 'local' && changes.trading_app_data) setAppData(changes.trading_app_data.newValue);
     };
@@ -140,7 +188,7 @@ const TradeClarityWidget = () => {
   }, []);
 
   useEffect(() => {
-    chrome.storage.local.get('widget_settings', (result) => {
+    safeStorage.get('widget_settings', (result) => {
       if (result.widget_settings) {
         if (result.widget_settings.lastDate) setTargetDate(result.widget_settings.lastDate);
         if (result.widget_settings.lastRegion) setRegion(result.widget_settings.lastRegion);
@@ -151,7 +199,7 @@ const TradeClarityWidget = () => {
 
   useEffect(() => {
     if (!settingsLoaded) return;
-    chrome.storage.local.set({ widget_settings: { lastDate: targetDate, lastRegion: region } });
+    safeStorage.set({ widget_settings: { lastDate: targetDate, lastRegion: region } });
   }, [targetDate, region, settingsLoaded]);
 
   // Ticker Observation
@@ -173,7 +221,7 @@ const TradeClarityWidget = () => {
     setLoading(true);
     setSaveMessage(false);
 
-    chrome.storage.local.get('trading_app_data', (result) => {
+    safeStorage.get('trading_app_data', (result) => {
       const data = result.trading_app_data;
       if (!data) {
         setLoading(false);
@@ -234,7 +282,7 @@ const TradeClarityWidget = () => {
     if (!targetWeeks[weekKey]) targetWeeks[weekKey] = { displayName: `Week of ${weekKey}`, stocks: {} };
     targetWeeks[weekKey].stocks[symbol] = stockData;
 
-    chrome.storage.local.set({ trading_app_data: newData }, () => {
+    safeStorage.set({ trading_app_data: newData }, () => {
       setAppData(newData);
       setSaveMessage(true);
       setTimeout(() => { setSaveMessage(false); setIsOpen(false); }, 1200); 
@@ -292,10 +340,10 @@ const TradeClarityWidget = () => {
       <div onMouseDown={startResize('sw')} className="absolute bottom-0 left-0 w-3 h-3 z-50 cursor-sw-resize" />
 
       {/* Header */}
-      {/* Header */}
       <div 
         className="flex flex-col px-3 pt-3 pb-2 border-b rounded-t-xl cursor-move select-none shrink-0 transition-colors duration-200 border-slate-700/50 bg-slate-800/50" 
-        onMouseDown={handleMouseDown} 
+        onMouseDown={handleMouseDown}
+        onClick={toggleWidget}
       >
         {/* Top Row: Title + Window Controls (Proper Flexbox Layout) */}
         <div className="flex items-center justify-between mb-2">
@@ -317,11 +365,11 @@ const TradeClarityWidget = () => {
             className="flex items-center gap-0.5 rounded-lg px-1 py-0.5 border shrink-0 bg-slate-800/50 border-slate-600/50"
             onMouseDown={(e) => e.stopPropagation()}
           >
-              <button onClick={openDashboard} className="transition-colors p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-700/50" title="Open Main App">
+              <button onClick={openDashboard} className="transition-colors p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-700/50" title="Open TradeClarity Dashboard">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
               </button>
               <div className="w-px h-3 mx-0.5 bg-slate-600"></div>
-              <button onClick={toggleWidget} className="transition-colors p-1 rounded text-slate-400 hover:text-red-400 hover:bg-slate-700/50" title="Minimize">
+              <button onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} className="transition-colors p-1 rounded text-slate-400 hover:text-red-400 hover:bg-slate-700/50" title="Minimize">
                  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
               </button>
           </div>
@@ -403,17 +451,22 @@ const TradeClarityWidget = () => {
               );
             }
 
-            return (
-              <div key={key} className="flex items-center gap-2 py-1">
-                <label className="text-[11px] font-bold w-1/3 truncate text-slate-400" title={def.label}>{def.label}</label>
-                <input
-                  type="text"
-                  className="flex-1 border rounded px-1.5 py-1 outline-none text-[11px] shadow-sm focus:border-blue-500 transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
-                  value={stockData?.params?.[key] || ''}
-                  onChange={(e) => handleParamChange(key, e.target.value)}
-                />
-              </div>
-            );
+            if (def.type === 'text' || def.type === 'number' || def.type === 'date') {
+              return (
+                <div key={key} className="flex items-center gap-2 py-1">
+                  <label className="text-[11px] font-bold w-1/3 truncate text-slate-400" title={def.label}>{def.label}</label>
+                  <input
+                    type={def.type}
+                    className="flex-1 border rounded px-1.5 py-1 outline-none text-[11px] shadow-sm focus:border-blue-500 transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
+                    style={def.type === 'date' ? { colorScheme: "dark" } : {}}
+                    value={stockData?.params?.[key] || ''}
+                    onChange={(e) => handleParamChange(key, e.target.value)}
+                  />
+                </div>
+              );
+            }
+            
+            return null;
           })}
 
          {/* Unified Inline Tags Container */}
@@ -522,7 +575,7 @@ const TradeClarityWidget = () => {
               <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
               Saved successfully!
             </>
-          ) : 'Save (Cmd+Enter)'}
+          ) : 'Save Changes'}
         </button>
 
         {/* Custom Drag-to-Resize Handle */}

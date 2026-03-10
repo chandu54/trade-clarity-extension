@@ -25,9 +25,9 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
       ...data.paramDefinitions[editKey],
       label,
       type,
-      options: type === "select" ? options.split(",").map((o) => o.trim()) : [],
+      options: type === "select" ? options.split(",").map(o => o.trim()) : [],
       isCheck,
-      idealValues: isCheck && type !== "checkbox" ? idealValues.split(",").map((v) => v.trim()) : [],
+      idealValues: isCheck && !['checkbox'].includes(type) ? idealValues.split(",").map(v => v.trim()) : [],
     };
 
     setData({ ...data });
@@ -53,10 +53,10 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
     data.paramDefinitions[paramKey] = {
       label,
       type,
-      options: type === "select" ? options.split(",").map((o) => o.trim()) : [],
+      options: type === "select" ? options.split(",").map(o => o.trim()) : [],
       filterable: false,
       isCheck,
-      idealValues: isCheck && type !== "checkbox" ? idealValues.split(",").map((v) => v.trim()) : [],
+      idealValues: isCheck && !['checkbox'].includes(type) ? idealValues.split(",").map(v => v.trim()) : [],
     };
 
     setData({ ...data });
@@ -187,6 +187,8 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
             <option value="text">Text</option>
             <option value="select">Dropdown</option>
             <option value="checkbox">Checkbox</option>
+            <option value="number">Number</option>
+            <option value="date">Date</option>
           </select>
         </div>
 
@@ -222,13 +224,13 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
           </label>
         </div>
 
-        {isCheck && type !== "checkbox" && (
+        {isCheck && !['checkbox'].includes(type) && (
           <div className="form-field">
             <label>
               Ideal Value(s)
               <span
                 className="info-icon"
-                title="Define the value(s) that indicate a passing condition. Stocks meeting these values will pass this check."
+                title="Define the value(s) that indicate a passing condition. Stocks meeting these values will pass this check. For numbers/dates, use >, <, >=, <=, or range (10-20)."
               >
                 ℹ️
               </span>
@@ -237,7 +239,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
             <input
               value={idealValues}
               onChange={(e) => setIdealValues(e.target.value)}
-              placeholder="Comma separated ideal values"
+              placeholder={type === 'number' ? "e.g. >10, 20-50" : type === 'date' ? "e.g. >2023-01-01" : "e.g. Bullish, Neutral"}
             />
           </div>
         )}

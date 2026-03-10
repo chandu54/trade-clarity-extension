@@ -80,6 +80,89 @@ function parseTradingViewData(content, sectorList) {
   return parsedStocks;
 }
 
+const ClearButton = ({ onClick, isSelect }) => (
+  <button
+    onClick={onClick}
+    style={{
+      position: "absolute",
+      right: isSelect ? "22px" : "6px",
+      top: "50%",
+      transform: "translateY(-50%)",
+      background: "transparent",
+      border: "none",
+      color: "#94a3b8",
+      cursor: "pointer",
+      padding: "4px",
+      display: "flex",
+      alignItems: "center",
+      justifyContent: "center",
+      zIndex: 10,
+      borderRadius: "50%",
+    }}
+    onMouseEnter={(e) => { e.currentTarget.style.color = "#ef4444"; e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.1)"; }}
+    onMouseLeave={(e) => { e.currentTarget.style.color = "#94a3b8"; e.currentTarget.style.backgroundColor = "transparent"; }}
+    title="Clear filter"
+  >
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" style={{ width: "14px", height: "14px" }}>
+      <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
+    </svg>
+  </button>
+);
+
+function checkCondition(value, filter, type) {
+  if (filter === undefined || filter === "") return true;
+  const strFilter = String(filter).trim();
+  
+  // Handle Range (e.g. 10-20)
+  if (strFilter.includes("-") && !strFilter.startsWith("-") && !strFilter.startsWith("<") && !strFilter.startsWith(">") && !strFilter.startsWith("=")) {
+     const parts = strFilter.split("-");
+     if (parts.length === 2) {
+        const minStr = parts[0].trim();
+        const maxStr = parts[1].trim();
+        if (minStr && maxStr) {
+            if (type === 'number') {
+                const min = parseFloat(minStr);
+                const max = parseFloat(maxStr);
+                const numVal = parseFloat(value);
+                if (!isNaN(min) && !isNaN(max) && !isNaN(numVal)) {
+                    return numVal >= min && numVal <= max;
+                }
+            } else if (type === 'date') {
+                return value >= minStr && value <= maxStr;
+            }
+        }
+     }
+  }
+
+  // Handle Operators
+  const operators = [">=", "<=", ">", "<", "==", "="];
+  for (const op of operators) {
+    if (strFilter.startsWith(op)) {
+      const targetVal = strFilter.slice(op.length).trim();
+      if (targetVal === "") return true;
+
+      if (type === 'number') {
+         const numStock = parseFloat(value);
+         const numTarget = parseFloat(targetVal);
+         if (isNaN(numStock) || isNaN(numTarget)) return false;
+         if (op === ">=") return numStock >= numTarget;
+         if (op === "<=") return numStock <= numTarget;
+         if (op === ">") return numStock > numTarget;
+         if (op === "<") return numStock < numTarget;
+         if (op === "==" || op === "=") return numStock === numTarget;
+      } else if (type === 'date') {
+         if (op === ">=") return value >= targetVal;
+         if (op === "<=") return value <= targetVal;
+         if (op === ">") return value > targetVal;
+         if (op === "<") return value < targetVal;
+         if (op === "==" || op === "=") return value === targetVal;
+      }
+    }
+  }
+
+  return String(value || "").toLowerCase().includes(strFilter.toLowerCase());
+}
+
 export default function StockGrid({ data, weekKey, setData, isReadOnly, country, onExportAll, onImportAll }) {
   const week = data.weeks?.[country]?.[weekKey];
   const params = data.paramDefinitions;
@@ -199,9 +282,43 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
 
       if (p.type === "checkbox") {
         if (value === true) passed++;
+      } else if (p.type === "number") {
+        if (value === undefined || value === "" || value === null) return;
+        const numVal = parseFloat(value);
+        if (isNaN(numVal)) return;
+
+        const ideals = p.idealValues || [];
+        const match = ideals.some(ideal => {
+          const cond = String(ideal).trim();
+          if (cond.startsWith(">=")) return numVal >= parseFloat(cond.slice(2));
+          if (cond.startsWith("<=")) return numVal <= parseFloat(cond.slice(2));
+          if (cond.startsWith(">")) return numVal > parseFloat(cond.slice(1));
+          if (cond.startsWith("<")) return numVal < parseFloat(cond.slice(1));
+          if (cond.includes("-")) {
+             const parts = cond.split("-").map(s => parseFloat(s.trim()));
+             if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
+                return numVal >= parts[0] && numVal <= parts[1];
+             }
+          }
+          return numVal == parseFloat(cond);
+        });
+        if (match) passed++;
+      } else if (p.type === "date") {
+        if (!value) return;
+        const ideals = p.idealValues || [];
+        const match = ideals.some(ideal => {
+           const cond = String(ideal).trim();
+           if (cond.startsWith(">=")) return value >= cond.slice(2).trim();
+           if (cond.startsWith("<=")) return value <= cond.slice(2).trim();
+           if (cond.startsWith(">")) return value > cond.slice(1).trim();
+           if (cond.startsWith("<")) return value < cond.slice(1).trim();
+           return value === cond;
+        });
+        if (match) passed++;
       } else {
         if (!value) return;
-        if ((p.idealValues || []).includes(value)) passed++;
+        // Use loose equality to match numbers/strings (e.g. "10" == 10)
+        if ((p.idealValues || []).some(ideal => ideal == value)) passed++;
       }
     });
 
@@ -259,6 +376,14 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
           return stockVal === filterVal;
         }
 
+        if (p.type === "number") {
+          return checkCondition(stockVal, filterVal, 'number');
+        }
+
+        if (p.type === "date") {
+          return checkCondition(stockVal, filterVal, 'date');
+        }
+
         if (p.type === "text") {
           return (stockVal || "")
             .toLowerCase()
@@ -289,6 +414,17 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
 
       if (aVal == null) return 1;
       if (bVal == null) return -1;
+
+      // Numeric Sort
+      const paramDef = params[sortBy];
+      if (paramDef?.type === 'number') {
+        const aNum = parseFloat(aVal);
+        const bNum = parseFloat(bVal);
+        if (isNaN(aNum) && isNaN(bNum)) return 0;
+        if (isNaN(aNum)) return 1;
+        if (isNaN(bNum)) return -1;
+        return sortDir === "asc" ? aNum - bNum : bNum - aNum;
+      }
 
       if (typeof aVal === "boolean") {
         return sortDir === "asc"
@@ -671,98 +807,136 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
           {isSectorFilterable && (
             <div className="filter-item">
               <label>Sector</label>
-              <select
-                className="select-control"
-                value={filters.__sector__ || ""}
-                onChange={(e) => setFilter("__sector__", e.target.value)}
-              >
-                <option value="">All</option>
-                {sectors.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                  </option>
-                ))}
-              </select>
+              <div style={{ position: "relative", width: "100%" }}>
+                <select
+                  className="select-control"
+                  value={filters.__sector__ || ""}
+                  onChange={(e) => setFilter("__sector__", e.target.value)}
+                  style={{ width: "100%", paddingRight: "24px" }}
+                >
+                  <option value="">All</option>
+                  {sectors.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                    </option>
+                  ))}
+                </select>
+                {filters.__sector__ && filters.__sector__ !== "" && <ClearButton onClick={() => setFilter("__sector__", "")} isSelect />}
+              </div>
             </div>
           )}
 
           {availableTags.length > 0 && isTagFilterable && (
             <div className="filter-item">
               <label>Tag</label>
-              <select
-                className="select-control"
-                value={filters.__tag__ || ""}
-                onChange={(e) => setFilter("__tag__", e.target.value)}
-              >
-                <option value="">All</option>
-                {availableTags.map((t) => (
-                  <option key={t} value={t}>{t}</option>
-                ))}
-              </select>
+              <div style={{ position: "relative", width: "100%" }}>
+                <select
+                  className="select-control"
+                  value={filters.__tag__ || ""}
+                  onChange={(e) => setFilter("__tag__", e.target.value)}
+                  style={{ width: "100%", paddingRight: "24px" }}
+                >
+                  <option value="">All</option>
+                  {availableTags.map((t) => (
+                    <option key={t} value={t}>{t}</option>
+                  ))}
+                </select>
+                {filters.__tag__ && filters.__tag__ !== "" && <ClearButton onClick={() => setFilter("__tag__", "")} isSelect />}
+              </div>
             </div>
           )}
 
           {filterableParams.map(([key, p]) => (
             <div key={key} className="filter-item">
-              <label>{p.label}</label>
+              <label>
+                {p.label}
+                {(p.type === 'number' || p.type === 'date') && (
+                  <span 
+                    className="info-icon" 
+                    title="Supports operators: > < >= <= = and ranges (e.g. 10-20)"
+                    style={{ marginLeft: '4px', cursor: 'help', fontSize: '0.8em' }}
+                  >
+                    ℹ️
+                  </span>
+                )}
+              </label>
+              <div style={{ position: "relative", width: "100%" }}>
+                {p.type === "checkbox" && (
+                  <>
+                    <select
+                      className="select-control"
+                      value={filters[key] ?? ""}
+                      onChange={(e) =>
+                        setFilter(
+                          key,
+                          e.target.value === "" ? "" : e.target.value === "true",
+                        )
+                      }
+                      style={{ width: "100%", paddingRight: "24px" }}
+                    >
+                      <option value="">All</option>
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                    {filters[key] !== undefined && filters[key] !== "" && <ClearButton onClick={() => setFilter(key, "")} isSelect />}
+                  </>
+                )}
 
-              {p.type === "checkbox" && (
-                <select
-                  className="select-control"
-                  value={filters[key] ?? ""}
-                  onChange={(e) =>
-                    setFilter(
-                      key,
-                      e.target.value === "" ? "" : e.target.value === "true",
-                    )
-                  }
-                >
-                  <option value="">All</option>
-                  <option value="true">Yes</option>
-                  <option value="false">No</option>
-                </select>
-              )}
+                {p.type === "select" && (
+                  <>
+                    <select
+                      className="select-control"
+                      value={filters[key] || ""}
+                      onChange={(e) => setFilter(key, e.target.value)}
+                      style={{ width: "100%", paddingRight: "24px" }}
+                    >
+                      <option value="">All</option>
+                      {p.options?.map((o) => (
+                        <option key={o}>{o}</option>
+                      ))}
+                    </select>
+                    {filters[key] !== undefined && filters[key] !== "" && <ClearButton onClick={() => setFilter(key, "")} isSelect />}
+                  </>
+                )}
 
-              {p.type === "select" && (
-                <select
-                  className="select-control"
-                  value={filters[key] || ""}
-                  onChange={(e) => setFilter(key, e.target.value)}
-                >
-                  <option value="">All</option>
-                  {p.options?.map((o) => (
-                    <option key={o}>{o}</option>
-                  ))}
-                </select>
-              )}
-
-              {p.type === "text" && (
-                <input
-                  placeholder="Contains..."
-                  value={filters[key] || ""}
-                  onChange={(e) => setFilter(key, e.target.value)}
-                />
-              )}
+                {(p.type === "text" || p.type === "number" || p.type === "date") && (
+                  <>
+                    <input
+                      type="text"
+                      className="filter-input"
+                      value={filters[key] || ""}
+                      onChange={(e) => setFilter(key, e.target.value)}
+                      placeholder={p.type === 'date' ? "YYYY-MM-DD or >..." : p.type === 'number' ? "e.g. >10 or 10-20" : ""}
+                      style={{ width: "100%", paddingRight: "24px" }}
+                    />
+                    {filters[key] !== undefined && filters[key] !== "" && <ClearButton onClick={() => setFilter(key, "")} />}
+                  </>
+                )}
+              </div>
             </div>
           ))}
 
           {isTradableFilterable && (
             <div className="filter-item">
               <label>Tradable</label>
-              <select
-                className="select-control"
-                value={filters.__tradable__ ?? ""}
-                onChange={(e) =>
-                  setFilter(
-                    "__tradable__",
-                    e.target.value === "" ? "" : e.target.value === "true",
-                  )
-                }
-              >
-                <option value="">All</option>
-                <option value="true">Yes</option>
-                <option value="false">No</option>
-              </select>
+              <div style={{ position: "relative", width: "100%" }}>
+                <select
+                  className="select-control"
+                  value={filters.__tradable__ ?? ""}
+                  onChange={(e) =>
+                    setFilter(
+                      "__tradable__",
+                      e.target.value === "" ? "" : e.target.value === "true",
+                    )
+                  }
+                  style={{ width: "100%", paddingRight: "24px" }}
+                >
+                  <option value="">All</option>
+                  <option value="true">Yes</option>
+                  <option value="false">No</option>
+                </select>
+                {filters.__tradable__ !== undefined && filters.__tradable__ !== "" && <ClearButton onClick={() => setFilter("__tradable__", "")} isSelect />}
+              </div>
             </div>
           )}
 
@@ -1061,6 +1235,35 @@ export default function StockGrid({ data, weekKey, setData, isReadOnly, country,
                           <option key={o}>{o}</option>
                         ))}
                       </select>
+                    )}
+
+                    {p.type === "number" && (
+                      <input
+                        type="number"
+                        className="grid-text-input"
+                        value={stock.params[key] || ""}
+                        disabled={isReadOnly}
+                        onChange={(e) => {
+                          if (isReadOnly) return;
+                          stock.params[key] = e.target.value;
+                          setData({ ...data });
+                        }}
+                      />
+                    )}
+
+                    {p.type === "date" && (
+                      <input
+                        type="date"
+                        className="grid-text-input"
+                        style={{ colorScheme: "dark" }}
+                        value={stock.params[key] || ""}
+                        disabled={isReadOnly}
+                        onChange={(e) => {
+                          if (isReadOnly) return;
+                          stock.params[key] = e.target.value;
+                          setData({ ...data });
+                        }}
+                      />
                     )}
 
                     {p.type === "text" && (

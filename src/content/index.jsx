@@ -8,18 +8,7 @@ import '../styles.css';
 const MOUNT_POINT_ID = 'trade-clarity-shadow-host';
 
 function injectWidget() {
-  // DEBUG: Log version to confirm code update
-  console.log("%c TradeClarity Widget Starting... ", "background: #222; color: #bada55; font-size: 14px", new Date().toISOString());
-
-  // DEBUG: Check if data exists in storage immediately
-  chrome.storage.local.get(null, (items) => {
-    console.log("TradeClarity: ALL Storage Items:", items);
-    if (items.trading_app_data) {
-      console.log("TradeClarity: paramDefinitions:", items.trading_app_data.paramDefinitions);
-    }
-  });
-
-  // Prevent duplicate injection
+ 
   if (document.getElementById(MOUNT_POINT_ID)) return;
 
   // 1. Create the Host Element (The container that lives in the light DOM)
@@ -46,7 +35,11 @@ function injectWidget() {
   // We reference 'content.css' which we configured Vite to output in Step 1
   const styleLink = document.createElement('link');
   styleLink.rel = 'stylesheet';
-  styleLink.href = chrome.runtime.getURL('content.css');
+  if (typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.getURL) {
+    styleLink.href = chrome.runtime.getURL('content.css');
+  } else {
+    styleLink.href = '/content.css'; // Fallback for local web dev
+  }
   shadow.appendChild(styleLink);
 
   // 4. Create the React Root Element inside Shadow DOM
