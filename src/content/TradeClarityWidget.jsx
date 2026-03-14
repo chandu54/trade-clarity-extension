@@ -309,7 +309,7 @@ const TradeClarityWidget = () => {
   // --- WIDGET STATE (OPEN) ---
   return (
     <div
-      className="fixed z-[9999] backdrop-blur-xl rounded-xl border font-sans text-sm flex flex-col transition-colors duration-200 bg-slate-900/95 text-slate-200 border-slate-700/50 shadow-[0_0_20px_rgba(0,0,0,0.5)]"
+      className="trade-clarity-widget-container fixed z-[9999] backdrop-blur-xl rounded-xl border font-sans text-sm flex flex-col transition-colors duration-200 bg-slate-900/95 text-slate-200 border-slate-700/50 shadow-[0_0_20px_rgba(0,0,0,0.5)]"
       style={{ 
         top: position.top, 
         right: position.right, 
@@ -381,21 +381,21 @@ const TradeClarityWidget = () => {
           onMouseDown={(e) => { e.stopPropagation(); }}
           onClick={(e) => { e.stopPropagation(); }}
         >
-           <select 
-              value={region} 
-              onChange={(e) => setRegion(e.target.value)}
-              className="text-xs border rounded px-1.5 py-1 focus:border-blue-500 outline-none shadow-sm transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
-            >
-              <option value="US">US</option>
-              <option value="IN">IN</option>
-            </select>
-           <input 
-             type="date" 
-             value={targetDate}
-             onChange={(e) => setTargetDate(e.target.value)}
-             className="text-xs border rounded px-2 py-1 flex-1 focus:border-blue-500 outline-none shadow-sm transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
-             style={{ colorScheme: "dark" }}
-           />
+            <select 
+               value={region} 
+               onChange={(e) => setRegion(e.target.value)}
+               className="w-[65px] text-xs border rounded pl-2 pr-6 py-1 focus:border-blue-500 outline-none shadow-sm transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500 appearance-none"
+             >
+               <option value="US">US</option>
+               <option value="IN">IN</option>
+             </select>
+            <input 
+              type="date" 
+              value={targetDate}
+              onChange={(e) => setTargetDate(e.target.value)}
+              className="flex-1 min-w-0 text-xs border rounded px-2 py-1 focus:border-blue-500 outline-none shadow-sm transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
+              style={{ colorScheme: "dark" }}
+            />
         </div>
       </div>
 
@@ -474,9 +474,9 @@ const TradeClarityWidget = () => {
           })}
 
          {/* Unified Inline Tags Container */}
-          <div className="pt-2 border-t border-slate-700/50">
+           <div className="pt-1.5 border-t border-slate-700/50">
             <div 
-              className="w-full flex flex-wrap items-center gap-1.5 border rounded px-1.5 py-1 min-h-[28px] cursor-text focus-within:border-blue-500 transition-colors shadow-sm bg-slate-800 border-slate-600"
+              className="w-full flex flex-wrap items-center gap-1 border rounded px-1 py-0.5 min-h-[24px] cursor-text focus-within:border-blue-500 transition-colors shadow-sm bg-slate-800 border-slate-600"
               onClick={() => document.getElementById('tag-input')?.focus()}
             >
               {/* Active Pills */}
