@@ -126,7 +126,7 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, theme, o
     <div className="header">
       <div className="header-title">
         <h2 className="app-name">TradeClarity</h2>
-        <span className="app-tagline">Your disciplined path to smarter trades</span>
+        <span className="app-tagline-v2">Your disciplined path to smarter trades</span>
       </div>
       <div className="header-actions">
         <div style={{ position: "relative", display: "flex", alignItems: "center", marginRight: "8px" }} ref={regionRef}>

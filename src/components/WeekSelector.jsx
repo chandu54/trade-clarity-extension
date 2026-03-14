@@ -131,21 +131,17 @@ export default function WeekSelector({
         <div className="date-picker-container">
           <input
             type="date"
-            className="date-picker-input"
+            className="date-picker-input-v2"
             value={selectedDate}
             onChange={handleDateChange}
             max={maxDateString}
             onClick={(e) => e.target.showPicker && e.target.showPicker()}
           />
         </div>
-        <span className="date-label">
-          <strong>Week:</strong>
-        </span>
         <select
-          className="select-control"
+          className="select-control-v2"
           value={weekKey || ""}
           onChange={(e) => setWeekKey(e.target.value)}
-          style={{ marginLeft: "12px", minWidth: "220px" }}
         >
           {availableWeeks.map((w) => (
             <option key={w} value={w}>
@@ -155,11 +151,11 @@ export default function WeekSelector({
         </select>
         {weekKey !== currentWeekSunday && (
             <button
-              className="go-today-btn"
+              className="go-today-link"
               onClick={goToToday}
               title="Click to see stocks for the current week"
             >
-              Go to current week
+              Current Week
             </button>
           )}
 

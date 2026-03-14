@@ -376,7 +376,11 @@ const TradeClarityWidget = () => {
         </div>
         
         {/* Controls Row */}
-        <div className="flex items-center gap-2">
+        <div 
+          className="flex items-center gap-2"
+          onMouseDown={(e) => { e.stopPropagation(); }}
+          onClick={(e) => { e.stopPropagation(); }}
+        >
            <select 
               value={region} 
               onChange={(e) => setRegion(e.target.value)}

@@ -1,6 +1,23 @@
 import { createPortal } from "react-dom";
+import { useEffect } from "react";
 
 export default function Modal({ children, isOpen = true, onClose, title, subtitle }) {
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape' && isOpen && onClose) {
+        onClose();
+        e.stopPropagation();
+      }
+    };
+
+    if (isOpen) {
+      document.addEventListener('keydown', handleKeyDown);
+    }
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose]);
+
   if (!isOpen) return null;
 
   return createPortal(
