@@ -101,12 +101,16 @@ To use the "Analyze" feature:
 1.  Click the **Settings (⚙️)** button in the header.
 2.  Click **AI Settings**.
 3.  Enter your API Key:
-    - **Google Gemini**: Get Key (Free tier available)
-    - **OpenAI**: Get Key
-4.  (Optional) Specify a custom model (e.g., `gemini-2.0-flash`, `gpt-4o`).
-5.  Save Settings.
+    - **Google Gemini**: [Get Key](https://aistudio.google.com/app/apikey) (Free tier available)
+    - **OpenAI**: [Get Key](https://platform.openai.com/api-keys)
+4.  (Optional) Specify a custom model (e.g., `gemini-1.5-pro`).
+5.  **Custom Strategies**:
+    - Create new analysis templates using the **"+ Create New Strategy"** option.
+    - Use variables like `{stocks}`, `{sectors}`, and `{tickers}` to inject your watchlist data into the prompt.
+    - Edit or Delete custom strategies directly from the settings interface.
+6.  Save Settings.
 
-The app automatically detects the provider based on the API key format.
+The app automatically detects the provider based on the API key format. Prompt selection is available in both the Settings and the AI Analyze modal for a streamlined workflow.
 
 ## 🔒 Security Note
 

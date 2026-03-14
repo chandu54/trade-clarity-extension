@@ -3,6 +3,8 @@ import { DEFAULT_DATA } from "../seed";
 const KEY = "trading_app_data";
 const API_KEY = "ai_api_key";
 const AI_MODEL = "ai_model";
+const AI_PROMPT = "ai_prompt";
+const CUSTOM_PROMPTS = "custom_prompts";
 
 function isChromeStorage() {
   return typeof chrome !== "undefined" && chrome.storage?.local;
@@ -45,6 +47,50 @@ export async function setStoredModel(model) {
     });
   } else {
     localStorage.setItem(AI_MODEL, model);
+  }
+}
+
+export async function getStoredPrompt() {
+  if (isChromeStorage()) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(AI_PROMPT, (res) => resolve(res[AI_PROMPT]));
+    });
+  } else {
+    return localStorage.getItem(AI_PROMPT);
+  }
+}
+
+export async function setStoredPrompt(prompt) {
+  if (isChromeStorage()) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [AI_PROMPT]: prompt }, resolve);
+    });
+  } else {
+    localStorage.setItem(AI_PROMPT, prompt);
+  }
+}
+
+export async function getCustomPrompts() {
+  if (isChromeStorage()) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(CUSTOM_PROMPTS, (res) => resolve(res[CUSTOM_PROMPTS] || []));
+    });
+  } else {
+    try {
+      return JSON.parse(localStorage.getItem(CUSTOM_PROMPTS)) || [];
+    } catch {
+      return [];
+    }
+  }
+}
+
+export async function setCustomPrompts(prompts) {
+  if (isChromeStorage()) {
+    return new Promise((resolve) => {
+      chrome.storage.local.set({ [CUSTOM_PROMPTS]: prompts }, resolve);
+    });
+  } else {
+    localStorage.setItem(CUSTOM_PROMPTS, JSON.stringify(prompts));
   }
 }
 

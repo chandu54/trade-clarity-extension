@@ -67,6 +67,7 @@ export default function UserGuideModal({
       onClose={onClose}
       title="User Manual"
       subtitle="Mastering your swing trading process with TradeClarity"
+      className="modal-wide"
     >
       <div className="modal-body user-guide-body">
         <div className="guide-intro">
@@ -277,6 +278,12 @@ export default function UserGuideModal({
               <strong>AI Analysis (✨):</strong> Sends anonymized data to Google
               Gemini to generate a professional summary of Market Bias, Top
               Sectors, and Key Risks.
+            </li>
+            <li>
+              <strong>Custom AI Strategies:</strong> Go to <em>Settings {"→"} AI Settings</em> to create your own instructions. You can define specific ways the AI should evaluate your watchlist (e.g. 'Conservative Evaluation', 'Aggressive Growth Focus').
+            </li>
+            <li>
+              <strong>Variables:</strong> Use tags like <code>{"{stocks}"}</code> or <code>{"{sectors}"}</code> in your custom prompts. The system will automatically inject your real-time data into these placeholders before sending to the AI.
             </li>
           </ul>
         </Section>

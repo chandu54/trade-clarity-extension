@@ -1,9 +1,14 @@
-import { getStoredApiKey, getStoredModel } from "./storage";
+import { getStoredApiKey, getStoredModel, getStoredPrompt } from "./storage";
 
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 
-export async function getAiAnalysis(weekData, paramDefinitions) {
+export const PROMPT_TEMPLATES = [
+  { value: "swing", label: "Swing Trading (Default)", text: "Act as a disciplined, risk-aware swing trading mentor (referencing Mark Minervini's SEPA and William O'Neil's CANSLIM). \nAnalyze the following watchlist to provide a clear, objective, and actionable trading plan. \nBe conservative: do not force patterns if they are not clear. Focus on quality over quantity." },
+  { value: "day", label: "Day Trading Focus", text: "Act as an aggressive day trading expert. Analyze the following watchlist for high-probability intraday setups. Focus on momentum, volume profile, VWAP bands, and catalyst-driven price action. Identify obvious support/resistance levels and key breakout levels for the upcoming session." }
+];
+
+export async function getAiAnalysis(weekData, paramDefinitions, selectedPromptText = null, isCustom = false) {
   // 1. Handle Empty Data Case immediately (Client-side)
   const stocks = Object.values(weekData?.stocks || {});
   if (stocks.length === 0) {
@@ -38,8 +43,14 @@ export async function getAiAnalysis(weekData, paramDefinitions) {
   let customModel = await getStoredModel();
   if (customModel) customModel = customModel.trim();
 
+  let customPrompt = selectedPromptText;
+  if (!customPrompt) {
+    customPrompt = await getStoredPrompt();
+  }
+  if (customPrompt) customPrompt = customPrompt.trim();
+
   // 2. Generate prompt with the extracted stocks
-  const prompt = generatePrompt(stocks);
+  const prompt = generatePrompt(stocks, customPrompt, isCustom);
 
   try {
     if (isOpenAI) {
@@ -47,12 +58,13 @@ export async function getAiAnalysis(weekData, paramDefinitions) {
         apiKey,
         prompt,
         customModel || DEFAULT_OPENAI_MODEL,
+        isCustom
       );
     } else {
       // Use custom model if set, otherwise default.
       let modelToUse = customModel || DEFAULT_GEMINI_MODEL;
 
-      return await fetchGemini(apiKey, prompt, modelToUse);
+      return await fetchGemini(apiKey, prompt, modelToUse, isCustom);
     }
   } catch (error) {
     console.error("AI Analysis Failed:", error);
@@ -90,7 +102,7 @@ export async function testConnection(apiKey, model) {
   }
 }
 
-async function fetchGemini(apiKey, prompt, model) {
+async function fetchGemini(apiKey, prompt, model, isCustom = false) {
   // Ensure model doesn't have 'models/' prefix if user typed it
   const cleanModel = model.replace(/^models\//, "");
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
@@ -116,10 +128,10 @@ async function fetchGemini(apiKey, prompt, model) {
 
   if (!text) throw new Error("Empty response from Gemini");
 
-  return parseResponse(text);
+  return parseResponse(text, isCustom);
 }
 
-async function fetchOpenAI(apiKey, prompt, model) {
+async function fetchOpenAI(apiKey, prompt, model, isCustom = false) {
   const url = "https://api.openai.com/v1/chat/completions";
 
   const response = await fetch(url, {
@@ -133,11 +145,11 @@ async function fetchOpenAI(apiKey, prompt, model) {
       messages: [
         {
           role: "system",
-          content: "You are a helpful trading assistant. Respond in JSON.",
+          content: isCustom ? "You are a helpful trading assistant." : "You are a helpful trading assistant. Respond in JSON.",
         },
         { role: "user", content: prompt },
       ],
-      response_format: { type: "json_object" },
+      ...(isCustom ? {} : { response_format: { type: "json_object" } }),
     }),
   });
 
@@ -151,10 +163,14 @@ async function fetchOpenAI(apiKey, prompt, model) {
   const data = await response.json();
   const text = data.choices?.[0]?.message?.content;
 
-  return parseResponse(text);
+  return parseResponse(text, isCustom);
 }
 
-function parseResponse(text) {
+function parseResponse(text, isCustom = false) {
+  if (isCustom) {
+     return { isCustom: true, rawText: text };
+  }
+
   try {
     // Extract JSON substring by finding the first '{' and last '}'
     const startIndex = text.indexOf("{");
@@ -174,23 +190,38 @@ function parseResponse(text) {
   }
 }
 
-function generatePrompt(stocks) {
+function generatePrompt(stocks, customPromptText, isCustom) {
   // Simplify data to save tokens and focus on symbols
   const simplifiedStocks = stocks.map((s) => ({
     symbol: s.symbol,
     sector: s.sector || "Unknown",
   }));
 
-  return `
-    Act as a disciplined, risk-aware swing trading mentor (referencing Mark Minervini's SEPA and William O'Neil's CANSLIM). 
+  const stocksJson = JSON.stringify(simplifiedStocks);
+  const sectorsSet = new Set(simplifiedStocks.map(s => s.sector));
+  const sectorsList = Array.from(sectorsSet).join(", ");
+  const tickerList = simplifiedStocks.map(s => s.symbol).join(", ");
+
+  let baseInstruction = customPromptText || `Act as a disciplined, risk-aware swing trading mentor (referencing Mark Minervini's SEPA and William O'Neil's CANSLIM). 
     Analyze the following watchlist to provide a clear, objective, and actionable trading plan. 
-    Be conservative: do not force patterns if they are not clear. Focus on quality over quantity.
+    Be conservative: do not force patterns if they are not clear. Focus on quality over quantity.`;
+
+  // Template Vairable Replacements
+  baseInstruction = baseInstruction.replace(/\{stocks\}/g, stocksJson);
+  baseInstruction = baseInstruction.replace(/\{sectors\}/g, sectorsList);
+  baseInstruction = baseInstruction.replace(/\{tickers\}/g, tickerList);
+
+  let prompt = `
+    ${baseInstruction}
     
-    Watchlist:
-    ${JSON.stringify(simplifiedStocks)}
+    Watchlist Data Reference:
+    ${stocksJson}
 
     If the sector is "Unknown", infer it based on the ticker symbol.
+  `;
 
+  if (!isCustom) {
+    prompt += `
     Provide a strategic summary in the following JSON structure:
     {
       "marketBias": "Assess the overall market health based on this watchlist. Is it 'Risk-On' (Bullish), 'Risk-Off' (Bearish), or 'Neutral'? Provide a concise reasoning.",
@@ -204,5 +235,8 @@ function generatePrompt(stocks) {
     }
 
     IMPORTANT: Return ONLY valid JSON. Do not include markdown formatting like \`\`\`json.
-  `;
+    `;
+  }
+
+  return prompt;
 }
