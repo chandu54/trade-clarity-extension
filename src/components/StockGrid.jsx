@@ -309,23 +309,20 @@ export default function StockGrid({
   /* =====================
      CHECKS PASSED
   ===================== */
-  function getChecksResult(stock) {
+  function renderChecksBadge(stock) {
     const checkParams = visibleParams.filter(([, p]) => p.isCheck === true);
     const total = checkParams.length;
-    if (total === 0) return "—";
+    if (total === 0) return <span className="checks-none">—</span>;
 
     let passed = 0;
-
     checkParams.forEach(([key, p]) => {
       const value = stock.params?.[key];
-
       if (p.type === "checkbox") {
         if (value === true) passed++;
       } else if (p.type === "number") {
         if (value === undefined || value === "" || value === null) return;
         const numVal = parseFloat(value);
         if (isNaN(numVal)) return;
-
         const ideals = p.idealValues || [];
         const match = ideals.some((ideal) => {
           const cond = String(ideal).trim();
@@ -356,12 +353,62 @@ export default function StockGrid({
         if (match) passed++;
       } else {
         if (!value) return;
-        // Use loose equality to match numbers/strings (e.g. "10" == 10)
         if ((p.idealValues || []).some((ideal) => ideal == value)) passed++;
       }
     });
 
-    return `${passed} / ${total}`;
+    const ratio = passed / total;
+    let statusClass = "poor";
+    if (ratio >= 0.8) statusClass = "excellent";
+    else if (ratio >= 0.6) statusClass = "good";
+    else if (ratio >= 0.4) statusClass = "average";
+
+    return (
+      <div className={`checks-badge ${statusClass}`} title={`${passed} of ${total} checks passed`}>
+        <span className="passed-count">{passed}</span>
+        <span className="separator">/</span>
+        <span className="total-count">{total}</span>
+      </div>
+    );
+  }
+
+  // Helper for export/sort logic
+  function getChecksCount(stock) {
+    const checkParams = visibleParams.filter(([, p]) => p.isCheck === true);
+    let passed = 0;
+    checkParams.forEach(([key, p]) => {
+      const value = stock.params?.[key];
+      if (p.type === "checkbox") { if (value === true) passed++; }
+      else if (p.type === "number") {
+        const numVal = parseFloat(value);
+        if (isNaN(numVal)) return;
+        if ((p.idealValues || []).some(ideal => {
+          const cond = String(ideal).trim();
+          if (cond.startsWith(">=")) return numVal >= parseFloat(cond.slice(2));
+          if (cond.startsWith("<=")) return numVal <= parseFloat(cond.slice(2));
+          if (cond.startsWith(">")) return numVal > parseFloat(cond.slice(1));
+          if (cond.startsWith("<")) return numVal < parseFloat(cond.slice(1));
+          if (cond.includes("-")) {
+            const parts = cond.split("-").map(s => parseFloat(s.trim()));
+            return parts.length === 2 && numVal >= parts[0] && numVal <= parts[1];
+          }
+          return numVal == parseFloat(cond);
+        })) passed++;
+      }
+      else if (p.type === "date") {
+        if (!value) return;
+        if ((p.idealValues || []).some(ideal => {
+          const cond = String(ideal).trim();
+          if (cond.startsWith(">=")) return value >= cond.slice(2).trim();
+          if (cond.startsWith("<=")) return value <= cond.slice(2).trim();
+          if (cond.startsWith(">")) return value > cond.slice(1).trim();
+          if (cond.startsWith("<")) return value < cond.slice(1).trim();
+          return value === cond;
+        })) passed++;
+      }
+      else { if ((p.idealValues || []).some(ideal => ideal == value)) passed++; }
+    });
+    return passed;
   }
 
   /* =====================
@@ -451,8 +498,8 @@ export default function StockGrid({
       let aVal, bVal;
 
       if (sortBy === "__checks__") {
-        aVal = getChecksResult(a);
-        bVal = getChecksResult(b);
+        aVal = getChecksCount(a);
+        bVal = getChecksCount(b);
       } else {
         aVal = a[sortBy] ?? a.params?.[sortBy];
         bVal = b[sortBy] ?? b.params?.[sortBy];
@@ -666,8 +713,17 @@ export default function StockGrid({
   }
 
   function renderSortIndicator(col) {
-    if (sortBy !== col) return null;
-    return sortDir === "asc" ? " ▲" : " ▼";
+    const isActive = sortBy === col;
+    return (
+      <span className={`sort-indicator-v3 ${isActive ? "active" : ""}`}>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`sort-up ${isActive && sortDir === "asc" ? "on" : ""}`}>
+          <path d="m18 15-6-6-6 6" />
+        </svg>
+        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`sort-down ${isActive && sortDir === "desc" ? "on" : ""}`}>
+          <path d="m6 9 6 6 6-6" />
+        </svg>
+      </span>
+    );
   }
 
   function getExportFilename(extension, scope) {
@@ -900,273 +956,273 @@ export default function StockGrid({
       {(filterableParams.length > 0 ||
         isSectorFilterable ||
         (availableTags.length > 0 && isTagFilterable)) && (
-            <div className={`filter-bar ${!showFilters ? "collapsed" : ""}`}>
-              <div className="filter-top-row">
-                <div className="filter-top-left">
-                  <div className="filter-toggle-group" onClick={() => setShowFilters(!showFilters)}>
-                    <span className="filter-icon">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                      </svg>
-                    </span>
-                    <span className="filter-label">Filters</span>
-                    {activeFilters.length > 0 && (
-                      <span className="active-filter-badge">{activeFilters.length}</span>
-                    )}
-                    <span className={`filter-chevron ${showFilters ? "open" : ""}`}>
-                      <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="6 9 12 15 18 9" />
-                      </svg>
-                    </span>
-                  </div>
-
+          <div className={`filter-bar ${!showFilters ? "collapsed" : ""}`}>
+            <div className="filter-top-row">
+              <div className="filter-top-left">
+                <div className="filter-toggle-group" onClick={() => setShowFilters(!showFilters)}>
+                  <span className="filter-icon">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                    </svg>
+                  </span>
+                  <span className="filter-label">Filters</span>
                   {activeFilters.length > 0 && (
-                    <button 
-                      className="reset-filters-btn-v2" 
-                      onClick={(e) => { e.stopPropagation(); setFilters({}); }}
-                      title="Clear all active filters"
+                    <span className="active-filter-badge">{activeFilters.length}</span>
+                  )}
+                  <span className={`filter-chevron ${showFilters ? "open" : ""}`}>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="6 9 12 15 18 9" />
+                    </svg>
+                  </span>
+                </div>
+
+                {activeFilters.length > 0 && (
+                  <button
+                    className="reset-filters-btn-v2"
+                    onClick={(e) => { e.stopPropagation(); setFilters({}); }}
+                    title="Clear all active filters"
+                  >
+                    Reset Filters
+                  </button>
+                )}
+
+                <div className="search-box-v2">
+                  <span className="search-icon-v2">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
+                    </svg>
+                  </span>
+                  <input
+                    type="text"
+                    placeholder="Search symbols..."
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                  />
+                  {searchQuery && (
+                    <button
+                      className="search-clear-btn"
+                      onClick={() => setSearchQuery("")}
+                      title="Clear search"
                     >
-                      Clear Filters
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
                     </button>
                   )}
-
-                  <div className="search-box-v2">
-                    <span className="search-icon-v2">
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
-                      </svg>
-                    </span>
-                    <input
-                      type="text"
-                      placeholder="Search symbols..."
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                    />
-                    {searchQuery && (
-                      <button 
-                        className="search-clear-btn" 
-                        onClick={() => setSearchQuery("")}
-                        title="Clear search"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/>
-                        </svg>
-                      </button>
-                    )}
-                  </div>
-                </div>
-                
-                <div className="active-filters-summary">
-                  {!showFilters && activeFilters.length > 0 && activeFilters.map(([key, value]) => {
-                    let label = key;
-                    if (key === "__sector__") label = "Sector";
-                    else if (key === "__tag__") label = "Tag";
-                    else if (key === "__tradable__") label = "Tradable";
-                    else label = params[key]?.label || key;
-
-                    let displayValue = value;
-                    if (typeof value === "boolean") displayValue = value ? "Yes" : "No";
-
-                    return (
-                      <span key={key} className="summary-pill">
-                        {label}: <strong>{displayValue}</strong>
-                      </span>
-                    );
-                  })}
-                </div>
-
-                <div className="filter-actions">
-                  <button className="toggle-filters-btn" onClick={() => setShowFilters(!showFilters)}>
-                    {showFilters ? "Collapse" : "Show All Filters"}
-                  </button>
                 </div>
               </div>
 
-          {showFilters && (
-            <div className="filter-items">
-              {isSectorFilterable && (
-                <div className="filter-item">
-                  <label>Sector</label>
-                  <div style={{ position: "relative", width: "100%" }}>
-                    <select
-                      className="select-control"
-                      value={filters.__sector__ || ""}
-                      onChange={(e) => setFilter("__sector__", e.target.value)}
-                      style={{ width: "100%", paddingRight: "24px" }}
-                    >
-                      <option value="">All</option>
-                      {sectors.map((s) => (
-                        <option key={s} value={s}>
-                          {s}
-                        </option>
-                      ))}
-                    </select>
-                    {filters.__sector__ && filters.__sector__ !== "" && (
-                      <ClearButton
-                        onClick={() => setFilter("__sector__", "")}
-                        isSelect
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
+              <div className="active-filters-summary">
+                {!showFilters && activeFilters.length > 0 && activeFilters.map(([key, value]) => {
+                  let label = key;
+                  if (key === "__sector__") label = "Sector";
+                  else if (key === "__tag__") label = "Tag";
+                  else if (key === "__tradable__") label = "Tradable";
+                  else label = params[key]?.label || key;
 
-              {availableTags.length > 0 && isTagFilterable && (
-                <div className="filter-item">
-                  <label>Tag</label>
-                  <div style={{ position: "relative", width: "100%" }}>
-                    <select
-                      className="select-control"
-                      value={filters.__tag__ || ""}
-                      onChange={(e) => setFilter("__tag__", e.target.value)}
-                      style={{ width: "100%", paddingRight: "24px" }}
-                    >
-                      <option value="">All</option>
-                      {availableTags.map((t) => (
-                        <option key={t} value={t}>
-                          {t}
-                        </option>
-                      ))}
-                    </select>
-                    {filters.__tag__ && filters.__tag__ !== "" && (
-                      <ClearButton
-                        onClick={() => setFilter("__tag__", "")}
-                        isSelect
-                      />
-                    )}
-                  </div>
-                </div>
-              )}
+                  let displayValue = value;
+                  if (typeof value === "boolean") displayValue = value ? "Yes" : "No";
 
-              {filterableParams.map(([key, p]) => (
-                <div key={key} className="filter-item">
-                  <label>
-                    {p.label}
-                    {(p.type === "number" || p.type === "date") && (
-                      <span
-                        className="info-icon"
-                        title="Supports operators: > < >= <= = and ranges (e.g. 10-20)"
-                        style={{
-                          marginLeft: "4px",
-                          cursor: "help",
-                          fontSize: "0.8em",
-                        }}
+                  return (
+                    <span key={key} className="summary-pill">
+                      {label}: <strong>{displayValue}</strong>
+                    </span>
+                  );
+                })}
+              </div>
+
+              <div className="filter-actions">
+                <button className="toggle-filters-btn" onClick={() => setShowFilters(!showFilters)}>
+                  {showFilters ? "Collapse" : "Show All Filters"}
+                </button>
+              </div>
+            </div>
+
+            {showFilters && (
+              <div className="filter-items">
+                {isSectorFilterable && (
+                  <div className="filter-item">
+                    <label>Sector</label>
+                    <div style={{ position: "relative", width: "100%" }}>
+                      <select
+                        className="select-control"
+                        value={filters.__sector__ || ""}
+                        onChange={(e) => setFilter("__sector__", e.target.value)}
+                        style={{ width: "100%", paddingRight: "24px" }}
                       >
-                        ℹ️
-                      </span>
-                    )}
-                  </label>
-                  <div style={{ position: "relative", width: "100%" }}>
-                    {p.type === "checkbox" && (
-                      <>
-                        <select
-                          className="select-control"
-                          value={filters[key] ?? ""}
-                          onChange={(e) =>
-                            setFilter(
-                              key,
-                              e.target.value === ""
-                                ? ""
-                                : e.target.value === "true",
-                            )
-                          }
-                          style={{ width: "100%", paddingRight: "24px" }}
-                        >
-                          <option value="">All</option>
-                          <option value="true">Yes</option>
-                          <option value="false">No</option>
-                        </select>
-                        {filters[key] !== undefined && filters[key] !== "" && (
-                          <ClearButton
-                            onClick={() => setFilter(key, "")}
-                            isSelect
-                          />
-                        )}
-                      </>
-                    )}
-
-                    {p.type === "select" && (
-                      <>
-                        <select
-                          className="select-control"
-                          value={filters[key] || ""}
-                          onChange={(e) => setFilter(key, e.target.value)}
-                          style={{ width: "100%", paddingRight: "24px" }}
-                        >
-                          <option value="">All</option>
-                          {p.options?.map((o) => (
-                            <option key={o}>{o}</option>
-                          ))}
-                        </select>
-                        {filters[key] !== undefined && filters[key] !== "" && (
-                          <ClearButton
-                            onClick={() => setFilter(key, "")}
-                            isSelect
-                          />
-                        )}
-                      </>
-                    )}
-
-                    {(p.type === "text" ||
-                      p.type === "number" ||
-                      p.type === "date") && (
-                      <>
-                        <input
-                          type="text"
-                          className="filter-input"
-                          value={filters[key] || ""}
-                          onChange={(e) => setFilter(key, e.target.value)}
-                          placeholder={
-                            p.type === "date"
-                              ? "YYYY-MM-DD or >..."
-                              : p.type === "number"
-                                ? "e.g. >10 or 10-20"
-                                : ""
-                          }
-                          style={{ width: "100%", paddingRight: "24px" }}
-                        />
-                        {filters[key] !== undefined && filters[key] !== "" && (
-                          <ClearButton onClick={() => setFilter(key, "")} />
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {isTradableFilterable && (
-                <div className="filter-item">
-                  <label>Tradable</label>
-                  <div style={{ position: "relative", width: "100%" }}>
-                    <select
-                      className="select-control"
-                      value={filters.__tradable__ ?? ""}
-                      onChange={(e) =>
-                        setFilter(
-                          "__tradable__",
-                          e.target.value === "" ? "" : e.target.value === "true",
-                        )
-                      }
-                      style={{ width: "100%", paddingRight: "24px" }}
-                    >
-                      <option value="">All</option>
-                      <option value="true">Yes</option>
-                      <option value="false">No</option>
-                    </select>
-                    {filters.__tradable__ !== undefined &&
-                      filters.__tradable__ !== "" && (
+                        <option value="">All</option>
+                        {sectors.map((s) => (
+                          <option key={s} value={s}>
+                            {s}
+                          </option>
+                        ))}
+                      </select>
+                      {filters.__sector__ && filters.__sector__ !== "" && (
                         <ClearButton
-                          onClick={() => setFilter("__tradable__", "")}
+                          onClick={() => setFilter("__sector__", "")}
                           isSelect
                         />
                       )}
+                    </div>
                   </div>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      )}
+                )}
+
+                {availableTags.length > 0 && isTagFilterable && (
+                  <div className="filter-item">
+                    <label>Tag</label>
+                    <div style={{ position: "relative", width: "100%" }}>
+                      <select
+                        className="select-control"
+                        value={filters.__tag__ || ""}
+                        onChange={(e) => setFilter("__tag__", e.target.value)}
+                        style={{ width: "100%", paddingRight: "24px" }}
+                      >
+                        <option value="">All</option>
+                        {availableTags.map((t) => (
+                          <option key={t} value={t}>
+                            {t}
+                          </option>
+                        ))}
+                      </select>
+                      {filters.__tag__ && filters.__tag__ !== "" && (
+                        <ClearButton
+                          onClick={() => setFilter("__tag__", "")}
+                          isSelect
+                        />
+                      )}
+                    </div>
+                  </div>
+                )}
+
+                {filterableParams.map(([key, p]) => (
+                  <div key={key} className="filter-item">
+                    <label>
+                      {p.label}
+                      {(p.type === "number" || p.type === "date") && (
+                        <span
+                          className="info-icon"
+                          title="Supports operators: > < >= <= = and ranges (e.g. 10-20)"
+                          style={{
+                            marginLeft: "4px",
+                            cursor: "help",
+                            fontSize: "0.8em",
+                          }}
+                        >
+                          ℹ️
+                        </span>
+                      )}
+                    </label>
+                    <div style={{ position: "relative", width: "100%" }}>
+                      {p.type === "checkbox" && (
+                        <>
+                          <select
+                            className="select-control"
+                            value={filters[key] ?? ""}
+                            onChange={(e) =>
+                              setFilter(
+                                key,
+                                e.target.value === ""
+                                  ? ""
+                                  : e.target.value === "true",
+                              )
+                            }
+                            style={{ width: "100%", paddingRight: "24px" }}
+                          >
+                            <option value="">All</option>
+                            <option value="true">Yes</option>
+                            <option value="false">No</option>
+                          </select>
+                          {filters[key] !== undefined && filters[key] !== "" && (
+                            <ClearButton
+                              onClick={() => setFilter(key, "")}
+                              isSelect
+                            />
+                          )}
+                        </>
+                      )}
+
+                      {p.type === "select" && (
+                        <>
+                          <select
+                            className="select-control"
+                            value={filters[key] || ""}
+                            onChange={(e) => setFilter(key, e.target.value)}
+                            style={{ width: "100%", paddingRight: "24px" }}
+                          >
+                            <option value="">All</option>
+                            {p.options?.map((o) => (
+                              <option key={o}>{o}</option>
+                            ))}
+                          </select>
+                          {filters[key] !== undefined && filters[key] !== "" && (
+                            <ClearButton
+                              onClick={() => setFilter(key, "")}
+                              isSelect
+                            />
+                          )}
+                        </>
+                      )}
+
+                      {(p.type === "text" ||
+                        p.type === "number" ||
+                        p.type === "date") && (
+                          <>
+                            <input
+                              type="text"
+                              className="filter-input"
+                              value={filters[key] || ""}
+                              onChange={(e) => setFilter(key, e.target.value)}
+                              placeholder={
+                                p.type === "date"
+                                  ? "YYYY-MM-DD or >..."
+                                  : p.type === "number"
+                                    ? "e.g. >10 or 10-20"
+                                    : ""
+                              }
+                              style={{ width: "100%", paddingRight: "24px" }}
+                            />
+                            {filters[key] !== undefined && filters[key] !== "" && (
+                              <ClearButton onClick={() => setFilter(key, "")} />
+                            )}
+                          </>
+                        )}
+                    </div>
+                  </div>
+                ))}
+
+                {isTradableFilterable && (
+                  <div className="filter-item">
+                    <label>Tradable</label>
+                    <div style={{ position: "relative", width: "100%" }}>
+                      <select
+                        className="select-control"
+                        value={filters.__tradable__ ?? ""}
+                        onChange={(e) =>
+                          setFilter(
+                            "__tradable__",
+                            e.target.value === "" ? "" : e.target.value === "true",
+                          )
+                        }
+                        style={{ width: "100%", paddingRight: "24px" }}
+                      >
+                        <option value="">All</option>
+                        <option value="true">Yes</option>
+                        <option value="false">No</option>
+                      </select>
+                      {filters.__tradable__ !== undefined &&
+                        filters.__tradable__ !== "" && (
+                          <ClearButton
+                            onClick={() => setFilter("__tradable__", "")}
+                            isSelect
+                          />
+                        )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
       <div className="grid-header">
         <div className="command-left">
@@ -1208,11 +1264,10 @@ export default function StockGrid({
             </button>
             {importMenuOpen && (
               <ul className="action-dropdown shadow">
-                <li className="dropdown-header">JSON Files Only</li>
-                <li onClick={() => triggerImport("stocks")}>Current Week</li>
-                <li onClick={() => triggerImport("tv")}>TradingView (Text/JSON)</li>
+                <li onClick={() => triggerImport("stocks")}>JSON / Current Week</li>
+                <li onClick={() => triggerImport("tv")}>JSON / TradingView</li>
                 <li className="divider" />
-                <li onClick={() => triggerImport("backup")}>Full Backup</li>
+                <li onClick={() => triggerImport("backup")}>JSON / Full Backup</li>
               </ul>
             )}
             <input ref={fileInputRef} type="file" accept=".json" onChange={handleFileChange} hidden />
@@ -1220,7 +1275,7 @@ export default function StockGrid({
 
           <button className="add-stock-cta" onClick={() => setShowAddStock(true)}>
             <span className="cta-icon">＋</span>
-            Add New Stock
+            Add
           </button>
         </div>
       </div>
@@ -1269,9 +1324,9 @@ export default function StockGrid({
                 style={
                   colWidths["symbol"]
                     ? {
-                        width: `${colWidths["symbol"]}px`,
-                        minWidth: `${colWidths["symbol"]}px`,
-                      }
+                      width: `${colWidths["symbol"]}px`,
+                      minWidth: `${colWidths["symbol"]}px`,
+                    }
                     : {}
                 }
               >
@@ -1310,9 +1365,9 @@ export default function StockGrid({
                 style={
                   colWidths["sector"]
                     ? {
-                        width: `${colWidths["sector"]}px`,
-                        minWidth: `${colWidths["sector"]}px`,
-                      }
+                      width: `${colWidths["sector"]}px`,
+                      minWidth: `${colWidths["sector"]}px`,
+                    }
                     : {}
                 }
               >
@@ -1334,22 +1389,22 @@ export default function StockGrid({
                     style={{
                       ...(colWidths[key]
                         ? {
-                            width: `${colWidths[key]}px`,
-                            minWidth: `${colWidths[key]}px`,
-                          }
+                          width: `${colWidths[key]}px`,
+                          minWidth: `${colWidths[key]}px`,
+                        }
                         : {}),
                       cursor: isSortable ? "pointer" : "default"
                     }}
                   >
                     {p.label}
                     {isSortable && renderSortIndicator(key)}
-                  <div
-                    className="col-resizer"
-                    onClick={(e) => e.stopPropagation()}
-                    onDoubleClick={(e) => resetColWidth(e, key)}
-                    onMouseDown={(e) => handleMouseDown(e, key)}
-                  />
-                </th>
+                    <div
+                      className="col-resizer"
+                      onClick={(e) => e.stopPropagation()}
+                      onDoubleClick={(e) => resetColWidth(e, key)}
+                      onMouseDown={(e) => handleMouseDown(e, key)}
+                    />
+                  </th>
                 );
               })}
 
@@ -1359,9 +1414,9 @@ export default function StockGrid({
                 style={
                   colWidths["__checks__"]
                     ? {
-                        width: `${colWidths["__checks__"]}px`,
-                        minWidth: `${colWidths["__checks__"]}px`,
-                      }
+                      width: `${colWidths["__checks__"]}px`,
+                      minWidth: `${colWidths["__checks__"]}px`,
+                    }
                     : {}
                 }
               >
@@ -1379,9 +1434,9 @@ export default function StockGrid({
                 style={
                   colWidths["tradable"]
                     ? {
-                        width: `${colWidths["tradable"]}px`,
-                        minWidth: `${colWidths["tradable"]}px`,
-                      }
+                      width: `${colWidths["tradable"]}px`,
+                      minWidth: `${colWidths["tradable"]}px`,
+                    }
                     : {}
                 }
               >
@@ -1399,9 +1454,9 @@ export default function StockGrid({
                   style={
                     colWidths["__notes__"]
                       ? {
-                          width: `${colWidths["__notes__"]}px`,
-                          minWidth: `${colWidths["__notes__"]}px`,
-                        }
+                        width: `${colWidths["__notes__"]}px`,
+                        minWidth: `${colWidths["__notes__"]}px`,
+                      }
                       : {}
                   }
                 >
@@ -1440,10 +1495,10 @@ export default function StockGrid({
                         style={
                           !isReadOnly
                             ? {
-                                cursor: "pointer",
-                                color: "var(--primary)",
-                                fontWeight: "600",
-                              }
+                              cursor: "pointer",
+                              color: "var(--primary)",
+                              fontWeight: "600",
+                            }
                             : {}
                         }
                         title={!isReadOnly ? "Click to edit details" : ""}
@@ -1675,7 +1730,9 @@ export default function StockGrid({
                   </td>
                 ))}
 
-                <td className="checks-cell">{getChecksResult(stock)}</td>
+                <td className="checks-cell">
+                  {renderChecksBadge(stock)}
+                </td>
 
                 <td>
                   <input

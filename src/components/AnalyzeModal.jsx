@@ -46,7 +46,7 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
   const analysisToDisplay = savedAnalysis;
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="AI Analysis" subtitle="Generate AI-powered insights for your watchlist">
+    <Modal isOpen={isOpen} onClose={onClose} title="AI Analysis" subtitle="Generate AI-powered insights for your watchlist" className="modal-wide">
       <div className="ai-summary-box">
         <div className="ai-header">
           <span className="ai-icon">✨</span>

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Modal from "./Modal";
 import TrashIcon from "./icons/TrashIcon";
+import EditIcon from "./icons/EditIcon";
 import { useConfirm } from "./ConfirmContext";
 
 export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
@@ -122,11 +123,11 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
             </div>
             <div className="param-actions">
               <button
-                className="outline small"
+                className="outline small icon-btn"
                 onClick={() => startEdit(k, p)}
                 title="Edit parameter"
               >
-                Edit
+                <EditIcon size={14} />
               </button>
               <button
                 className="danger outline small icon-btn"
@@ -160,7 +161,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
             placeholder="e.g. relativeStrength"
           />
           {error && (
-            <div 
+            <div
               style={{ color: "#d32f2f", fontWeight: "600", marginTop: "8px" }}
             >
               {error}
@@ -251,11 +252,11 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
         </button>
 
         {editKey ? (
-          <button style={{ marginLeft: "8px" }} onClick={saveEdit}>
+          <button onClick={saveEdit}>
             Save Changes
           </button>
         ) : (
-          <button style={{ marginLeft: "8px" }} onClick={addParam}>
+          <button onClick={addParam}>
             Add Parameter
           </button>
         )}

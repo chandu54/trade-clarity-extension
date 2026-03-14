@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect } from "react";
 
-export default function Modal({ children, isOpen = true, onClose, title, subtitle }) {
+export default function Modal({ children, isOpen = true, onClose, title, subtitle, className = "" }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isOpen && onClose) {
@@ -22,7 +22,7 @@ export default function Modal({ children, isOpen = true, onClose, title, subtitl
 
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
-      <div className="modal-box" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal-box ${className}`} onClick={(e) => e.stopPropagation()}>
         {(title || subtitle) && (
           <div className="modal-header">
             <div className="modal-title-group">
