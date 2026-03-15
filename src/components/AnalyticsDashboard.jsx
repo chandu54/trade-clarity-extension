@@ -776,7 +776,7 @@ function getWeekRangeLabel(sundayDateStr) {
   return `${formatDate(monday)} to ${formatDate(friday)}`;
 }
 
-const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, selectedWatchlistId, onClose }) => {
+const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, selectedWatchlistId, watchlists, onClose }) => {
   const [expandedParam, setExpandedParam] = useState(null);
   const [stockListPopup, setStockListPopup] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -1092,7 +1092,7 @@ const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, selecte
 
   const activeWatchlistName = selectedWatchlistId === "all" 
     ? "All Stocks" 
-    : (data.watchlists?.find(w => w.id === selectedWatchlistId)?.name || "All Stocks");
+    : (watchlists?.find(w => w.id === selectedWatchlistId)?.name || "All Stocks");
 
   return (
     <div className="analytics-overlay" onClick={onClose}>
