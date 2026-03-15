@@ -271,14 +271,26 @@ const TradeClarityWidget = () => {
   }, [symbol, region, targetDate]);
 
   // Handlers
-  const handleParamChange = (key, value) => setStockData(prev => ({ ...prev, params: { ...prev.params, [key]: value } }));
-  const handleFieldChange = (field, value) => setStockData(prev => ({ ...prev, [field]: value }));
+  const handleParamChange = (key, value) => {
+    setStockData(prev => {
+      const current = prev || {};
+      const currentParams = current.params || {};
+      return { ...current, params: { ...currentParams, [key]: value } };
+    });
+  };
+  const handleFieldChange = (field, value) => {
+    setStockData(prev => {
+      const current = prev || {};
+      return { ...current, [field]: value };
+    });
+  };
   const handleAddTag = (tag) => {
     if (!tag) return;
     setStockData(prev => {
-      const currentTags = prev.tags || [];
-      if (currentTags.includes(tag)) return prev;
-      return { ...prev, tags: [...currentTags, tag] };
+      const current = prev || {};
+      const currentTags = current.tags || [];
+      if (currentTags.includes(tag)) return current;
+      return { ...current, tags: [...currentTags, tag] };
     });
   };
   const handleCreateTag = () => {
@@ -293,7 +305,13 @@ const TradeClarityWidget = () => {
     });
     setNewTag("");
   };
-  const handleRemoveTag = (tagToRemove) => setStockData(prev => ({ ...prev, tags: (prev.tags || []).filter(t => t !== tagToRemove) }));
+  const handleRemoveTag = (tagToRemove) => {
+    setStockData(prev => {
+      const current = prev || {};
+      const currentTags = current.tags || [];
+      return { ...current, tags: currentTags.filter(t => t !== tagToRemove) };
+    });
+  };
 
   const handleSave = useCallback(() => {
     if (!appData || !symbol || !stockData) return;
@@ -313,6 +331,26 @@ const TradeClarityWidget = () => {
          alert(`Failed to save: Storage limit may be reached.\n\n${err.message || 'Unknown error'}`);
          return; // Intercept success state
       }
+      
+      // Auto-fetch metrics if enabled
+      if (newData.uiConfig?.enableApiHydration === true && isExtension) {
+        try {
+          chrome.runtime.sendMessage({
+            action: "FETCH_STOCK_METRICS",
+            payload: {
+              symbols: [symbol],
+              country: region,
+              weekKey,
+              paramDefs: newData.paramDefinitions,
+              adrDays: newData.uiConfig?.adrDays || 20,
+              liquidityDays: newData.uiConfig?.liquidityDays || 20
+            }
+          });
+        } catch (e) {
+          console.error("Could not send hydration message:", e);
+        }
+      }
+
       setAppData(newData);
       setSaveMessage(true);
       setTimeout(() => { setSaveMessage(false); setIsOpen(false); }, 1200);
@@ -465,7 +503,7 @@ const TradeClarityWidget = () => {
         if (targetsField) {
           // --- Special Case: Number ranges for Liquidity ---
           if (keyLower === 'liquidity') {
-            const numMatch = text.match(/\\b(\\d+)\\s*(?:cr|crore|crores)?\\b/i);
+            const numMatch = text.match(/\b(\d+)\s*(?:cr|crore|crores)?\b/i);
             if (numMatch) {
               const targetNumVal = parseInt(numMatch[1], 10);
               
@@ -479,7 +517,7 @@ const TradeClarityWidget = () => {
 
                 const parsedOptions = def.options.map(opt => {
                   const str = String(opt);
-                  const numbers = str.match(/\\d+/g);
+                  const numbers = str.match(/\d+/g);
                   let maxInStr = numbers && numbers.length > 0 ? Math.max(...numbers.map(Number)) : Infinity;
 
                   const isLessThan = str.includes("<") || str.toLowerCase().includes("under");
@@ -526,7 +564,7 @@ const TradeClarityWidget = () => {
           }
 
           if (keyLower === 'adr') {
-            const numMatch = text.match(/\\b(\\d+(?:\\.\\d+)?)\\b/);
+            const numMatch = text.match(/\b(\d+(?:\.\d+)?)\b/);
             if (numMatch) {
               const targetVal = parseFloat(numMatch[1]);
               
@@ -610,7 +648,7 @@ const TradeClarityWidget = () => {
             } else if (isAffirming) {
               handleParamChange(key, true);
             } else {
-              handleParamChange(key, !stockData?.params?.[key]);
+              handleParamChange(key, !(stockData?.params?.[key]));
             }
           } else if (def.type === 'number' || def.type === 'text') {
             // Generic Number/Text extraction:

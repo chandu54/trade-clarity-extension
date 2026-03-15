@@ -14,6 +14,14 @@ const BATCH_SIZE = 5;
 const BATCH_DELAY_MS = 2000;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+  if (message.action === "OPEN_DASHBOARD") {
+    chrome.tabs.create({
+      url: chrome.runtime.getURL("dashboard.html"),
+    });
+    sendResponse({ success: true });
+    return true;
+  }
+
   if (message.action === "FETCH_STOCK_METRICS") {
     // We now receive paramDefs to dynamically match numerical API data to the user's custom buckets/field types
     const { symbols, country, weekKey, paramDefs, adrDays = 20, liquidityDays = 20 } = message.payload;
@@ -148,12 +156,22 @@ async function fetchAndCalculateMetrics(symbol, country, paramDefs = null, adrDa
     // ---------------------------------------------------------
     // DYNAMIC MAPPING TO USER-DEFINED PARAMS
     // ---------------------------------------------------------
+    const getActualParamKeyAndDef = (defs, defaultKey, labelName) => {
+        if (defs?.[defaultKey]) return { key: defaultKey, def: defs[defaultKey] };
+        for (const [k, v] of Object.entries(defs || {})) {
+            if (v.label?.toLowerCase() === labelName.toLowerCase()) return { key: k, def: v };
+        }
+        return { key: defaultKey, def: null };
+    };
+
+    const adrMatch = getActualParamKeyAndDef(paramDefs, 'adr', 'adr');
+    const liqMatch = getActualParamKeyAndDef(paramDefs, 'liquidity', 'liquidity');
 
     let formattedAdr = "";
     let formattedLiquidity = "";
 
-    const adrDef = paramDefs?.adr;
-    const liqDef = paramDefs?.liquidity;
+    const adrDef = adrMatch.def;
+    const liqDef = liqMatch.def;
 
     // --- ADR MAPPING ---
     if (adrDef?.type === "number") {
@@ -212,6 +230,7 @@ async function fetchAndCalculateMetrics(symbol, country, paramDefs = null, adrDa
           } else if (opt.isGreaterThan) {
              if (targetNumVal >= opt.max) {
                  matchedBucket = opt.original;
+                 break;
              }
           } else if (opt.numbers && opt.numbers.length >= 2) {
              const min = Math.min(...opt.numbers.map(Number));
@@ -253,7 +272,9 @@ async function fetchAndCalculateMetrics(symbol, country, paramDefs = null, adrDa
 
     return {
         adr: formattedAdr,
-        liquidity: formattedLiquidity
+        liquidity: formattedLiquidity,
+        adrKey: adrMatch.key,
+        liquidityKey: liqMatch.key
     };
 
   } catch (error) {
@@ -278,10 +299,13 @@ async function updateStorageWithMetrics(updates) {
           const stock = weekData.stocks[symbol];
           stock.params = stock.params || {};
 
+          const adrKey = metrics.adrKey || 'adr';
+          const liqKey = metrics.liquidityKey || 'liquidity';
+
           // Only update if changed
-          if (stock.params.adr !== metrics.adr || stock.params.liquidity !== metrics.liquidity) {
-             stock.params.adr = metrics.adr;
-             stock.params.liquidity = metrics.liquidity;
+          if (stock.params[adrKey] !== metrics.adr || stock.params[liqKey] !== metrics.liquidity) {
+             stock.params[adrKey] = metrics.adr;
+             stock.params[liqKey] = metrics.liquidity;
              dataChanged = true;
           }
         }
