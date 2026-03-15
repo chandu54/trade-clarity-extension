@@ -5,7 +5,7 @@ import { getAiAnalysis, PROMPT_TEMPLATES } from "../services/ai";
 import { getStoredPrompt, getCustomPrompts, setStoredPrompt, setCustomPrompts } from "../services/storage";
 import { useToast } from "./ToastContext";
 
-export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, country }) {
+export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, country, selectedWatchlistId }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [currentPromptName, setCurrentPromptName] = useState("Swing Trading (Default)");
   const [allPrompts, setAllPrompts] = useState([...PROMPT_TEMPLATES]);
@@ -20,6 +20,10 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
   
   const activePromptObj = allPrompts.find(p => p.value === selectedPromptValue) || allPrompts[0];
   const isCustomPromptGlobal = !PROMPT_TEMPLATES.find(t => t.value === activePromptObj.value);
+  
+  const activeWatchlistName = selectedWatchlistId === "all" 
+    ? "All Stocks" 
+    : (data.watchlists?.find(w => w.id === selectedWatchlistId)?.name || "All Stocks");
 
   useEffect(() => {
     if (isOpen) {
@@ -45,9 +49,22 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
     setIsGenerating(true);
     try {
       const currentWeekData = data.weeks?.[country]?.[weekKey] || { stocks: {} };
-      const stockCount = Object.keys(currentWeekData.stocks || {}).length;
       
-      const analysis = await getAiAnalysis(currentWeekData, data.paramDefinitions, activePromptObj.text, isCustomPromptGlobal);
+      let stocksToAnalyze = currentWeekData.stocks || {};
+      if (selectedWatchlistId && selectedWatchlistId !== "all") {
+        const filteredStocks = {};
+        Object.values(stocksToAnalyze).forEach(stock => {
+           if (stock.watchlists?.includes(selectedWatchlistId)) {
+             filteredStocks[stock.symbol] = stock;
+           }
+        });
+        stocksToAnalyze = filteredStocks;
+      }
+      
+      const analysisData = { ...currentWeekData, stocks: stocksToAnalyze };
+      const stockCount = Object.keys(stocksToAnalyze).length;
+
+      const analysis = await getAiAnalysis(analysisData, data.paramDefinitions, activePromptObj.text, isCustomPromptGlobal);
       
       // Save last selected as default for future and Settings modal consistency
       await setStoredPrompt(activePromptObj.text);
@@ -57,7 +74,9 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
         ...analysis,
         timestamp: new Date().toISOString(),
         stockCount: stockCount,
-        promptName: activePromptObj.label
+        promptName: activePromptObj.label,
+        watchlistName: activeWatchlistName,
+        watchlistId: selectedWatchlistId
       };
 
       // Persist to global state
@@ -115,7 +134,7 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
 
   return (
     <>
-      <Modal isOpen={isOpen} onClose={onClose} title="AI Analysis" subtitle="Generate AI-powered insights for your watchlist" className="modal-wide">
+      <Modal isOpen={isOpen} onClose={onClose} title="AI Analysis" subtitle={`Insights for: ${activeWatchlistName}`} className="modal-wide">
         <div className="ai-summary-box">
           <div className="ai-header">
             <span className="ai-icon">✨</span>
@@ -181,7 +200,7 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
           {analysisToDisplay && !isGenerating && (
             <div className="p-4">
               <div style={{ marginBottom: "12px", fontSize: "12px", color: "var(--muted)", borderBottom: "1px solid var(--border)", paddingBottom: "8px", lineHeight: "1.6" }}>
-                Generated on <strong>{new Date(analysisToDisplay.timestamp).toLocaleString()}</strong> based on <strong>{analysisToDisplay.stockCount || 0}</strong> stocks.<br />
+                Generated on <strong>{new Date(analysisToDisplay.timestamp).toLocaleString()}</strong> based on <strong>{analysisToDisplay.stockCount || 0}</strong> stocks from <strong>{analysisToDisplay.watchlistName || "All Stocks"}</strong>.<br />
                 Strategy: <strong>{analysisToDisplay.promptName || "Swing Trading (Default)"}</strong>
               </div>
 

@@ -18,6 +18,11 @@ const MENU_ITEMS = [
     key: "columns",
   },
   {
+    label: "Watchlists",
+    title: "Create and manage custom watchlists",
+    key: "watchlists",
+  },
+  {
     label: "Sectors",
     title: "Add, edit, or organize stock sectors used across the app",
     key: "sectors",
@@ -94,7 +99,7 @@ const BookIcon = () => (
   </svg>
 );
 
-export default function Header({ onOpenModal, onClearAll, onManageTags, theme, onToggleTheme, onShowSettings, onShowUserGuide, country, setCountry }) {
+export default function Header({ onOpenModal, onClearAll, onManageTags, onManageWatchlists, theme, onToggleTheme, onShowSettings, onShowUserGuide, country, setCountry }) {
   const [open, setOpen] = useState(false);
   const [regionOpen, setRegionOpen] = useState(false);
   const menuRef = useRef(null);
@@ -119,6 +124,8 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, theme, o
     setOpen(false);
     if (modalKey === "tags") {
       onManageTags();
+    } else if (modalKey === "watchlists") {
+      onManageWatchlists();
     } else {
       onOpenModal(modalKey);
     }

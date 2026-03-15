@@ -93,6 +93,7 @@ export const DEFAULT_DATA = {
     },
   },
 
+  watchlists: [],
   weeks: {},
   uiConfig: {
     readOnlyPastWeeks: false,

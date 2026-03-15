@@ -11,7 +11,8 @@ export default function EditStockModal({
   availableTags,
   weekInfo,
   country,
-  showTags = true
+  showTags = true,
+  watchlists = []
 }) {
   const [formData, setFormData] = useState(null);
 
@@ -51,6 +52,21 @@ export default function EditStockModal({
       setFormData((prev) => ({
         ...prev,
         tags: [...currentTags, tag],
+      }));
+    }
+  };
+
+  const toggleWatchlist = (wlId) => {
+    const currentWls = formData.watchlists || [];
+    if (currentWls.includes(wlId)) {
+      setFormData((prev) => ({
+        ...prev,
+        watchlists: currentWls.filter((id) => id !== wlId),
+      }));
+    } else {
+      setFormData((prev) => ({
+        ...prev,
+        watchlists: [...currentWls, wlId],
       }));
     }
   };
@@ -184,7 +200,29 @@ export default function EditStockModal({
           </div>
         )}
 
-        <div className="modal-actions">
+        {/* Watchlists */}
+        {watchlists.length > 0 && (
+          <div className="form-field">
+            <label>Watchlists</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "8px" }}>
+              {watchlists.map((wl) => {
+                const isSelected = formData.watchlists?.includes(wl.id);
+                return (
+                  <label key={wl.id} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={!!isSelected}
+                      onChange={() => toggleWatchlist(wl.id)}
+                    />
+                    {wl.name}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: "24px" }}>
           <button className="outline" onClick={onClose}>
             Cancel
           </button>

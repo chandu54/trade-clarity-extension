@@ -10,6 +10,7 @@ import ColumnConfigModal from "./components/ColumnConfigModal";
 import ManageSectorsModal from "./components/ManageSectorsModal";
 import ManageTagsModal from "./components/ManageTagsModal";
 import AnalyzeModal from "./components/AnalyzeModal";
+import ManageWatchlistsModal from "./components/ManageWatchlistsModal";
 import GlobalTooltip from "./components/GlobalTooltip";
 import SettingsModal from "./components/SettingsModal";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
@@ -22,7 +23,7 @@ import { loadData, saveData } from "./services/storage";
 import { useModalState } from "./hooks/useModalState";
 import { useTheme } from "./hooks/useTheme";
 import { EMPTY_DATA } from "./constants/app";
-import { getLatestWeekKey, isWeekReadOnly } from "./utils/weekHelpers";
+import { getLatestWeekKey, isWeekReadOnly, getLocalDateString, getSundayOfWeek } from "./utils/weekHelpers";
 
 function AppContent() {
   const [data, setData] = useState(null);
@@ -33,6 +34,8 @@ function AppContent() {
   const [showSettings, setShowSettings] = useState(false);
   const [showAnalytics, setShowAnalytics] = useState(false);
   const [showUserGuide, setShowUserGuide] = useState(false);
+  const [selectedWatchlistId, setSelectedWatchlistId] = useState("all");
+  const [showManageWatchlists, setShowManageWatchlists] = useState(false);
 
   const { theme, toggleTheme } = useTheme();
   const modals = useModalState();
@@ -47,6 +50,11 @@ function AppContent() {
     async function init() {
       const stored = await loadData();
       setData(stored);
+
+      const defaultList = stored.watchlists?.find((w) => w.isDefault);
+      if (defaultList) {
+        setSelectedWatchlistId(defaultList.id);
+      }
 
       // Default to US weeks for initial load
       const latestWeek = getLatestWeekKey(stored.weeks?.US || {});
@@ -86,12 +94,9 @@ function AppContent() {
      DERIVED STATE
   ========================= */
 
-  // Calculate current week key locally
-  const now = new Date();
-  const day = now.getDay();
-  const diff = now.getDate() - (day === 0 ? 7 : day);
-  const sunday = new Date(now.setDate(diff));
-  const currentWeekKey = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, "0")}-${String(sunday.getDate()).padStart(2, "0")}`;
+  // Calculate current week key locally using consistent utility
+  const todayStr = getLocalDateString(new Date());
+  const currentWeekKey = getSundayOfWeek(todayStr);
 
   const isReadOnly = isWeekReadOnly(weekKey, currentWeekKey, data?.uiConfig);
 
@@ -209,6 +214,7 @@ function AppContent() {
         onManageTags={() => setShowManageTags(true)}
         onShowSettings={() => setShowSettings(true)}
         onShowUserGuide={() => setShowUserGuide(true)}
+        onManageWatchlists={() => setShowManageWatchlists(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
         country={country}
@@ -221,6 +227,8 @@ function AppContent() {
         country={country}
         weekKey={weekKey}
         setWeekKey={setWeekKey}
+        selectedWatchlistId={selectedWatchlistId}
+        setSelectedWatchlistId={setSelectedWatchlistId}
         onClearWeek={clearWeekData}
         onAnalyze={() => setShowAnalyze(true)}
         onShowAnalytics={() => setShowAnalytics(true)}
@@ -231,6 +239,7 @@ function AppContent() {
         setData={setData}
         country={country}
         weekKey={weekKey}
+        selectedWatchlistId={selectedWatchlistId}
         isReadOnly={isReadOnly}
         onExportAll={exportAllData}
         onImportAll={importAllData}
@@ -250,6 +259,7 @@ function AppContent() {
           isOpen={modals.showFilterConfig}
           data={data}
           setData={setData}
+          selectedWatchlistId={selectedWatchlistId}
           onClose={() => modals.setShowFilterConfig(false)}
         />
       )}
@@ -259,6 +269,7 @@ function AppContent() {
           isOpen={modals.showColumnConfig}
           data={data}
           setData={setData}
+          selectedWatchlistId={selectedWatchlistId}
           onClose={() => modals.setShowColumnConfig(false)}
         />
       )}
@@ -290,6 +301,17 @@ function AppContent() {
         />
       )}
 
+      {showManageWatchlists && (
+        <ManageWatchlistsModal
+          isOpen={showManageWatchlists}
+          data={data}
+          setData={setData}
+          selectedWatchlistId={selectedWatchlistId}
+          setSelectedWatchlistId={setSelectedWatchlistId}
+          onClose={() => setShowManageWatchlists(false)}
+        />
+      )}
+
       {showAnalyze && (
         <AnalyzeModal
           isOpen={showAnalyze}
@@ -297,6 +319,7 @@ function AppContent() {
           setData={setData}
           country={country}
           weekKey={weekKey}
+          selectedWatchlistId={selectedWatchlistId}
           onClose={() => setShowAnalyze(false)}
         />
       )}
@@ -319,6 +342,8 @@ function AppContent() {
             }),
           )}
           weekKey={weekKey}
+          selectedWatchlistId={selectedWatchlistId}
+          watchlists={data.watchlists || []}
           onClose={() => setShowAnalytics(false)}
         />
       )}

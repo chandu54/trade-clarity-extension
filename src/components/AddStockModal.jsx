@@ -1,8 +1,11 @@
 import { useState } from "react";
 import Modal from "./Modal";
 
-export default function AddStockModal({ onAdd, onImport, onClose, existingStocks = {}, isOpen, sectors = [], onParseTv }) {
+export default function AddStockModal({ onAdd, onImport, onClose, existingStocks = {}, isOpen, sectors = [], onParseTv, watchlists = [], selectedWatchlistId }) {
   const [activeTab, setActiveTab] = useState("manual");
+  const [selectedWlIds, setSelectedWlIds] = useState(
+    selectedWatchlistId && selectedWatchlistId !== 'all' ? [selectedWatchlistId] : []
+  );
 
   const [value, setValue] = useState("");
   const [error, setError] = useState("");
@@ -38,7 +41,7 @@ export default function AddStockModal({ onAdd, onImport, onClose, existingStocks
     }
 
     setError("");
-    onAdd(value);
+    onAdd(value, selectedWlIds);
     onClose();
   }
 
@@ -65,7 +68,8 @@ export default function AddStockModal({ onAdd, onImport, onClose, existingStocks
 
     setTvError("");
     if (onImport) {
-      onImport(parsedStocks);
+      const stocksWithWatchlists = parsedStocks.map(s => ({ ...s, watchlists: selectedWlIds }));
+      onImport(stocksWithWatchlists);
     }
     onClose();
   }
@@ -143,7 +147,31 @@ export default function AddStockModal({ onAdd, onImport, onClose, existingStocks
           </div>
         )}
 
-        <div className="modal-actions">
+        {watchlists.length > 0 && (
+          <div className="form-field" style={{ marginTop: "16px" }}>
+            <label>Add to Watchlists</label>
+            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "8px" }}>
+              {watchlists.map((wl) => {
+                const isSelected = selectedWlIds.includes(wl.id);
+                return (
+                  <label key={wl.id} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px", cursor: "pointer" }}>
+                    <input
+                      type="checkbox"
+                      checked={isSelected}
+                      onChange={(e) => {
+                        if (e.target.checked) setSelectedWlIds([...selectedWlIds, wl.id]);
+                        else setSelectedWlIds(selectedWlIds.filter(id => id !== wl.id));
+                      }}
+                    />
+                    {wl.name}
+                  </label>
+                )
+              })}
+            </div>
+          </div>
+        )}
+
+        <div className="modal-actions" style={{ marginTop: "24px" }}>
           <button className="outline" onClick={onClose}>
             Cancel
           </button>

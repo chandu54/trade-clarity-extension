@@ -776,7 +776,7 @@ function getWeekRangeLabel(sundayDateStr) {
   return `${formatDate(monday)} to ${formatDate(friday)}`;
 }
 
-const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, onClose }) => {
+const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, selectedWatchlistId, onClose }) => {
   const [expandedParam, setExpandedParam] = useState(null);
   const [stockListPopup, setStockListPopup] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
@@ -793,21 +793,37 @@ const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, onClose
       .map(([date, weekData]) => {
         // Format date to be shorter (e.g., "10-24")
         const shortDate = date.substring(5);
+        
+        let validStocksCount = 0;
+        const weekStocks = Object.values(weekData.stocks || {});
+        
+        if (selectedWatchlistId && selectedWatchlistId !== "all") {
+           validStocksCount = weekStocks.filter(s => s.watchlists?.includes(selectedWatchlistId)).length;
+        } else {
+           validStocksCount = weekStocks.length;
+        }
+        
         return {
           name: shortDate,
-          value: Object.keys(weekData.stocks || {}).length
+          value: validStocksCount
         };
       });
-  }, [allWeeksData]);
+  }, [allWeeksData, selectedWatchlistId]);
+
+  const filteredStocks = useMemo(() => {
+    if (!stocks) return [];
+    if (!selectedWatchlistId || selectedWatchlistId === "all") return stocks;
+    return stocks.filter(s => s.watchlists?.includes(selectedWatchlistId));
+  }, [stocks, selectedWatchlistId]);
 
   const aggregatedData = useMemo(() => {
-    if (!stocks || !parameters) return [];
+    if (!filteredStocks || !parameters) return [];
 
     const systemMetrics = [];
 
     // 1. Sector Distribution
     const sectorCounts = {};
-    stocks.forEach(stock => {
+    filteredStocks.forEach(stock => {
       const val = stock.sector || "Unspecified";
       if (!sectorCounts[val]) sectorCounts[val] = { value: 0, stocks: [] };
       sectorCounts[val].value++;
@@ -823,7 +839,7 @@ const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, onClose
 
     // 2. Tradable Status
     const tradableCounts = { 'Yes': { value: 0, stocks: [] }, 'No': { value: 0, stocks: [] } };
-    stocks.forEach(stock => {
+    filteredStocks.forEach(stock => {
       const val = stock.tradable ? 'Yes' : 'No';
       tradableCounts[val].value++;
       tradableCounts[val].stocks.push(stock.symbol || stock.ticker || "Unknown");
@@ -838,7 +854,7 @@ const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, onClose
     // 3. Tags Distribution
     const tagCounts = {};
     let hasTags = false;
-    stocks.forEach(stock => {
+    filteredStocks.forEach(stock => {
       if (stock.tags && Array.isArray(stock.tags) && stock.tags.length > 0) {
         hasTags = true;
         stock.tags.forEach(tag => {
@@ -862,7 +878,7 @@ const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, onClose
     const paramMetrics = parameters.map(param => {
       if (param.type === 'number') {
         // For numbers, we want raw data points for the Dot Plot
-        const rawData = stocks
+        const rawData = filteredStocks
           .filter(s => !isNaN(parseFloat(s.params?.[param.id])))
           .map(s => ({
             symbol: s.symbol || s.ticker || "Unknown",
@@ -872,7 +888,7 @@ const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, onClose
         return { ...param, data: rawData, type: 'numeric-distribution' };
       } else if (param.type === 'date') {
         // For dates, we want raw data points for the Timeline
-        const rawData = stocks
+        const rawData = filteredStocks
           .filter(s => s.params?.[param.id])
           .map(s => ({ symbol: s.symbol || s.ticker || "Unknown", value: s.params?.[param.id] }))
           .sort((a, b) => new Date(a.value) - new Date(b.value));
@@ -894,7 +910,7 @@ const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, onClose
         return { ...param, data: rawData, type: 'date-timeline', span };
       } else {
         const counts = {}; // Key -> { value: count, stocks: [] }
-        stocks.forEach(stock => {
+        filteredStocks.forEach(stock => {
           // Access the parameter value from the stock's params object
           let value = stock.params?.[param.id];
 
@@ -1074,13 +1090,17 @@ const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, onClose
     }
   };
 
+  const activeWatchlistName = selectedWatchlistId === "all" 
+    ? "All Stocks" 
+    : (data.watchlists?.find(w => w.id === selectedWatchlistId)?.name || "All Stocks");
+
   return (
     <div className="analytics-overlay" onClick={onClose}>
       <div className="analytics-modal" onClick={e => e.stopPropagation()}>
         <div className="analytics-header">
           <div>
             <h2>Analytics Dashboard</h2>
-            <p className="analytics-subtitle">Weekly performance & distribution metrics • {getWeekRangeLabel(weekKey)}</p>
+            <p className="analytics-subtitle">Weekly performance for <strong>{activeWatchlistName}</strong> • {getWeekRangeLabel(weekKey)}</p>
           </div>
           <div className="analytics-header-actions">
             <button

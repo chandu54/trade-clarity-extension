@@ -1,6 +1,7 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import AddStockModal from "./AddStockModal";
 import EditStockModal from "./EditStockModal";
+import ImportWatchlistModal from "./ImportWatchlistModal";
 import TrashIcon from "./icons/TrashIcon";
 import { useToast } from "./ToastContext";
 import { useConfirm } from "./ConfirmContext";
@@ -195,6 +196,7 @@ export default function StockGrid({
   setData,
   isReadOnly,
   country,
+  selectedWatchlistId,
   onExportAll,
   onImportAll,
 }) {
@@ -206,8 +208,13 @@ export default function StockGrid({
   /* =====================
      STATE
   ===================== */
-  const [filters, setFilters] = useState({});
+  const [showManageParams, setShowManageParams] = useState(false);
+  const [showManageSectors, setShowManageSectors] = useState(false);
+
+  const [importPendingStocks, setImportPendingStocks] = useState(null);
+
   const [searchQuery, setSearchQuery] = useState("");
+  const [filters, setFilters] = useState({});
   const [sortBy, setSortBy] = useState("symbol");
   const [sortDir, setSortDir] = useState("asc");
 
@@ -270,9 +277,14 @@ export default function StockGrid({
   const columnConfig = data.uiConfig?.columnVisibility || {};
   const showNotes = columnConfig["__notes__"] !== false;
 
-  const visibleParams = Object.entries(params).filter(
-    ([key]) => columnConfig[key] !== false,
-  );
+  const activeWatchlist = (data.watchlists || []).find(w => w.id === selectedWatchlistId);
+
+  const visibleParams = Object.entries(params).filter(([key]) => {
+     if (selectedWatchlistId !== "all" && activeWatchlist) {
+         return activeWatchlist.visibleParams.includes(key);
+     }
+     return columnConfig[key] !== false;
+  });
 
   const colCount =
     1 + // Stock
@@ -286,10 +298,14 @@ export default function StockGrid({
   /* =====================
      FILTERABLE PARAMS
   ===================== */
-  const filterableParams = useMemo(
-    () => Object.entries(params).filter(([, p]) => p.filterable),
-    [params],
-  );
+  const filterableParams = useMemo(() => {
+    return Object.entries(params).filter(([key, p]) => {
+       if (selectedWatchlistId !== "all" && activeWatchlist) {
+          return activeWatchlist.visibleFilters.includes(key);
+       }
+       return p.filterable;
+    });
+  }, [params, selectedWatchlistId, activeWatchlist]);
 
   const isSectorFilterable = data.uiConfig?.sectorFilterable === true;
   const isTradableFilterable = data.uiConfig?.tradableFilterable === true;
@@ -416,6 +432,12 @@ export default function StockGrid({
   ===================== */
   const filteredStocks = useMemo(() => {
     return allStocks.filter((stock) => {
+      /* WATCHLIST FILTER */
+      if (selectedWatchlistId !== "all") {
+        const stockWatchlists = stock.watchlists || [];
+        if (!stockWatchlists.includes(selectedWatchlistId)) return false;
+      }
+
       /* SEARCH FILTER */
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
@@ -486,6 +508,7 @@ export default function StockGrid({
     isSectorFilterable,
     isTagFilterable,
     searchQuery,
+    selectedWatchlistId,
   ]);
 
   /* =====================
@@ -612,7 +635,7 @@ export default function StockGrid({
   /* =====================
      CRUD
   ===================== */
-  function handleAddStock(input) {
+  function handleAddStock(input, selectedWlIds = []) {
     const symbols = input
       .split(",")
       .map((s) => s.trim())
@@ -633,6 +656,7 @@ export default function StockGrid({
             notes: "",
             tags: [],
             params: {},
+            watchlists: selectedWlIds,
           };
         }
       });
@@ -839,7 +863,7 @@ export default function StockGrid({
         try {
           const sectorList = data.uiConfig?.sectors || [];
           const parsedStocks = parseTradingViewData(content, sectorList);
-          importStocks(parsedStocks);
+          setImportPendingStocks(parsedStocks);
         } catch (err) {
           console.error(err);
           showToast(err.message || "Failed to parse text file", "error");
@@ -870,7 +894,7 @@ export default function StockGrid({
             );
             return;
           }
-          importStocks(json);
+          setImportPendingStocks(json);
         }
       } catch (err) {
         console.error(err);
@@ -922,6 +946,7 @@ export default function StockGrid({
             ...s,
             params: { ...(existing?.params || {}), ...(s.params || {}) },
             tags: s.tags || existing?.tags || [],
+            watchlists: Array.from(new Set([...(existing?.watchlists || []), ...(s.watchlists || [])])),
           };
           count++;
         }
@@ -1296,6 +1321,22 @@ export default function StockGrid({
           existingStocks={week?.stocks}
           sectors={sectors}
           onParseTv={(content) => parseTradingViewData(content, sectors)}
+          watchlists={data.watchlists || []}
+          selectedWatchlistId={selectedWatchlistId}
+        />
+      )}
+
+      {importPendingStocks && (
+        <ImportWatchlistModal
+          isOpen={true}
+          stocks={importPendingStocks}
+          watchlists={data.watchlists || []}
+          selectedWatchlistId={selectedWatchlistId}
+          onConfirm={(finalStocks) => {
+            importStocks(finalStocks);
+            setImportPendingStocks(null);
+          }}
+          onClose={() => setImportPendingStocks(null)}
         />
       )}
 
@@ -1311,6 +1352,7 @@ export default function StockGrid({
           weekInfo={getWeekRangeLabel(weekKey)}
           country={country}
           showTags={showTags}
+          watchlists={data.watchlists || []}
         />
       )}
 

@@ -116,6 +116,9 @@ export async function loadData() {
   if (!data) {
     data = structuredClone(DEFAULT_DATA);
   }
+  if (!data.watchlists) {
+    data.watchlists = structuredClone(DEFAULT_DATA.watchlists);
+  }
 
   /* =========================
    MERGE UI CONFIG (IMPORTANT)

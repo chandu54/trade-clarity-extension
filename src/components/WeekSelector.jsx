@@ -1,16 +1,6 @@
 import WeekSummary from "./WeekSummary";
 import { useEffect, useState, useRef } from "react";
-
-function getSundayOfWeek(dateString) {
-  // Parse as local date
-  const [y, m, d] = dateString.split("-").map(Number);
-  const date = new Date(y, m - 1, d);
-  const day = date.getDay();
-  // Treat Sunday (0) as 7 so it maps to the previous week's Sunday anchor
-  const diff = date.getDate() - (day === 0 ? 7 : day);
-  const sunday = new Date(date.setDate(diff));
-  return getLocalDateString(sunday);
-}
+import { getLocalDateString, getSundayOfWeek } from "../utils/weekHelpers";
 
 function getWeekRangeLabel(sundayDateStr) {
   const [y, m, d] = sundayDateStr.split("-").map(Number);
@@ -30,19 +20,14 @@ function getWeekRangeLabel(sundayDateStr) {
   return `${formatDate(monday)} to ${formatDate(friday)}`;
 }
 
-function getLocalDateString(date) {
-  const year = date.getFullYear();
-  const month = String(date.getMonth() + 1).padStart(2, "0");
-  const day = String(date.getDate()).padStart(2, "0");
-  return `${year}-${month}-${day}`;
-}
-
 export default function WeekSelector({
   data,
   setData,
   country,
   weekKey,
   setWeekKey,
+  selectedWatchlistId,
+  setSelectedWatchlistId,
   onClearWeek,
   onAnalyze,
   onShowAnalytics,
@@ -149,6 +134,20 @@ export default function WeekSelector({
             </option>
           ))}
         </select>
+
+        <select
+          className="select-control-v2"
+          value={selectedWatchlistId}
+          onChange={(e) => setSelectedWatchlistId(e.target.value)}
+        >
+          <option value="all">All Stocks</option>
+          {(data.watchlists || []).map((w) => (
+            <option key={w.id} value={w.id}>
+              {w.name}
+            </option>
+          ))}
+        </select>
+
         {weekKey !== currentWeekSunday && (
           <button
             className="go-today-link"
