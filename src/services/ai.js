@@ -63,7 +63,7 @@ export async function getAiAnalysis(weekData, paramDefinitions, selectedPromptTe
       return await fetchGemini(apiKey, prompt, modelToUse, isCustom);
     }
   } catch (error) {
-    console.error("AI Analysis Failed:", error);
+    console.error("AI Analysis Failed:", error.message || "Unknown error occurred.");
     throw error;
   }
 }
@@ -101,11 +101,14 @@ export async function testConnection(apiKey, model) {
 async function fetchGemini(apiKey, prompt, model, isCustom = false) {
   // Ensure model doesn't have 'models/' prefix if user typed it
   const cleanModel = model.replace(/^models\//, "");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
+  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
 
   const response = await fetch(url, {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: { 
+      "Content-Type": "application/json",
+      "x-goog-api-key": apiKey
+    },
     body: JSON.stringify({
       contents: [{ parts: [{ text: prompt }] }],
     }),
@@ -179,7 +182,7 @@ function parseResponse(text, isCustom = false) {
     const jsonString = text.substring(startIndex, endIndex + 1);
     return JSON.parse(jsonString);
   } catch (e) {
-    console.error("JSON Parse Error", e, text);
+    console.error("JSON Parse Error: Failed to parse AI response.", e.message);
     throw new Error(
       "Failed to parse AI response. The model might have returned invalid JSON.",
     );

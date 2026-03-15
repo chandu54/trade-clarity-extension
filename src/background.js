@@ -289,6 +289,9 @@ async function updateStorageWithMetrics(updates) {
 
       if (dataChanged) {
         chrome.storage.local.set({ trading_app_data: db }, () => {
+          if (chrome.runtime.lastError) {
+             console.error("Background API Sync Failed - Storage Error:", chrome.runtime.lastError.message);
+          }
           resolve();
         });
       } else {

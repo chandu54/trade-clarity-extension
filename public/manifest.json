@@ -3,7 +3,7 @@
   "description": "Your disciplined path to smarter trades. Manage weekly watchlists, analyze setups, and maintain trading discipline with AI insights.",
   "version": "1.0.0",
   "manifest_version": 3,
-  "permissions": ["storage",  "activeTab"],
+  "permissions": ["storage", "unlimitedStorage", "activeTab"],
   "host_permissions": [
     "https://query1.finance.yahoo.com/*"
   ],

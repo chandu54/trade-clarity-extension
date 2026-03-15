@@ -40,11 +40,23 @@ const safeStorage = {
   },
   set: (items, callback) => {
     if (isExtension) {
-      chrome.storage.local.set(items, callback);
+      chrome.storage.local.set(items, () => {
+        if (chrome.runtime.lastError) {
+          console.error("Storage Error:", chrome.runtime.lastError.message);
+          if (callback) callback(chrome.runtime.lastError);
+        } else {
+          if (callback) callback(null);
+        }
+      });
     } else {
       // Web Fallback: localStorage
-      Object.entries(items).forEach(([k, v]) => localStorage.setItem(k, JSON.stringify(v)));
-      if (callback) callback();
+      try {
+        Object.entries(items).forEach(([k, v]) => localStorage.setItem(k, JSON.stringify(v)));
+        if (callback) callback(null);
+      } catch (e) {
+        console.error("Local Storage Error:", e);
+        if (callback) callback(e);
+      }
     }
   }
 };
@@ -102,6 +114,14 @@ const TradeClarityWidget = () => {
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
   };
+
+  // Ensure listeners are cleaned up if component unmounts during drag
+  useEffect(() => {
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, [handleMouseMove, handleMouseUp]);
 
   // --- RESIZE LOGIC ---
   const startResize = (direction) => (e) => {
@@ -288,7 +308,11 @@ const TradeClarityWidget = () => {
     if (!targetWeeks[weekKey]) targetWeeks[weekKey] = { displayName: `Week of ${weekKey}`, stocks: {} };
     targetWeeks[weekKey].stocks[symbol] = stockData;
 
-    safeStorage.set({ trading_app_data: newData }, () => {
+    safeStorage.set({ trading_app_data: newData }, (err) => {
+      if (err) {
+         alert(`Failed to save: Storage limit may be reached.\n\n${err.message || 'Unknown error'}`);
+         return; // Intercept success state
+      }
       setAppData(newData);
       setSaveMessage(true);
       setTimeout(() => { setSaveMessage(false); setIsOpen(false); }, 1200);
