@@ -33,10 +33,20 @@ export default function AddStockModal({ onAdd, onImport, onClose, existingStocks
     }
 
     // Check for duplicate stocks
-    const duplicates = symbols.filter((symbol) => existingStocks[symbol]);
+    const duplicates = symbols.filter((symbol) => {
+      const existing = existingStocks[symbol];
+      if (!existing) return false;
+      
+      const existingWls = existing.watchlists || [];
+      const hasAllWatchlists = selectedWlIds.every(id => existingWls.includes(id));
+      
+      // If they aren't selecting any specific watchlists and it exists, it's a duplicate.
+      // If they are selecting watchlists, and it already has all of them, it's a duplicate.
+      return selectedWlIds.length === 0 ? true : hasAllWatchlists;
+    });
     
     if (duplicates.length > 0) {
-      setError(`Stock(s) already exist: ${duplicates.join(", ")}`);
+      setError(`Stock(s) already exist in these watchlists: ${duplicates.join(", ")}`);
       return;
     }
 
@@ -60,9 +70,18 @@ export default function AddStockModal({ onAdd, onImport, onClose, existingStocks
     }
     
     // Check duplicates against existingStocks
-    const duplicates = parsedStocks.filter(s => existingStocks[s.symbol]);
+    const duplicates = parsedStocks.filter(s => {
+      const existing = existingStocks[s.symbol];
+      if (!existing) return false;
+      
+      const existingWls = existing.watchlists || [];
+      const hasAllWatchlists = selectedWlIds.every(id => existingWls.includes(id));
+      
+      return selectedWlIds.length === 0 ? true : hasAllWatchlists;
+    });
+    
     if (duplicates.length > 0) {
-      setTvError(`Stock(s) already exist: ${duplicates.map(d => d.symbol).join(", ")}`);
+      setTvError(`Stock(s) already exist in these watchlists: ${duplicates.map(d => d.symbol).join(", ")}`);
       return;
     }
 

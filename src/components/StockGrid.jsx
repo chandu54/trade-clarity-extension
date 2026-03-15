@@ -656,7 +656,14 @@ export default function StockGrid({
             notes: "",
             tags: [],
             params: {},
-            watchlists: selectedWlIds,
+            watchlists: [...selectedWlIds],
+          };
+        } else if (selectedWlIds.length > 0) {
+          const existing = newStocks[symbol];
+          const mergedWls = Array.from(new Set([...(existing.watchlists || []), ...selectedWlIds]));
+          newStocks[symbol] = {
+            ...existing,
+            watchlists: mergedWls
           };
         }
       });
