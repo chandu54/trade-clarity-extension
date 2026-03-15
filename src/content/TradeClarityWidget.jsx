@@ -64,6 +64,12 @@ const TradeClarityWidget = () => {
   const [saveMessage, setSaveMessage] = useState(false); 
   const [newTag, setNewTag] = useState('');
 
+  // Voice Integration State
+  const [isListening, setIsListening] = useState(false);
+  const [liveTranscript, setLiveTranscript] = useState('');
+  const recognitionRef = useRef(null);
+  const parseTranscriptRef = useRef(null);
+
   // 1. Position & Dragging State
   const [position, setPosition] = useState({ top: 80, right: 16 });
   const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, startTop: 0, startRight: 0, hasMoved: false });
@@ -289,7 +295,463 @@ const TradeClarityWidget = () => {
     });
   }, [appData, symbol, stockData, region, targetDate]);
 
-  if (!symbol) return null; 
+  const parseTranscript = useCallback((transcript) => {
+    let text = transcript.toLowerCase().trim();
+
+    // --- 0. Phonetic & Transcription Error Correction ---
+    // The Web Speech API routinely misunderstands domain-specific or similar-sounding words.
+    // We aggressively sanitize the input string before any logic runs.
+    const corrections = {
+      // Booleans & Common mistranslations
+      "falls": "false",
+      "fawls": "false",
+      "faults": "false",
+      "s": "yes", // e.g. "Symmetry S" -> "Symmetry Yes"
+      "yep": "yes",
+      "yeah": "yes",
+      "nah": "no",
+      "nope": "no",
+      "of": "off",
+      "on": "on",
+      "check": "true",
+      "uncheck": "false",
+      "enable": "true",
+      "disable": "false",
+      
+      // Relative Strength / Attitude
+      "week": "weak",
+      "strenth": "strength",
+      "streangth": "strength",
+      "pour": "poor",
+      "four": "poor", // Contextual: if they say "attitude four" it's likely "poor" unless we are on a number field. We'll handle numbers later.
+      "gud": "good",
+      "excellant": "excellent",
+      
+      // Numbers (for ADR/Stage)
+      "one": "1",
+      "two": "2",
+      "to": "2",
+      "too": "2",
+      "three": "3",
+      "tree": "3",
+      "four": "4",
+      "for": "4",
+      "five": "5",
+      "six": "6",
+      "seven": "7",
+      "eight": "8",
+      "ate": "8",
+      "nine": "9",
+      "ten": "10",
+      
+      // Stages
+      "stage one": "stage 1",
+      "stage two": "stage 2",
+      "stage to": "stage 2",
+      "stage too": "stage 2",
+      "stage three": "stage 3",
+      "stage tree": "stage 3",
+      "stage four": "stage 4",
+      "stage for": "stage 4",
+      
+      // ADR
+      "adr one": "adr 1",
+      "adr two": "adr 2",
+      "adr to": "adr 2",
+      "adr three": "adr 3",
+      "adr four": "adr 4",
+      "adr for": "adr 4",
+      "adr five": "adr 5",
+      "adr six": "adr 6",
+      "adr seven": "adr 7",
+      "adr eight": "adr 8",
+      "adr nine": "adr 9",
+      "adr ten": "adr 10",
+    };
+
+    // Apply entire word replacements
+    Object.entries(corrections).forEach(([wrong, right]) => {
+      // Regex replace whole words only to avoid destroying substrings
+      const regex = new RegExp(`\\b${wrong}\\b`, 'gi');
+      text = text.replace(regex, right);
+    });
+
+    const matchPart = (part, str) => {
+       const escaped = String(part).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+       // We use \b to represent a word boundary instead of just [^a-z0-9] so that hyphens (like "non-durables") don't break the match.
+       return new RegExp(`\\b${escaped}\\b`, 'i').test(str);
+    };
+
+    const hasWord = (str) => {
+      if (!str) return false;
+      return matchPart(str, text);
+    };
+
+    const matchStr = (w) => {
+       if (!w) return false;
+       if (hasWord(w)) return true;
+       // We only want plural/singular matching for words > 3 chars to avoid mapping 's' to 'ss' or 'to' to 'tos'
+       if (w.length > 3) {
+           if (w.endsWith('s') && hasWord(w.slice(0, -1))) return true;
+           if (!w.endsWith('s') && hasWord(w + 's')) return true;
+       }
+       return false;
+    };
+
+    // Handle 'Save' Combinations
+    // Examples: "save", "save the data", "save the changes", "save changes", "save setup", "save widget"
+    const isSaveCommand = 
+       text === "save" || 
+       /^save (it|the data|data|changes|the changes|setup|the setup|widget|the widget)$/i.test(text);
+
+    if (isSaveCommand) {
+       handleSave();
+       return;
+    }
+
+    if (hasWord("tradable")) {
+      if (hasWord("not") || hasWord("untradable") || hasWord("false") || hasWord("no")) {
+        handleFieldChange('tradable', false);
+      } else {
+        handleFieldChange('tradable', true);
+      }
+    } else if (hasWord("untradable")) {
+      handleFieldChange('tradable', false);
+    }
+
+    if (appData?.paramDefinitions) {
+      Object.entries(appData.paramDefinitions).forEach(([key, def]) => {
+        if (!def) return;
+        const keyLower = String(key).toLowerCase();
+        const labelLower = String(def.label || key).toLowerCase();
+        
+        const labelWords = labelLower.split(/\s+/).filter(w => w.length > 2);
+        
+        let targetsField = false;
+        if (matchStr(labelLower) || matchStr(keyLower)) {
+          targetsField = true;
+        } else {
+          for (let w of labelWords) {
+            if (matchStr(w)) {
+              targetsField = true;
+              break;
+            }
+          }
+        }
+
+        if (targetsField) {
+           // --- Special Case: Number ranges for Liquidity ---
+           if (keyLower === 'liquidity') {
+              const numMatch = text.match(/\b(\d+)\s*(?:cr|crore|crores)?\b/i);
+              if (numMatch) {
+                 const num = parseInt(numMatch[1], 10);
+                 if (num <= 20) { handleParamChange(key, "<=20Cr"); return; }
+                 if (num <= 49) { handleParamChange(key, "21 to 49Cr"); return; }
+                 if (num <= 99) { handleParamChange(key, "50 to 99Cr"); return; }
+                 if (num <= 199) { handleParamChange(key, "100Cr to 199Cr"); return; }
+                 if (num <= 499) { handleParamChange(key, "200Cr to 499Cr"); return; }
+                 if (num <= 999) { handleParamChange(key, "500Cr+"); return; }
+                 if (num <= 1499) { handleParamChange(key, "1000Cr+"); return; }
+                 if (num <= 1999) { handleParamChange(key, "1500Cr+"); return; }
+                 handleParamChange(key, "2000Cr+"); 
+                 return;
+              }
+           }
+
+           if (def.type === 'select') {
+             const options = Array.isArray(def.options) ? def.options : (typeof def.options === 'string' ? def.options.split(',') : []);
+             
+             // First pass: try exact phrase matching for multi-word options (e.g. "Stage 3", "Very Strong", "Not Applicable")
+             let matchedOption = false;
+             for (let opt of options) {
+               const optStr = String(opt).trim();
+               const optLower = optStr.toLowerCase();
+               const escapedOptLower = optLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+               const exactOptionRegex = new RegExp(`(^|[^a-z0-9])${escapedOptLower}([^a-z0-9]|$)`, 'i');
+               
+               if (exactOptionRegex.test(text)) {
+                   handleParamChange(key, optStr);
+                   matchedOption = true;
+                   break;
+               }
+             }
+
+             // Second pass: loosely match distinct words if exact phrase failed
+             if (!matchedOption) {
+                 for (let opt of options) {
+                   const optStr = String(opt).trim();
+                   const optLower = optStr.toLowerCase();
+                   const normalizedOpt = optLower.replace(/[^a-z0-9\s]/g, '').trim();
+                   
+                   if (
+                      hasWord(optLower) || 
+                      (normalizedOpt.length > 0 && hasWord(normalizedOpt)) ||
+                      (optLower.startsWith(labelLower) && hasWord(optLower.replace(labelLower, '').trim())) ||
+                      // Edge case handling: For purely numeric options (like ADR 1-10)
+                      (!isNaN(optLower) && hasWord(optLower))
+                   ) {
+                     handleParamChange(key, optStr);
+                     break; 
+                   }
+                 }
+             }
+           } else if (def.type === 'checkbox') {
+              // We must identify if the user is explicitly affirming or denying THIS parameter.
+              // Just finding "yes" in the transcript isn't enough, they might be saying "yes" to something else.
+              // For checkboxes, if they mentioned the field name, we assume they want to toggle it or set it.
+              
+              const affirmWords = ['yes', 'true', 'on', 'enable', 'check', 'yeah', 'yep'];
+              const denyWords = ['no', 'false', 'off', 'disable', 'uncheck', 'nope', 'nah', 'now'];
+              
+              let isAffirming = false;
+              let isDenying = false;
+
+              for (let w of affirmWords) { if (hasWord(w)) { isAffirming = true; break; } }
+              for (let w of denyWords) { if (hasWord(w)) { isDenying = true; break; } }
+
+              if (isDenying) {
+                 handleParamChange(key, false);
+              } else if (isAffirming) {
+                 handleParamChange(key, true);
+              } else {
+                 handleParamChange(key, !stockData?.params?.[key]);
+              }
+           } else if (def.type === 'number' || def.type === 'text') {
+              // Generic Number/Text extraction:
+              // "Set target to 150" -> we look for numbers near the field name
+              // Find all numbers in the text
+              const numbers = text.match(/\b\d+(\.\d+)?\b/g);
+              if (numbers && numbers.length > 0) {
+                 // If there's a number, just grab the first one we see as the value for this field in this context
+                 // More advanced NLP would map the closest number to the field, but this is usually sufficient for short voice commands
+                 const val = def.type === 'number' ? parseFloat(numbers[0]) : numbers[0];
+                 handleParamChange(key, val);
+              }
+           } else if (def.type === 'date') {
+              // Simple Date Parsing:
+              // "Today", "Tomorrow", "Yesterday", or "May 15" -> YYYY-MM-DD
+              let d = new Date();
+              let matchedDate = false;
+
+              if (hasWord('today')) {
+                 matchedDate = true;
+              } else if (hasWord('tomorrow')) {
+                 d.setDate(d.getDate() + 1);
+                 matchedDate = true;
+              } else if (hasWord('yesterday')) {
+                 d.setDate(d.getDate() - 1);
+                 matchedDate = true;
+              } else {
+                 // Try to match "Month DD" (e.g., "January 5", "Jan 12th")
+                 const months = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october', 'november', 'december', 'jan', 'feb', 'mar', 'apr', 'jun', 'jul', 'aug', 'sep', 'oct', 'nov', 'dec'];
+                 for (let m = 0; m < months.length; m++) {
+                    const monthWord = months[m];
+                    const monthRegex = new RegExp(`\\b${monthWord}\\s+(\\d+)(st|nd|rd|th)?\\b`, 'i');
+                    const match = text.match(monthRegex);
+                    if (match) {
+                       const day = parseInt(match[1], 10);
+                       const monthIndex = m % 12; // Handle both full length and short length matches
+                       d.setMonth(monthIndex);
+                       d.setDate(day);
+                       // Quick check: if the inferred date is way in the past (e.g. it's Jan and they said Dec 15, assume previous year)
+                       const now = new Date();
+                       if (d.getMonth() > now.getMonth() + 2) { // Allow slight future, but if it's way off, it's likely last year
+                           d.setFullYear(now.getFullYear() - 1);
+                       }
+                       matchedDate = true;
+                       break;
+                    }
+                 }
+              }
+
+              if (matchedDate) {
+                 const formatted = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+                 handleParamChange(key, formatted);
+              }
+           }
+        }
+      });
+    }
+
+    const availableSectors = appData?.uiConfig?.sectors || [];
+    for (const sector of availableSectors) {
+      const s = sector.toLowerCase();
+      // Handle slashes in Sector names (e.g. "Consumer Durables / Non Durables")
+      const normalizedSector = s.replace(/\//g, ' and ').replace(/\s+/g, ' ').trim();
+      
+      // Specifically avoid 'it' matching spuriously as it is a common pronoun ("Set it to 5")
+      if (s === 'it') {
+         if (hasWord("sector it") || hasWord("it sector") || hasWord("information technology")) {
+            handleFieldChange('sector', sector);
+            break;
+         }
+         continue; // Only allow IT to map if distinctly referenced
+      }
+
+      let matchesSector = false;
+      
+      const escapedSector = s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      const exactMatchRegex = new RegExp(`(^|[^a-z0-9])${escapedSector}([^a-z0-9]|$)`, 'i');
+      
+      if (exactMatchRegex.test(text) || text.includes(normalizedSector)) {
+         matchesSector = true;
+      } else {
+         // Tokenize the sector name into distinct words (e.g. "Metals/Minerals" -> "Metals", "Minerals")
+         const words = s.split(/[\s/&]+/).filter(w => w.length > 2 && w !== 'and');
+         
+         // If all significant words of the sector are matched in the text (plural/singular aware)
+         // E.g. "Minerals and Metals" correctly matches "Metals/Minerals"
+         if (words.length > 0 && words.every(w => matchStr(w))) {
+             if (hasWord('sector') || words.length > 1) { 
+                 // If it's a multi-word sector, matching all distinct words is strong enough.
+                 // If it's a single word sector, require "sector" as a prefix/suffix to avoid generic triggers.
+                 matchesSector = true;
+             }
+         }
+      }
+
+      if (matchesSector) {
+        handleFieldChange('sector', sector); 
+        break;
+      }
+    }
+
+    // --- Tags Parsing ---
+    const isClearingAllTags = hasWord('remove all tags') || hasWord('clear tags') || hasWord('clear all tags') || hasWord('remove tags');
+    
+    if (isClearingAllTags) {
+       setStockData(prev => ({ ...prev, tags: [] }));
+    } else {
+       const availableTags = appData?.uiConfig?.tags || [];
+       for (const tag of availableTags) {
+         if (!tag) continue;
+         const t = tag.toLowerCase();
+         // Handle multi-word tags perfectly by escaping regex chars
+         const escapedTag = t.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+         
+         let matchesTag = false;
+         
+         // 1. Exact phrase match using word boundaries
+         const exactMatchRegex = new RegExp(`\\b${escapedTag}\\b`, 'i');
+         if (exactMatchRegex.test(text)) {
+            matchesTag = true;
+         } 
+         // 2. Fallback: Check if they said "tag" + normalized words
+         else if (hasWord('tag') || hasWord('tags')) {
+            const words = t.split(/[\s/]+/).filter(w => w.length > 2);
+            // If all significant words of the tag are present in the text
+            if (words.length > 0 && words.every(w => hasWord(w))) {
+               matchesTag = true;
+            }
+         }
+         
+         if (matchesTag) {
+            if (hasWord('remove') || hasWord('delete') || hasWord('drop') || hasWord('minus') || hasWord('without')) {
+                handleRemoveTag(tag);
+            } else {
+                handleAddTag(tag);
+            }
+         }
+       }
+    }
+
+    // Capture Notes anywhere in the sentence
+    const noteMatch = text.match(/\b(add notes?|notes?)\b(.*)/i);
+    if (noteMatch && noteMatch[2]) {
+      const noteContent = noteMatch[2].trim();
+      if (noteContent) {
+         handleFieldChange('notes', (stockData?.notes ? stockData.notes + ' ' : '') + noteContent);
+      }
+    }
+  }, [appData, stockData, handleSave, handleFieldChange, handleParamChange]);
+
+  useEffect(() => {
+    parseTranscriptRef.current = parseTranscript;
+  }, [parseTranscript]);
+
+  useEffect(() => {
+    const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (SpeechRecognition) {
+      const recognition = new SpeechRecognition();
+      recognition.continuous = false;
+      recognition.interimResults = true; // Enabled interim results to show the live text
+      recognition.lang = 'en-US';
+
+      recognition.onstart = () => {
+        setIsListening(true);
+        setLiveTranscript('');
+      };
+      
+      recognition.onresult = (event) => {
+        let interimTranscript = '';
+        let finalTranscript = '';
+
+        for (let i = event.resultIndex; i < event.results.length; ++i) {
+          if (event.results[i].isFinal) {
+            finalTranscript += event.results[i][0].transcript;
+          } else {
+            interimTranscript += event.results[i][0].transcript;
+          }
+        }
+
+        setLiveTranscript(finalTranscript || interimTranscript);
+
+        if (finalTranscript && parseTranscriptRef.current) {
+           parseTranscriptRef.current(finalTranscript);
+        }
+      };
+
+      recognition.onerror = (event) => {
+        console.error("Speech recognition error:", event.error);
+        setIsListening(false);
+        setLiveTranscript('Error: ' + event.error);
+      };
+
+      recognition.onend = () => {
+        setIsListening(false);
+        setTimeout(() => setLiveTranscript(''), 2000); // Clear after 2 seconds
+      };
+
+      recognitionRef.current = recognition;
+    }
+  }, []);
+
+  const toggleListening = useCallback((e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    if (!recognitionRef.current) {
+        alert("Speech recognition is not supported in this browser.");
+        return;
+    }
+    if (isListening) {
+      recognitionRef.current.stop();
+    } else {
+      try {
+        recognitionRef.current.start();
+      } catch (err) {
+        console.error("Speech recognition error:", err);
+      }
+    }
+  }, [isListening]);
+
+  // --- GLOBAL KEYBOARD SHORTCUT (Ctrl+Shift+S / Cmd+Shift+S) ---
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      // Allow Ctrl+Shift+S or Cmd+Shift+S to activate voice commands anywhere
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 's' || e.key === 'S')) {
+         e.preventDefault();
+         e.stopPropagation();
+         toggleListening(e);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown, true); // Use capture phase to ensure it grabs it before TradingView
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown, true);
+  }, [toggleListening]);
+
+  if (!symbol) return null;
 
   // --- FAB STATE (CLOSED) ---
   if (!isOpen) {
@@ -346,25 +808,39 @@ const TradeClarityWidget = () => {
         onClick={toggleWidget}
       >
         {/* Top Row: Title + Window Controls (Proper Flexbox Layout) */}
-        <div className="flex items-center justify-between mb-2">
+        <div className="flex items-start justify-between mb-2">
           
           {/* Left: Branding & Symbol */}
-          <div className="flex items-center gap-2 overflow-hidden pr-2">
-            <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
-            <span className="font-bold tracking-tight shrink-0 text-white">TradeClarity</span>
+          <div className="flex flex-col gap-1.5 min-w-0 pr-2">
+            <div className="flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+              <span className="font-bold tracking-tight shrink-0 text-white leading-none">TradeClarity</span>
+            </div>
             <span 
-              className="border px-1.5 py-0.5 rounded text-[10px] font-mono shadow-sm font-bold truncate bg-slate-800 border-slate-600 text-blue-400" 
+              className="border px-1.5 py-0.5 rounded text-[11px] font-mono shadow-sm font-bold bg-slate-800 border-slate-600 text-blue-400 w-fit break-all" 
               title={symbol}
             >
               {symbol}
             </span>
           </div>
 
-          {/* Right: Window Controls */}
+          {/* Right: Window Controls & Mic */}
           <div 
             className="flex items-center gap-0.5 rounded-lg px-1 py-0.5 border shrink-0 bg-slate-800/50 border-slate-600/50"
             onMouseDown={(e) => e.stopPropagation()}
           >
+              <button
+                onClick={toggleListening}
+                className={`transition-colors p-1 rounded ${
+                  isListening 
+                    ? 'text-red-500 bg-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.4)] animate-[pulse_1.5s_ease-in-out_infinite]'
+                    : 'text-slate-400 hover:text-blue-400 hover:bg-slate-700/50'
+                }`}
+                title="Voice Commands (Ctrl+Shift+S)"
+              >
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 10v2a7 7 0 01-14 0v-2M12 18v4m-4 0h8M12 3a3 3 0 00-3 3v8a3 3 0 006 0V6a3 3 0 00-3-3z"></path></svg>
+              </button>
+              <div className="w-px h-3 mx-0.5 bg-slate-600"></div>
               <button onClick={openDashboard} className="transition-colors p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-700/50" title="Open TradeClarity Dashboard">
                 <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
               </button>
@@ -397,6 +873,16 @@ const TradeClarityWidget = () => {
               style={{ colorScheme: "dark" }}
             />
         </div>
+
+        {/* Live Transcript / Listening Indicator */}
+        {(isListening || liveTranscript) && (
+          <div className="mt-2 flex items-center gap-2 px-2 py-1.5 rounded bg-slate-800/80 border border-slate-700">
+            {isListening && <div className="w-1.5 h-1.5 rounded-full bg-red-500 animate-ping shrink-0"></div>}
+            <span className="text-[10px] font-medium text-slate-300 truncate italic">
+              {isListening && !liveTranscript ? "Listening..." : `"${liveTranscript}"`}
+            </span>
+          </div>
+        )}
       </div>
 
       {/* Scrollable Body */}

@@ -281,9 +281,9 @@ export default function UserGuideModal({
             </li>
             <li>
               <strong>Custom AI Strategies:</strong> Go to <em>Settings {"→"} AI Settings</em> to create your own instructions. You can define specific ways the AI should evaluate your watchlist (e.g. 'Conservative Evaluation', 'Aggressive Growth Focus').
-            </li>
-            <li>
-              <strong>Variables:</strong> Use tags like <code>{"{stocks}"}</code> or <code>{"{sectors}"}</code> in your custom prompts. The system will automatically inject your real-time data into these placeholders before sending to the AI.
+              <div className="text-[12px] text-slate-400 mt-1 max-w-[95%]">
+                <em>Note: Use variables like <code>{"{stocks}"}</code> or <code>{"{sectors}"}</code> in your custom prompts. The system will automatically inject your real-time data into these placeholders before sending to the AI.</em>
+              </div>
             </li>
           </ul>
         </Section>
@@ -365,10 +365,17 @@ export default function UserGuideModal({
               <strong>Instant Sync:</strong> Add stocks, notes, tags, and parameters directly from the chart. Data is instantly saved to your dashboard.
             </li>
             <li>
-              <strong>Smart Context:</strong> The widget automatically detects the active ticker symbol from the page title.
+              <strong>Context Aware:</strong> The widget automatically detects the active ticker symbol from the page title.
             </li>
             <li>
-              <strong>Floating UI:</strong> The widget is draggable and collapsible, so it stays out of your way while analyzing price action.
+              <strong>Voice Commands:</strong> Click the microphone icon or press `Ctrl+Shift+S` (or `Cmd+Shift+S`) to dictate setups hands-free.
+              <ul className="guide-sublist text-[12px] mt-1 ml-4 list-disc text-slate-400">
+                <li>Assign values to custom fields: <em>"Set target to 150"</em> or <em>"Attitude is Excellent"</em></li>
+                <li>Add/Remove tags effortlessly: <em>"Add tag IPO Base"</em> or <em>"Remove all tags"</em></li>
+                <li>Toggle booleans: <em>"Tradable Yes"</em> or <em>"Fractals Off"</em></li>
+                <li>Log notes: <em>"Add notes this stock looks ready to break out"</em></li>
+                <li>Save instantly: <em>"Save the setup"</em> or <em>"Save"</em></li>
+              </ul>
             </li>
           </ul>
           <div className="guide-tip">

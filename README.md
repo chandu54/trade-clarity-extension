@@ -134,6 +134,10 @@ This project includes a Chrome Extension content script that injects a helper wi
 - **Floating UI**: A draggable, collapsible widget that stays out of your way.
 - **Region Support**: Toggle between market regions (e.g., US, IN).
 - <img width="928" height="473" alt="image" src="https://github.com/user-attachments/assets/70419318-1dcf-430a-bf16-f3c9b19dd5d3" />
+- **Hands-Free Voice Commands**:
+  - Dictate setups instantly using the Web Speech API by clicking the microphone icon or using the global shortcut (`Ctrl + Shift + S` / `Cmd + Shift + S`).
+  - **Natural Language Parsing**: Say "Set target to 150", "Tradable Yes", "Stage 2", or "Add tag IPO" and the widget will intelligently map your speech to your custom parameters.
+  - **Save via Voice**: Say "Save the setup" or "Save the data" to instantly log the stock to your dashboard.
 
 ### Development
 
