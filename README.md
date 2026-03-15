@@ -23,6 +23,7 @@ TradeClarity is a powerful React-based application designed for swing traders to
 
 - Add stocks in bulk (Manual entry or TradingView Import).
 - Edit details in a focused modal or directly in the grid.
+- **Auto-Fetch Metrics**: Background engine automatically calculates your defined ADR and Liquidity buckets when adding new stocks safely without freezing the UI.
 - Tag stocks for quick categorization.
 - Mark stocks as "Tradable" to highlight best setups.
 - **Data Persistence**: Automatically saves your data to Local Storage (Web) or Chrome Storage (Extension).
@@ -34,7 +35,7 @@ TradeClarity is a powerful React-based application designed for swing traders to
 - **Configurable UI**:
   - Manage Sectors.
   - Toggle Column Visibility.
-  - Set Editing Rules (e.g., Lock previous weeks).
+  - Set Editing Rules (e.g., Lock previous weeks, configure Auto-Fetch Lookback days).
 
 ** Weekly Summary Info**:
 <img width="485" height="705" alt="image" src="https://github.com/user-attachments/assets/281214c2-63bf-48a9-aa14-95bf9d82dd7e" />

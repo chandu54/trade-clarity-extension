@@ -130,14 +130,17 @@ export default function UserGuideModal({
               <strong>TradingView Import:</strong> In the Add Stock popup,
               switch to the "TradingView Import" tab to paste exported watchlist
               data directly.
+              <div className="guide-tip mt-2" style={{ marginBottom: "8px" }}>
+                <strong>💡 Pro Tip:</strong> In TradingView, use sections (e.g.
+                '###Technology') to group stocks. If a section name matches a Sector
+                defined here, the app will automatically assign that sector to the
+                stocks added via TradingView Import.
+              </div>
+            </li>
+            <li>
+              <strong>Auto-Fetch Metrics:</strong> If enabled in Editing Rules, adding new stocks will automatically fetch and calculate their ADR and Liquidity in the background.
             </li>
           </ul>
-          <div className="guide-tip">
-            <strong>💡 Pro Tip:</strong> In TradingView, use sections (e.g.
-            '###Technology') to group stocks. If a section name matches a Sector
-            defined here, the app will automatically assign that sector to the
-            stocks added via TradingView Import.
-          </div>
         </Section>
 
         <Section
@@ -281,8 +284,8 @@ export default function UserGuideModal({
             </li>
             <li>
               <strong>Custom AI Strategies:</strong> Go to <em>Settings {"→"} AI Settings</em> to create your own instructions. You can define specific ways the AI should evaluate your watchlist (e.g. 'Conservative Evaluation', 'Aggressive Growth Focus').
-              <div className="text-[12px] text-slate-400 mt-1 max-w-[95%]">
-                <em>Note: Use variables like <code>{"{stocks}"}</code> or <code>{"{sectors}"}</code> in your custom prompts. The system will automatically inject your real-time data into these placeholders before sending to the AI.</em>
+              <div className="guide-note">
+                Note: Use variables like <code>{"{stocks}"}</code> or <code>{"{sectors}"}</code> in your custom prompts. The system will automatically inject your real-time data into these placeholders before sending to the AI.
               </div>
             </li>
           </ul>
@@ -304,6 +307,9 @@ export default function UserGuideModal({
               <strong>Lock Previous Weeks:</strong> Enable this to make past
               weeks read-only. This is crucial for maintaining an accurate
               trading journal.
+            </li>
+            <li>
+              <strong>Auto-Fetch Lookback:</strong> Enable background fetching of ADR & Liquidity, and define the exact number of trading days (e.g., 20) to use for your moving average calculations.
             </li>
           </ul>
         </Section>
@@ -369,7 +375,7 @@ export default function UserGuideModal({
             </li>
             <li>
               <strong>Voice Commands:</strong> Click the microphone icon or press `Ctrl+Shift+S` (or `Cmd+Shift+S`) to dictate setups hands-free.
-              <ul className="guide-sublist text-[12px] mt-1 ml-4 list-disc text-slate-400">
+              <ul className="guide-sublist guide-note mt-1 ml-4 list-disc">
                 <li>Assign values to custom fields: <em>"Set target to 150"</em> or <em>"Attitude is Excellent"</em></li>
                 <li>Add/Remove tags effortlessly: <em>"Add tag IPO Base"</em> or <em>"Remove all tags"</em></li>
                 <li>Toggle booleans: <em>"Tradable Yes"</em> or <em>"Fractals Off"</em></li>

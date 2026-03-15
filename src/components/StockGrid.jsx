@@ -280,10 +280,10 @@ export default function StockGrid({
   const activeWatchlist = (data.watchlists || []).find(w => w.id === selectedWatchlistId);
 
   const visibleParams = Object.entries(params).filter(([key]) => {
-     if (selectedWatchlistId !== "all" && activeWatchlist) {
-         return activeWatchlist.visibleParams.includes(key);
-     }
-     return columnConfig[key] !== false;
+    if (selectedWatchlistId !== "all" && activeWatchlist) {
+      return activeWatchlist.visibleParams.includes(key);
+    }
+    return columnConfig[key] !== false;
   });
 
   const colCount =
@@ -300,10 +300,10 @@ export default function StockGrid({
   ===================== */
   const filterableParams = useMemo(() => {
     return Object.entries(params).filter(([key, p]) => {
-       if (selectedWatchlistId !== "all" && activeWatchlist) {
-          return activeWatchlist.visibleFilters.includes(key);
-       }
-       return p.filterable;
+      if (selectedWatchlistId !== "all" && activeWatchlist) {
+        return activeWatchlist.visibleFilters.includes(key);
+      }
+      return p.filterable;
     });
   }, [params, selectedWatchlistId, activeWatchlist]);
 
@@ -643,9 +643,12 @@ export default function StockGrid({
 
     if (symbols.length === 0) return;
 
+    let sentBackgroundMessage = false;
+
     setData((prev) => {
       const prevWeek = prev.weeks[country][weekKey];
       const newStocks = { ...prevWeek.stocks };
+      const newSymbolsAdded = [];
 
       symbols.forEach((symbol) => {
         if (!newStocks[symbol]) {
@@ -658,6 +661,7 @@ export default function StockGrid({
             params: {},
             watchlists: [...selectedWlIds],
           };
+          newSymbolsAdded.push(symbol);
         } else if (selectedWlIds.length > 0) {
           const existing = newStocks[symbol];
           const mergedWls = Array.from(new Set([...(existing.watchlists || []), ...selectedWlIds]));
@@ -667,6 +671,24 @@ export default function StockGrid({
           };
         }
       });
+
+      // Trigger background API hydration immediately if enabled
+      if (newSymbolsAdded.length > 0 && prev.uiConfig?.enableApiHydration === true) {
+        if (chrome?.runtime?.sendMessage) {
+          chrome.runtime.sendMessage({
+            action: "FETCH_STOCK_METRICS",
+            payload: {
+              symbols: newSymbolsAdded,
+              country,
+              weekKey,
+              paramDefs: prev.paramDefinitions,
+              adrDays: prev.uiConfig?.adrDays || 20,
+              liquidityDays: prev.uiConfig?.liquidityDays || 20
+            }
+          });
+          sentBackgroundMessage = true;
+        }
+      }
 
       return {
         ...prev,
@@ -682,7 +704,7 @@ export default function StockGrid({
         },
       };
     });
-    showToast(`Added ${symbols.length} stock(s) to watchlist`, "success");
+    showToast(`Added ${symbols.length} stock(s) to watchlist${sentBackgroundMessage ? '. Fetching metrics in background...' : ''}`, "success");
   }
 
   function handleUpdateStock(updatedStock) {
@@ -928,12 +950,18 @@ export default function StockGrid({
   function importStocks(stocksArray) {
     if (!stocksArray || stocksArray.length === 0) return;
 
+    let sentBackgroundMessage = false;
+
     setData((prev) => {
       const currentWeekData = prev.weeks[country][weekKey] || { stocks: {} };
       const newStocks = { ...currentWeekData.stocks };
       let count = 0;
+      const newSymbolsAdded = [];
 
       stocksArray.forEach((s) => {
+        if (s.symbol && !newStocks[s.symbol]) {
+          newSymbolsAdded.push(s.symbol);
+        }
         if (s.symbol) {
           // Merge params if the stock already exists, otherwise just overwrite/add
           const existing = newStocks[s.symbol];
@@ -959,8 +987,26 @@ export default function StockGrid({
         }
       });
 
+      // Trigger background API hydration immediately if enabled
+      if (newSymbolsAdded.length > 0 && prev.uiConfig?.enableApiHydration === true) {
+        if (chrome?.runtime?.sendMessage) {
+          chrome.runtime.sendMessage({
+            action: "FETCH_STOCK_METRICS",
+            payload: {
+              symbols: newSymbolsAdded,
+              country,
+              weekKey,
+              paramDefs: prev.paramDefinitions,
+              adrDays: prev.uiConfig?.adrDays || 20,
+              liquidityDays: prev.uiConfig?.liquidityDays || 20
+            }
+          });
+          sentBackgroundMessage = true;
+        }
+      }
+
       if (count > 0) {
-        showToast(`Imported ${count} stocks successfully.`, "success");
+        showToast(`Imported ${count} stocks successfully.${sentBackgroundMessage ? ' Fetching metrics in background...' : ''}`, "success");
       }
 
       return {
@@ -1297,7 +1343,7 @@ export default function StockGrid({
             {importMenuOpen && (
               <ul className="action-dropdown shadow">
                 <li onClick={() => triggerImport("stocks")}>JSON / Current Week</li>
-                <li onClick={() => triggerImport("tv")}>JSON / TradingView</li>
+                <li onClick={() => triggerImport("tv")}>TXT / TradingView</li>
                 <li className="divider" />
                 <li onClick={() => triggerImport("backup")}>JSON / Full Backup</li>
               </ul>

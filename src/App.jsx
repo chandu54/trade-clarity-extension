@@ -77,6 +77,39 @@ function AppContent() {
   }, [data]);
 
   /* =========================
+     SYNC WITH BACKGROUND UPDATES
+  ========================= */
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
+
+    const handleStorageChange = (changes, namespace) => {
+      if (namespace === "local" && changes["trading_app_data"]) {
+        const newData = changes["trading_app_data"].newValue;
+        if (newData && hasLoaded.current) {
+           setData((currentData) => {
+              if (!currentData) return newData;
+              
+              // To prevent infinite loop with saveData:
+              // Check if the actual stocks data has changed (which is what background script mutates)
+              const currentStr = JSON.stringify(currentData.weeks);
+              const newStr = JSON.stringify(newData.weeks);
+              
+              if (currentStr !== newStr) {
+                  return newData;
+              }
+              return currentData;
+           });
+        }
+      }
+    };
+
+    chrome.storage.onChanged.addListener(handleStorageChange);
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+    };
+  }, []);
+
+  /* =========================
      ENSURE WEEK EXISTS
   ========================= */
   useEffect(() => {
