@@ -334,7 +334,6 @@ const TradeClarityWidget = () => {
       "too": "2",
       "three": "3",
       "tree": "3",
-      "four": "4",
       "for": "4",
       "five": "5",
       "six": "6",

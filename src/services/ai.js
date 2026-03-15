@@ -1,5 +1,4 @@
-import { getStoredApiKey, getStoredModel, getStoredPrompt } from "./storage";
-
+// Constants for default AI models
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 
@@ -20,7 +19,7 @@ export async function getAiAnalysis(weekData, paramDefinitions, selectedPromptTe
     };
   }
 
-  let apiKey = await getStoredApiKey();
+  let apiKey = weekData.apiKey;
   if (!apiKey) {
     throw new Error("API Key is missing. Please add it in Settings.");
   }
@@ -40,13 +39,10 @@ export async function getAiAnalysis(weekData, paramDefinitions, selectedPromptTe
     }
   }
 
-  let customModel = await getStoredModel();
+  let customModel = weekData.model;
   if (customModel) customModel = customModel.trim();
 
   let customPrompt = selectedPromptText;
-  if (!customPrompt) {
-    customPrompt = await getStoredPrompt();
-  }
   if (customPrompt) customPrompt = customPrompt.trim();
 
   // 2. Generate prompt with the extracted stocks

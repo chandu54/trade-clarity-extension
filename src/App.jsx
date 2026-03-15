@@ -139,7 +139,12 @@ function AppContent() {
       return;
     }
 
-    const blob = new Blob([JSON.stringify(data, null, 2)], {
+    const exportData = structuredClone(data);
+    if (exportData.aiSettings?.apiKey) {
+      exportData.aiSettings.apiKey = ""; // Scrub API key before export
+    }
+
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
       type: "application/json",
     });
     const url = URL.createObjectURL(blob);
@@ -327,6 +332,8 @@ function AppContent() {
       {showSettings && (
         <SettingsModal
           isOpen={showSettings}
+          data={data}
+          setData={setData}
           onClose={() => setShowSettings(false)}
         />
       )}

@@ -1,97 +1,9 @@
 import { DEFAULT_DATA } from "../seed";
 
 const KEY = "trading_app_data";
-const API_KEY = "ai_api_key";
-const AI_MODEL = "ai_model";
-const AI_PROMPT = "ai_prompt";
-const CUSTOM_PROMPTS = "custom_prompts";
 
 function isChromeStorage() {
   return typeof chrome !== "undefined" && chrome.storage?.local;
-}
-
-export async function getStoredApiKey() {
-  if (isChromeStorage()) {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(API_KEY, (res) => resolve(res[API_KEY]));
-    });
-  } else {
-    return localStorage.getItem(API_KEY);
-  }
-}
-
-export async function setStoredApiKey(key) {
-  if (isChromeStorage()) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [API_KEY]: key }, resolve);
-    });
-  } else {
-    localStorage.setItem(API_KEY, key);
-  }
-}
-
-export async function getStoredModel() {
-  if (isChromeStorage()) {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(AI_MODEL, (res) => resolve(res[AI_MODEL]));
-    });
-  } else {
-    return localStorage.getItem(AI_MODEL);
-  }
-}
-
-export async function setStoredModel(model) {
-  if (isChromeStorage()) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [AI_MODEL]: model }, resolve);
-    });
-  } else {
-    localStorage.setItem(AI_MODEL, model);
-  }
-}
-
-export async function getStoredPrompt() {
-  if (isChromeStorage()) {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(AI_PROMPT, (res) => resolve(res[AI_PROMPT]));
-    });
-  } else {
-    return localStorage.getItem(AI_PROMPT);
-  }
-}
-
-export async function setStoredPrompt(prompt) {
-  if (isChromeStorage()) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [AI_PROMPT]: prompt }, resolve);
-    });
-  } else {
-    localStorage.setItem(AI_PROMPT, prompt);
-  }
-}
-
-export async function getCustomPrompts() {
-  if (isChromeStorage()) {
-    return new Promise((resolve) => {
-      chrome.storage.local.get(CUSTOM_PROMPTS, (res) => resolve(res[CUSTOM_PROMPTS] || []));
-    });
-  } else {
-    try {
-      return JSON.parse(localStorage.getItem(CUSTOM_PROMPTS)) || [];
-    } catch {
-      return [];
-    }
-  }
-}
-
-export async function setCustomPrompts(prompts) {
-  if (isChromeStorage()) {
-    return new Promise((resolve) => {
-      chrome.storage.local.set({ [CUSTOM_PROMPTS]: prompts }, resolve);
-    });
-  } else {
-    localStorage.setItem(CUSTOM_PROMPTS, JSON.stringify(prompts));
-  }
 }
 
 export async function loadData() {
@@ -142,6 +54,63 @@ export async function loadData() {
   ========================= */
   if (!Array.isArray(data.sectors)) {
     data.sectors = structuredClone(DEFAULT_DATA.sectors);
+  }
+
+  /* =========================
+     MERGE AI SETTINGS MIGRATION 
+  ========================= */
+  const AI_KEY_STORE = "ai_api_key";
+  const AI_MODEL_STORE = "ai_model";
+  const CUSTOM_PROMPTS_STORE = "custom_prompts";
+
+  if (!data.aiSettings) {
+    data.aiSettings = {
+       apiKey: "",
+       model: "gemini-2.5-flash",
+       systemPrompt: "Act as a disciplined, risk-aware swing trading mentor...",
+       customPrompts: []
+    };
+  }
+
+  // Check for legacy root-level keys
+  const legacyData = isChromeStorage() 
+    ? await new Promise(resolve => chrome.storage.local.get([AI_KEY_STORE, AI_MODEL_STORE, CUSTOM_PROMPTS_STORE], resolve))
+    : {
+        [AI_KEY_STORE]: localStorage.getItem(AI_KEY_STORE),
+        [AI_MODEL_STORE]: localStorage.getItem(AI_MODEL_STORE),
+        [CUSTOM_PROMPTS_STORE]: localStorage.getItem(CUSTOM_PROMPTS_STORE)
+      };
+
+  let migrated = false;
+  
+  if (legacyData[AI_KEY_STORE]) {
+    data.aiSettings.apiKey = legacyData[AI_KEY_STORE];
+    migrated = true;
+  }
+  if (legacyData[AI_MODEL_STORE]) {
+    data.aiSettings.model = legacyData[AI_MODEL_STORE];
+    migrated = true;
+  }
+  if (legacyData[CUSTOM_PROMPTS_STORE]) {
+    try {
+      // Chrome storage might return the array directly, local storage returns string
+      data.aiSettings.customPrompts = typeof legacyData[CUSTOM_PROMPTS_STORE] === 'string' 
+        ? JSON.parse(legacyData[CUSTOM_PROMPTS_STORE]) 
+        : legacyData[CUSTOM_PROMPTS_STORE];
+    } catch (e) { console.error("Could not parse legacy custom prompts", e); }
+    migrated = true;
+  }
+
+  if (migrated) {
+    console.log("Migrating legacy AI settings to trading_app_data...");
+    if (isChromeStorage()) {
+      chrome.storage.local.remove([AI_KEY_STORE, AI_MODEL_STORE, "ai_prompt", CUSTOM_PROMPTS_STORE]);
+    } else {
+      localStorage.removeItem(AI_KEY_STORE);
+      localStorage.removeItem(AI_MODEL_STORE);
+      localStorage.removeItem("ai_prompt");
+      localStorage.removeItem(CUSTOM_PROMPTS_STORE);
+    }
   }
 
   /* =========================

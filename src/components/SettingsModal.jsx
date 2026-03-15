@@ -1,13 +1,12 @@
 import { useState, useEffect } from 'react';
 import Modal from './Modal';
-import { setStoredApiKey, getStoredApiKey, setStoredModel, getStoredModel, setStoredPrompt, getStoredPrompt, getCustomPrompts, setCustomPrompts } from '../services/storage';
 import { testConnection, PROMPT_TEMPLATES } from '../services/ai';
 
 const KNOWN_MODELS = [
   { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Free Default)", isPremium: false },
 ];
 
-const SettingsModal = ({ isOpen, onClose }) => {
+const SettingsModal = ({ isOpen, onClose, data, setData }) => {
   const [apiKey, setApiKey] = useState('');
   const [model, setModel] = useState('');
   const [isCustomModel, setIsCustomModel] = useState(false);
@@ -23,86 +22,81 @@ const SettingsModal = ({ isOpen, onClose }) => {
   const [promptName, setPromptName] = useState('');
 
   useEffect(() => {
-    if (isOpen) {
+    if (isOpen && data?.aiSettings) {
       const storedIsPro = localStorage.getItem("tc_is_pro") === "true";
       setIsPro(storedIsPro);
 
-      Promise.all([getStoredApiKey(), getStoredModel(), getStoredPrompt(), getCustomPrompts()]).then(([key, savedModel, savedPrompt, customList]) => {
-        if (key) setApiKey(key);
-        if (savedModel) {
-          setModel(savedModel);
-          const isKnown = KNOWN_MODELS.some((m) => m.value === savedModel);
-          setIsCustomModel(!isKnown);
-        } else {
-          setModel(storedIsPro ? "gemini-2.0-pro" : "gemini-2.5-flash");
-          setIsCustomModel(false);
-        }
+      const { apiKey: savedKey, model: savedModel, systemPrompt: savedPrompt, customPrompts: cList } = data.aiSettings;
+      
+      if (savedKey) setApiKey(savedKey);
+      
+      if (savedModel) {
+        setModel(savedModel);
+        const isKnown = KNOWN_MODELS.some((m) => m.value === savedModel);
+        setIsCustomModel(!isKnown);
+      } else {
+        setModel(storedIsPro ? "gemini-2.0-pro" : "gemini-2.5-flash");
+        setIsCustomModel(false);
+      }
 
-        const finalCustomList = customList || [];
-        setCustomPromptsList(finalCustomList);
-        const combined = [...PROMPT_TEMPLATES, ...finalCustomList];
+      const finalCustomList = cList || [];
+      setCustomPromptsList(finalCustomList);
+      const combined = [...PROMPT_TEMPLATES, ...finalCustomList];
 
-        if (savedPrompt) {
-          const matchedTemplate = combined.find(t => t.text === savedPrompt);
-          if (matchedTemplate) {
-            setSelectedTemplate(matchedTemplate.value);
-            setPromptText(matchedTemplate.text);
-            setPromptName(matchedTemplate.label);
-          } else {
-            // Assume it's a legacy unsaved custom text, wrap it into a new custom prompt
-            setPromptText(savedPrompt);
-            setPromptName("Legacy Custom Prompt");
-            setSelectedTemplate("legacy_custom");
-          }
+      if (savedPrompt) {
+        const matchedTemplate = combined.find(t => t.text === savedPrompt);
+        if (matchedTemplate) {
+          setSelectedTemplate(matchedTemplate.value);
+          setPromptText(matchedTemplate.text);
+          setPromptName(matchedTemplate.label);
         } else {
-          setPromptText(PROMPT_TEMPLATES[0].text);
-          setPromptName(PROMPT_TEMPLATES[0].label);
-          setSelectedTemplate(PROMPT_TEMPLATES[0].value);
+          // Assume it's a legacy unsaved custom text, wrap it into a new custom prompt
+          setPromptText(savedPrompt);
+          setPromptName("Legacy Custom Prompt");
+          setSelectedTemplate("legacy_custom");
         }
-      });
+      } else {
+        setPromptText(PROMPT_TEMPLATES[0].text);
+        setPromptName(PROMPT_TEMPLATES[0].label);
+        setSelectedTemplate(PROMPT_TEMPLATES[0].value);
+      }
     }
-  }, [isOpen]);
+  }, [isOpen, data]);
 
   // Clear test result when inputs change
   useEffect(() => {
     setTestResult(null);
   }, [apiKey, model]);
 
-  const handleSave = async () => {
+  const handleSave = () => {
     localStorage.setItem("tc_is_pro", isPro);
-    await setStoredApiKey(apiKey);
-
-    // Only save model if it's not empty, otherwise we'll let the app use the default
-    if (model.trim()) {
-      await setStoredModel(model.trim());
-    } else {
-      await setStoredModel(""); // Clear it to use default
-    }
-
+    
     // Handle dynamic custom prompts
     let textToSave = promptText.trim();
     const isPredefined = PROMPT_TEMPLATES.find(t => t.value === selectedTemplate);
 
-    // If user edited a predefined prompt in some weird state or we are creating a new one
-    // But since predefined text areas are disabled, we save to custom list if selectedTemplate is a custom one or legacy
+    let updatedCustom = [...customPromptsList];
     if (!isPredefined) {
-      let updatedCustom = [...customPromptsList];
       const existingIdx = updatedCustom.findIndex(c => c.value === selectedTemplate);
-
       if (existingIdx >= 0) {
         updatedCustom[existingIdx] = { ...updatedCustom[existingIdx], text: textToSave, label: promptName.trim() || 'Untitled' };
       } else {
         updatedCustom.push({ value: selectedTemplate, text: textToSave, label: promptName.trim() || 'Untitled' });
       }
-      await setCustomPrompts(updatedCustom);
       setCustomPromptsList(updatedCustom);
     }
 
-    if (textToSave) {
-      await setStoredPrompt(textToSave);
-    } else {
-      await setStoredPrompt("");
-    }
+    // Mutate global data state directly
+    setData(prev => ({
+      ...prev,
+      aiSettings: {
+        ...prev.aiSettings,
+        apiKey: apiKey,
+        model: model.trim() ? model.trim() : "",
+        systemPrompt: textToSave || "",
+        customPrompts: updatedCustom
+      }
+    }));
 
     setSaveStatus('Saved!');
     setTimeout(() => setSaveStatus(''), 2000);
@@ -259,7 +253,13 @@ const SettingsModal = ({ isOpen, onClose }) => {
                   if (window.confirm("Are you sure you want to delete this custom strategy?")) {
                     const updated = customPromptsList.filter(c => c.value !== selectedTemplate);
                     setCustomPromptsList(updated);
-                    setCustomPrompts(updated);
+                    setData(prev => ({
+                      ...prev,
+                      aiSettings: {
+                        ...prev.aiSettings,
+                        customPrompts: updated
+                      }
+                    }));
                     setSelectedTemplate('swing');
                     setPromptText(PROMPT_TEMPLATES[0].text);
                     setPromptName(PROMPT_TEMPLATES[0].label);

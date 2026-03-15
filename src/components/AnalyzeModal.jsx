@@ -2,7 +2,6 @@ import { useState, useEffect, Fragment } from "react";
 import Modal from "./Modal";
 
 import { getAiAnalysis, PROMPT_TEMPLATES } from "../services/ai";
-import { getStoredPrompt, getCustomPrompts, setStoredPrompt, setCustomPrompts } from "../services/storage";
 import { useToast } from "./ToastContext";
 
 export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, country, selectedWatchlistId }) {
@@ -26,24 +25,25 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
     : (data.watchlists?.find(w => w.id === selectedWatchlistId)?.name || "All Stocks");
 
   useEffect(() => {
-    if (isOpen) {
-      Promise.all([getStoredPrompt(), getCustomPrompts()]).then(([savedPrompt, custom]) => {
-         const combined = [...PROMPT_TEMPLATES, ...(custom || [])];
-         setAllPrompts(combined);
+    if (isOpen && data?.aiSettings) {
+       const savedPrompt = data.aiSettings.systemPrompt;
+       const custom = data.aiSettings.customPrompts || [];
+       
+       const combined = [...PROMPT_TEMPLATES, ...custom];
+       setAllPrompts(combined);
 
-         if (savedPrompt) {
-            const matched = combined.find(t => t.text === savedPrompt);
-            if (matched) {
-               setSelectedPromptValue(matched.value);
-            } else {
-               setSelectedPromptValue(combined[0].value);
-            }
-         } else {
-            setSelectedPromptValue(combined[0].value);
-         }
-      });
+       if (savedPrompt) {
+          const matched = combined.find(t => t.text === savedPrompt);
+          if (matched) {
+             setSelectedPromptValue(matched.value);
+          } else {
+             setSelectedPromptValue(combined[0].value);
+          }
+       } else {
+          setSelectedPromptValue(combined[0].value);
+       }
     }
-  }, [isOpen]);
+  }, [isOpen, data]);
 
   const handleGenerateAnalysis = async () => {
     setIsGenerating(true);
@@ -64,10 +64,7 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
       const analysisData = { ...currentWeekData, stocks: stocksToAnalyze };
       const stockCount = Object.keys(stocksToAnalyze).length;
 
-      const analysis = await getAiAnalysis(analysisData, data.paramDefinitions, activePromptObj.text, isCustomPromptGlobal);
-      
-      // Save last selected as default for future and Settings modal consistency
-      await setStoredPrompt(activePromptObj.text);
+      const analysis = await getAiAnalysis({ ...analysisData, apiKey: data.aiSettings.apiKey, model: data.aiSettings.model }, data.paramDefinitions, activePromptObj.text, isCustomPromptGlobal);
       
       // Add metadata for transparency
       const enrichedAnalysis = {
@@ -79,12 +76,15 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
         watchlistId: selectedWatchlistId
       };
 
-      // Persist to global state
-      const newData = structuredClone(data);
-      if (newData.weeks[country][weekKey]) {
-        newData.weeks[country][weekKey].analysis = enrichedAnalysis;
-        setData(newData);
-      }
+      // Persist to global state and update the default prompt
+      setData(prev => {
+        const newData = structuredClone(prev);
+        if (newData.weeks[country][weekKey]) {
+          newData.weeks[country][weekKey].analysis = enrichedAnalysis;
+        }
+        newData.aiSettings.systemPrompt = activePromptObj.text;
+        return newData;
+      });
     } catch (e) {
       let msg = e.message;
       if (msg.includes("429") || msg.toLowerCase().includes("quota") || msg.toLowerCase().includes("limit")) {
@@ -313,7 +313,7 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
                    const updatedText = editedPromptText.trim();
                    if (!updatedText) return;
                    
-                   const customList = await getCustomPrompts() || [];
+                   const customList = [...(data?.aiSettings?.customPrompts || [])];
                    const existingIdx = customList.findIndex(c => c.value === activePromptObj.value);
                    
                    if (existingIdx >= 0) {
@@ -322,13 +322,17 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
                       customList.push({ ...activePromptObj, text: updatedText });
                    }
                    
-                   await setCustomPrompts(customList);
-                   
                    const combined = [...PROMPT_TEMPLATES, ...customList];
                    setAllPrompts(combined);
-                   if (activePromptObj.text === await getStoredPrompt()) {
-                     await setStoredPrompt(updatedText);
-                   }
+                   
+                   setData(prev => ({
+                     ...prev,
+                     aiSettings: {
+                       ...prev.aiSettings,
+                       customPrompts: customList,
+                       systemPrompt: activePromptObj.text === prev.aiSettings.systemPrompt ? updatedText : prev.aiSettings.systemPrompt
+                     }
+                   }));
                    
                    showToast("Prompt successfully updated!", "success");
                    setIsEditingPrompt(false);
