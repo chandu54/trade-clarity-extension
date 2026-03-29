@@ -4185,18 +4185,88 @@ input[type=checkbox]:active {
 
 .stock-list-popup-header h4 {
   margin: 0;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
 .stock-list-popup-header .stock-list-popup-count {
-  font-size: 12px;
+  font-size: 10px;
+  font-weight: 700;
   color: var(--muted);
+  background: var(--bg);
+  padding: 2px 8px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
   margin-left: 8px;
   flex-shrink: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.stock-list-popup-actions-wrapper {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.stock-list-popup-btn-pill {
+  display: flex;
+  align-items: center;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.popup-btn-sep {
+  width: 1px;
+  height: 12px;
+  background: var(--border);
+  margin: 0 2px;
+}
+
+.popup-header-divider {
+  width: 1px;
+  height: 16px;
+  background: var(--border);
+  margin: 0 4px;
+}
+
+.popup-copy-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+}
+
+.popup-copy-btn:hover {
+  background: var(--panel);
+  color: var(--primary);
+}
+
+.stock-list-popup .close-btn {
+  background: transparent;
+  border: none;
+  color: var(--muted);
+  font-size: 20px;
+  cursor: pointer;
+  padding: 0 4px;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.stock-list-popup .close-btn:hover {
+  color: var(--danger);
 }
 
 .stock-list-popup-body {

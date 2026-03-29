@@ -12,6 +12,10 @@ TradeClarity is a powerful React-based application designed for swing traders to
 - **Customizable Parameters**: Define your own technical criteria (e.g., "Relative Strength", "Stage 2", "VCP Pattern") using Text, Dropdown, or Checkbox inputs.
 - **Smart Filtering, Sorting & Search**: Quickly find stocks by symbol or notes. Filter by Sector, Tags, Tradable status, or any of your custom parameters.
 - **AI-Powered Analysis**: Integrated with **Google Gemini** and **OpenAI** to generate professional market summaries, identify top sectors, and highlight actionable setups based on your watchlist data.
+- **Category Analysis**: A premium modal-based drill-down view for any sector:
+  - **Snapshot**: A high-performance "Bird's Eye" grid of mini-candlestick charts (1M, 3M, 1Y) for all stocks in the category.
+  - **Phenomena**: Deep AI-driven institutional research that identifies group themes, relative strength leaders, and specific entry triggers.
+  - **Breadth Headers**: Instant visibility into category health with Advancer/Decliner counts and performance leaders.
 - <img width="368" height="377" alt="image" src="https://github.com/user-attachments/assets/b0c3af44-51ad-4fee-9b04-f23fbd0e3844" />
 - **Analytics Dashboard**: Gain visual insights into your watchlist.
   - **Interactive Charts**: Visualize distributions by Sector, Tags, Tradable status, and custom parameters using Pie and Bar charts.

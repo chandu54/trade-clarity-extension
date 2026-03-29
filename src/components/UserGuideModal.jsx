@@ -306,7 +306,28 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="11. Editing Rules"
+          title="11. Category Analysis (Deep Dive)"
+          icon="🔍"
+          location="Category Badge Click"
+        >
+          <p>
+            Perform a professional-grade drill-down into any sector or category.
+          </p>
+          <ul className="guide-list">
+            <li>
+              <strong>Snapshot:</strong> A "Bird's Eye" grid of mini-historical charts for all stocks in the group. Toggle between 1M, 3M, 6M, and 1Y views.
+            </li>
+            <li>
+              <strong>Phenomena (AI Research):</strong> Generates an institutional-grade report that tiers the category into <strong>Leaders</strong> and <strong>Laggards</strong>, while providing specific technical entry triggers.
+            </li>
+            <li>
+              <strong>Leadership Logic:</strong> The header "Top Picks" automatically bubble up the strongest performance leaders for your selected timeframe.
+            </li>
+          </ul>
+        </Section>
+
+        <Section
+          title="12. Editing Rules"
           icon="🛡️"
           actionLabel="Configure Rules →"
           actionKey="rules"
@@ -329,7 +350,7 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="12. Data Management"
+          title="13. Data Management"
           icon="💾"
           location="Header > Export/Import"
         >
@@ -373,7 +394,7 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="13. TradingView Integration"
+          title="14. TradingView Integration"
           icon="📈"
           location="TradingView.com"
         >
@@ -403,7 +424,7 @@ export default function UserGuideModal({
           </div>
         </Section>
 
-        <Section title="14. Keyboard Shortcuts" icon="⌨️">
+        <Section title="15. Keyboard Shortcuts" icon="⌨️">
           <ul className="guide-list">
             <li><strong>Alt + N:</strong> Add New Stock</li>
             <li><strong>Ctrl + /</strong> (or Cmd + /): Focus Search Bar</li>
@@ -413,6 +434,7 @@ export default function UserGuideModal({
             <li><strong>Escape:</strong> Close active modal</li>
           </ul>
         </Section>
+
       </div>
       <div className="modal-footer">
         <button className="outline" onClick={onClose}>

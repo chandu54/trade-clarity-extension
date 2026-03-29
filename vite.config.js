@@ -5,6 +5,15 @@ import { resolve } from "path";
 // This config builds the Dashboard (Popup/Options page)
 export default defineConfig({
   plugins: [react()],
+  server: {
+    proxy: {
+      '/yahoo-api': {
+        target: 'https://query1.finance.yahoo.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/yahoo-api/, '')
+      }
+    }
+  },
   build: {
     outDir: "../extension",
     emptyOutDir: true, // Clear the extension folder before building

@@ -113,6 +113,32 @@ Click the **Bar Chart Icon** next to the "Analyze" button to open the dashboard.
   - **Visibility**: Use the **Settings (⚙️)** inside the dashboard to hide less relevant metrics.
 - **Trend**: View the "Stock Universe Trend" to see if your watchlist size is expanding (bullish) or contracting (bearish) over time.
 
+### 🔍 Category Analysis (Deep Dive)
+
+From any chart or list, click a **Category/Sector badge** to open the specialized Category Analysis modal. This provides a professional-grade drill-down into an entire market group.
+
+- **Snapshot Tab**: 
+  - View a "Bird's Eye" grid of all stocks in the category.
+  - Interactive mini-candlestick charts (toggle between 1M, 3M, 6M, and 1Y views).
+  - Hover to expand and inspect specific price action.
+  - Click any mini-chart to open a full TradingView chart for that symbol.
+- **Phenomena Tab (AI Research)**:
+  - Generate a professional **Institutional Research Report** for the entire category.
+  - **Leadership Tiering**: Identify high-conviction leaders vs. tactical laggards.
+  - **Entry Triggers**: Get specific technical catalysts and risk parameters defined by AI.
+- **Category Header**:
+  - **Adv/Dec Breadth**: Instantly see how many stocks in the group are advancing vs. declining.
+  - **Top Picks**: Automatically identifies the performance leaders (Relative Strength) for your selected timeframe.
+
+### 🎯 Phenomena Strategies (Use Cases)
+
+To get the most out of the Deep Research tab, focus on these four professional scenarios:
+
+1. **The Leadership Filter**: When a sector moves, don't buy the whole group. Use Phenomena to identify the **Top 1-2 Leaders** showing the highest "Relative Strength." These usually provide the most profit with the least risk.
+2. **The Trap Warning**: If your favorite stock looks like a breakout, but "Phenomena Research" flags the group as **"Structural Weakness,"** be careful. Individual breakouts in weak sectors are "traps" that rarely sustain.
+3. **Institutional Accumulation**: Look for "Group Anomalies"—stocks that stay flat or move up while their entire sector is crashing. This "relative resilience" is a massive signal that institutions are buying the dip.
+4. **Precision Execution**: Use the **Entry Triggers** in the Decision Matrix to set your alerts. Instead of buying "whenever," buy only when the technical catalyst identified by the AI is triggered.
+
 ### ✨ AI Analysis
 
 1.  **Configure**: Go to **Settings > AI Settings** and enter your Google Gemini or OpenAI API Key.

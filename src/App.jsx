@@ -396,8 +396,10 @@ function AppContent() {
 
       {modals.showAnalytics && (
         <AnalyticsDashboard
+          country={country}
           stocks={Object.values(data.weeks?.[country]?.[weekKey]?.stocks || {})}
           allWeeksData={data.weeks?.[country] || {}}
+          aiSettings={data.aiSettings}
           parameters={Object.entries(data.paramDefinitions).map(
             ([key, def]) => ({
               ...def,

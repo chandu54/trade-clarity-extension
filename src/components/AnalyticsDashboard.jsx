@@ -1,4 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
+import CategoryAnalysisView from './CategoryAnalysisView';
 
 const COLORS = [
   '#3b82f6', // Blue
@@ -467,7 +468,7 @@ const DateHeatmapChart = ({ data, onPointClick }) => {
   );
 };
 
-const StockListPopup = ({ popupData, onClose }) => {
+const StockListPopup = ({ popupData, onClose, onOpenGrid }) => {
   const { data, event } = popupData;
   const popupRef = useRef(null);
   const [style, setStyle] = useState({ opacity: 0 });
@@ -512,23 +513,39 @@ const StockListPopup = ({ popupData, onClose }) => {
         <div className="stock-list-popup-header">
           <h4>{data.paramLabel ? `${data.paramLabel} - ${data.name}` : data.name}</h4>
           <span className="stock-list-popup-count">{data.stocks.length} Stocks</span>
-          <div className="stock-list-popup-actions">
-            <button 
-              className="popup-copy-btn" 
-              onClick={handleCopy} 
-              title="Copy stock names"
-            >
-              {copied ? (
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '100%', height: '100%' }}>
-                  <polyline points="20 6 9 17 4 12"></polyline>
+          <div className="stock-list-popup-actions-wrapper">
+            <div className="stock-list-popup-btn-pill">
+              <button 
+                className="popup-copy-btn" 
+                onClick={(e) => { e.stopPropagation(); onOpenGrid(popupData); }} 
+                title="Open Category Analysis"
+              >
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <rect x="3" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="3" width="7" height="7"></rect>
+                  <rect x="14" y="14" width="7" height="7"></rect>
+                  <rect x="3" y="14" width="7" height="7"></rect>
                 </svg>
-              ) : (
-                <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: '100%', height: '100%' }}>
-                  <rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>
-                  <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                </svg>
-              )}
-            </button>
+              </button>
+              <div className="popup-btn-sep" />
+              <button 
+                className="popup-copy-btn" 
+                onClick={handleCopy} 
+                title="Copy stock names"
+              >
+                {copied ? (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="20 6 9 17 4 12"></polyline>
+                  </svg>
+                ) : (
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="9" y="9" width="11" height="11" rx="2" ry="2"></rect>
+                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+                  </svg>
+                )}
+              </button>
+            </div>
+            <div className="popup-header-divider" />
             <button className="close-btn" onClick={onClose}>×</button>
           </div>
         </div>
@@ -776,9 +793,10 @@ function getWeekRangeLabel(sundayDateStr) {
   return `${formatDate(monday)} to ${formatDate(friday)}`;
 }
 
-const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, selectedWatchlistId, watchlists, onClose }) => {
+const AnalyticsDashboard = ({ country, stocks, allWeeksData, aiSettings, parameters, weekKey, selectedWatchlistId, watchlists, onClose }) => {
   const [expandedParam, setExpandedParam] = useState(null);
   const [stockListPopup, setStockListPopup] = useState(null);
+  const [categoryAnalysisData, setCategoryAnalysisData] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef(null);
   const [widgetConfig, setWidgetConfig] = useState(() => {
@@ -1218,6 +1236,19 @@ const AnalyticsDashboard = ({ stocks, allWeeksData, parameters, weekKey, selecte
         <StockListPopup
           popupData={stockListPopup}
           onClose={() => setStockListPopup(null)}
+          onOpenGrid={(data) => {
+            setCategoryAnalysisData(data);
+            setStockListPopup(null);
+          }}
+        />
+      )}
+      {categoryAnalysisData && (
+        <CategoryAnalysisView
+          popupData={categoryAnalysisData}
+          onClose={() => setCategoryAnalysisData(null)}
+          country={country || 'IN'}
+          weekData={allWeeksData[weekKey] || {}}
+          aiSettings={aiSettings}
         />
       )}
     </div>

@@ -12,18 +12,19 @@
     "test:watch": "vitest"
   },
   "dependencies": {
+    "lightweight-charts": "^5.1.0",
     "react": "^18.2.0",
     "react-dom": "^18.2.0"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.2.1",
+    "@testing-library/react": "^16.2.0",
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.27",
+    "jsdom": "^26.0.0",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.1",
     "vite": "^5.0.0",
-    "vitest": "^3.0.7",
-    "jsdom": "^26.0.0",
-    "@testing-library/react": "^16.2.0"
+    "vitest": "^3.0.7"
   }
 }
