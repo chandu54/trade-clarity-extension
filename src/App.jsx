@@ -29,13 +29,7 @@ function AppContent() {
   const [data, setData] = useState(null);
   const [country, setCountry] = useState("IN");
   const [weekKey, setWeekKey] = useState(null);
-  const [showManageTags, setShowManageTags] = useState(false);
-  const [showAnalyze, setShowAnalyze] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showAnalytics, setShowAnalytics] = useState(false);
-  const [showUserGuide, setShowUserGuide] = useState(false);
   const [selectedWatchlistId, setSelectedWatchlistId] = useState("all");
-  const [showManageWatchlists, setShowManageWatchlists] = useState(false);
 
   const { theme, toggleTheme } = useTheme();
   const modals = useModalState();
@@ -132,6 +126,35 @@ function AppContent() {
   const currentWeekKey = getSundayOfWeek(todayStr);
 
   const isReadOnly = isWeekReadOnly(weekKey, currentWeekKey, data?.uiConfig);
+
+  /* =========================
+     GLOBAL KEYBOARD SHORTCUTS
+  ========================= */
+  useEffect(() => {
+    const handleGlobalKeyDown = (e) => {
+      // Ignore shortcuts if the user is actively typing inside an input/textarea
+      const activeTag = document.activeElement?.tagName;
+      if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') {
+        return;
+      }
+
+      if (e.altKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        setShowSettings(true);
+      }
+      if (e.altKey && e.key.toLowerCase() === 'a') {
+        e.preventDefault();
+        modals.setShowAnalytics(true);
+      }
+      if (e.altKey && e.key.toLowerCase() === 'i') {
+        e.preventDefault();
+        modals.setShowAnalyze(true);
+      }
+    };
+
+    window.addEventListener('keydown', handleGlobalKeyDown);
+    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
+  }, []);
 
   /* =========================
      CLEAR DATA HANDLERS
@@ -249,10 +272,10 @@ function AppContent() {
       <Header
         onOpenModal={modals.openModal}
         onClearAll={clearAllData}
-        onManageTags={() => setShowManageTags(true)}
-        onShowSettings={() => setShowSettings(true)}
-        onShowUserGuide={() => setShowUserGuide(true)}
-        onManageWatchlists={() => setShowManageWatchlists(true)}
+        onManageTags={() => modals.setShowManageTags(true)}
+        onShowSettings={() => modals.setShowSettings(true)}
+        onShowUserGuide={() => modals.setShowUserGuide(true)}
+        onManageWatchlists={() => modals.setShowManageWatchlists(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
         country={country}
@@ -268,8 +291,8 @@ function AppContent() {
         selectedWatchlistId={selectedWatchlistId}
         setSelectedWatchlistId={setSelectedWatchlistId}
         onClearWeek={clearWeekData}
-        onAnalyze={() => setShowAnalyze(true)}
-        onShowAnalytics={() => setShowAnalytics(true)}
+        onAnalyze={() => modals.setShowAnalyze(true)}
+        onShowAnalytics={() => modals.setShowAnalytics(true)}
       />
 
       <StockGrid
@@ -330,48 +353,48 @@ function AppContent() {
         />
       )}
 
-      {showManageTags && (
+      {modals.showManageTags && (
         <ManageTagsModal
-          isOpen={showManageTags}
+          isOpen={modals.showManageTags}
           data={data}
           setData={setData}
-          onClose={() => setShowManageTags(false)}
+          onClose={() => modals.setShowManageTags(false)}
         />
       )}
 
-      {showManageWatchlists && (
+      {modals.showManageWatchlists && (
         <ManageWatchlistsModal
-          isOpen={showManageWatchlists}
+          isOpen={modals.showManageWatchlists}
           data={data}
           setData={setData}
           selectedWatchlistId={selectedWatchlistId}
           setSelectedWatchlistId={setSelectedWatchlistId}
-          onClose={() => setShowManageWatchlists(false)}
+          onClose={() => modals.setShowManageWatchlists(false)}
         />
       )}
 
-      {showAnalyze && (
+      {modals.showAnalyze && (
         <AnalyzeModal
-          isOpen={showAnalyze}
+          isOpen={modals.showAnalyze}
           data={data}
           setData={setData}
           country={country}
           weekKey={weekKey}
           selectedWatchlistId={selectedWatchlistId}
-          onClose={() => setShowAnalyze(false)}
+          onClose={() => modals.setShowAnalyze(false)}
         />
       )}
 
-      {showSettings && (
+      {modals.showSettings && (
         <SettingsModal
-          isOpen={showSettings}
+          isOpen={modals.showSettings}
           data={data}
           setData={setData}
-          onClose={() => setShowSettings(false)}
+          onClose={() => modals.setShowSettings(false)}
         />
       )}
 
-      {showAnalytics && (
+      {modals.showAnalytics && (
         <AnalyticsDashboard
           stocks={Object.values(data.weeks?.[country]?.[weekKey]?.stocks || {})}
           allWeeksData={data.weeks?.[country] || {}}
@@ -384,18 +407,15 @@ function AppContent() {
           weekKey={weekKey}
           selectedWatchlistId={selectedWatchlistId}
           watchlists={data.watchlists || []}
-          onClose={() => setShowAnalytics(false)}
+          onClose={() => modals.setShowAnalytics(false)}
         />
       )}
 
-      {showUserGuide && (
+      {modals.showUserGuide && (
         <UserGuideModal
-          isOpen={showUserGuide}
-          onClose={() => setShowUserGuide(false)}
-          // Add these two lines:
+          isOpen={modals.showUserGuide}
+          onClose={() => modals.setShowUserGuide(false)}
           onOpenModal={modals.openModal}
-          onShowSettings={() => setShowSettings(true)}
-          onManageTags={() => setShowManageTags(true)}
         />
       )}
     </>

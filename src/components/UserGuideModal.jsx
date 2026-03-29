@@ -5,21 +5,12 @@ export default function UserGuideModal({
   isOpen,
   onClose,
   onOpenModal,
-  onShowSettings,
-  onManageTags,
 }) {
   const handleNavigate = (action) => {
     onClose();
     // Small delay to ensure the guide closes fully before the new modal opens
-    // This prevents state conflicts in the parent component
     setTimeout(() => {
-      if (action === "tags") {
-        if (onManageTags) onManageTags();
-      } else if (action === "settings") {
-        if (onShowSettings) onShowSettings();
-      } else {
-        if (onOpenModal) onOpenModal(action);
-      }
+      onOpenModal(action);
     }, 100);
   };
 
@@ -144,7 +135,30 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="4. Parameters & Scoring"
+          title="4. Custom Watchlists"
+          icon="📋"
+          actionLabel="Manage Watchlists →"
+          actionKey="watchlists"
+          location="Settings > Watchlists"
+        >
+          <p>
+            Organize your stocks into custom watchlists for better focus and segmentation.
+          </p>
+          <ul className="guide-list">
+            <li>
+              <strong>Create & Manage:</strong> Add new watchlists or set your default view.
+            </li>
+            <li>
+              <strong>Assign Stocks:</strong> Check the specific watchlists when adding/importing stocks, or via the Edit Modal.
+            </li>
+            <li>
+              <strong>Custom Configurations:</strong> Define unique visible columns and filters for <em>each specific watchlist</em>!
+            </li>
+          </ul>
+        </Section>
+
+        <Section
+          title="5. Parameters & Scoring"
           icon="⚙️"
           actionLabel="Configure Parameters →"
           actionKey="params"
@@ -168,7 +182,7 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="5. Sectors & Organization"
+          title="6. Sectors & Organization"
           icon="🏢"
           actionLabel="Manage Sectors →"
           actionKey="sectors"
@@ -187,7 +201,7 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="6. Tags & Labels"
+          title="7. Tags & Labels"
           icon="🏷️"
           actionLabel="Manage Tags →"
           actionKey="tags"
@@ -207,7 +221,7 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="7. The Grid & Columns"
+          title="8. The Grid & Columns"
           icon="📝"
           actionLabel="Customize Columns →"
           actionKey="columns"
@@ -231,7 +245,7 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="8. Search & Filters"
+          title="9. Search & Filters"
           icon="🔍"
           actionLabel="Configure Filters →"
           actionKey="filter"
@@ -261,7 +275,7 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="9. Visual Analytics & AI"
+          title="10. Visual Analytics & AI"
           icon="📊"
           actionLabel="AI Settings →"
           actionKey="settings"
@@ -292,7 +306,7 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="10. Editing Rules"
+          title="11. Editing Rules"
           icon="🛡️"
           actionLabel="Configure Rules →"
           actionKey="rules"
@@ -315,7 +329,7 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="11. Data Management"
+          title="12. Data Management"
           icon="💾"
           location="Header > Export/Import"
         >
@@ -359,7 +373,7 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="12. TradingView Integration"
+          title="13. TradingView Integration"
           icon="📈"
           location="TradingView.com"
         >
@@ -387,6 +401,17 @@ export default function UserGuideModal({
           <div className="guide-tip">
             <strong>💡 How to use:</strong> Open any chart on TradingView. The widget appears automatically. Ensure the <strong>Region</strong> (US/IN) and <strong>Date</strong> in the widget header match your current trading plan.
           </div>
+        </Section>
+
+        <Section title="14. Keyboard Shortcuts" icon="⌨️">
+          <ul className="guide-list">
+            <li><strong>Alt + N:</strong> Add New Stock</li>
+            <li><strong>Ctrl + /</strong> (or Cmd + /): Focus Search Bar</li>
+            <li><strong>Alt + S:</strong> Open Settings</li>
+            <li><strong>Alt + A:</strong> Open Analytics Dashboard</li>
+            <li><strong>Alt + I:</strong> Generate AI Insights</li>
+            <li><strong>Escape:</strong> Close active modal</li>
+          </ul>
         </Section>
       </div>
       <div className="modal-footer">

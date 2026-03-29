@@ -1,3 +1,5 @@
+import { mapAdrBucket, mapLiquidityBucket } from "./utils/metrics.js";
+
 chrome.action.onClicked.addListener(() => {
   chrome.tabs.create({
     url: chrome.runtime.getURL("dashboard.html"),
@@ -174,101 +176,10 @@ async function fetchAndCalculateMetrics(symbol, country, paramDefs = null, adrDa
     const liqDef = liqMatch.def;
 
     // --- ADR MAPPING ---
-    if (adrDef?.type === "number") {
-      formattedAdr = avgAdr.toFixed(2);
-    } else if (adrDef?.type === "select" && Array.isArray(adrDef.options) && adrDef.options.length > 0) {
-       const targetVal = Math.round(avgAdr);
-       let closestDiff = Infinity;
-       let closestOpt = adrDef.options[0];
-       
-       for (const opt of adrDef.options) {
-           const optNum = Number(opt);
-           if (!isNaN(optNum)) {
-               const diff = Math.abs(optNum - targetVal);
-               if (diff < closestDiff) {
-                   closestDiff = diff;
-                   closestOpt = opt;
-               }
-           }
-       }
-       formattedAdr = closestOpt;
-    } else {
-       // Fallback
-       formattedAdr = Math.min(Math.max(Math.round(avgAdr), 1), 10);
-    }
+    formattedAdr = mapAdrBucket(avgAdr, adrDef);
 
     // --- LIQUIDITY MAPPING ---
-    let targetNumVal = liquidityValue;
-    if (country === "IN") {
-       targetNumVal = liquidityValue / 10000000; // Convert to Crores
-    } else {
-       targetNumVal = liquidityValue / 1000000; // Convert to Millions for others
-    }
-
-    if (liqDef?.type === "number") {
-       formattedLiquidity = targetNumVal.toFixed(2);
-    } else if (liqDef?.type === "select" && Array.isArray(liqDef.options) && liqDef.options.length > 0) {
-       let matchedBucket = null;
-       
-       const parsedOptions = liqDef.options.map(opt => {
-           const str = String(opt);
-           const numbers = str.match(/\d+/g); 
-           let maxInStr = numbers && numbers.length > 0 ? Math.max(...numbers.map(Number)) : Infinity;
-           
-           const isLessThan = str.includes("<") || str.toLowerCase().includes("under");
-           const isGreaterThan = str.includes(">") || str.includes("+") || str.toLowerCase().includes("over");
-           
-           return { original: opt, max: maxInStr, isLessThan, isGreaterThan, numbers };
-       }).sort((a,b) => a.max - b.max);
-
-       for (const opt of parsedOptions) {
-          if (opt.isLessThan) {
-             if (targetNumVal <= opt.max) {
-                 matchedBucket = opt.original;
-                 break;
-             }
-          } else if (opt.isGreaterThan) {
-             if (targetNumVal >= opt.max) {
-                 matchedBucket = opt.original;
-                 break;
-             }
-          } else if (opt.numbers && opt.numbers.length >= 2) {
-             const min = Math.min(...opt.numbers.map(Number));
-             const max = Math.max(...opt.numbers.map(Number));
-             if (targetNumVal >= min && targetNumVal <= max) {
-                 matchedBucket = opt.original;
-                 break;
-             }
-          } else {
-             if (targetNumVal <= opt.max) {
-                 matchedBucket = opt.original;
-                 break;
-             }
-          }
-       }
-
-       if (!matchedBucket && parsedOptions.length > 0) {
-           matchedBucket = parsedOptions[parsedOptions.length - 1].original;
-       }
-
-       formattedLiquidity = matchedBucket;
-
-    } else {
-       // Fallback
-       if (country === "IN") {
-           if (targetNumVal <= 20) formattedLiquidity = "<=20Cr";
-           else if (targetNumVal <= 49) formattedLiquidity = "21 to 49Cr";
-           else if (targetNumVal <= 99) formattedLiquidity = "50 to 99Cr";
-           else if (targetNumVal <= 199) formattedLiquidity = "100Cr to 199Cr";
-           else if (targetNumVal <= 499) formattedLiquidity = "200Cr to 499Cr";
-           else if (targetNumVal <= 999) formattedLiquidity = "500Cr+";
-           else if (targetNumVal <= 1499) formattedLiquidity = "1000Cr+";
-           else if (targetNumVal <= 1999) formattedLiquidity = "1500Cr+";
-           else formattedLiquidity = "2000Cr+";
-       } else {
-           formattedLiquidity = `${targetNumVal.toFixed(2)}M`;
-       }
-    }
+    formattedLiquidity = mapLiquidityBucket(liquidityValue, liqDef, country);
 
     return {
         adr: formattedAdr,

@@ -314,48 +314,56 @@ const TradeClarityWidget = () => {
   };
 
   const handleSave = useCallback(() => {
-    if (!appData || !symbol || !stockData) return;
-    const newData = structuredClone(appData);
+    if (!symbol || !stockData) return;
     const weekKey = getWeekKey(targetDate);
-    let targetWeeks = newData.weeks;
 
-    if (newData.weeks.US || newData.weeks.IN) {
-      if (!newData.weeks[region]) newData.weeks[region] = {};
-      targetWeeks = newData.weeks[region];
-    }
-    if (!targetWeeks[weekKey]) targetWeeks[weekKey] = { displayName: `Week of ${weekKey}`, stocks: {} };
-    targetWeeks[weekKey].stocks[symbol] = stockData;
-
-    safeStorage.set({ trading_app_data: newData }, (err) => {
-      if (err) {
-         alert(`Failed to save: Storage limit may be reached.\n\n${err.message || 'Unknown error'}`);
-         return; // Intercept success state
+    safeStorage.get('trading_app_data', (result) => {
+      const currentData = result.trading_app_data;
+      if (!currentData) {
+        alert("Failed to save: No application data found.");
+        return;
       }
-      
-      // Auto-fetch metrics if enabled
-      if (newData.uiConfig?.enableApiHydration === true && isExtension) {
-        try {
-          chrome.runtime.sendMessage({
-            action: "FETCH_STOCK_METRICS",
-            payload: {
-              symbols: [symbol],
-              country: region,
-              weekKey,
-              paramDefs: newData.paramDefinitions,
-              adrDays: newData.uiConfig?.adrDays || 20,
-              liquidityDays: newData.uiConfig?.liquidityDays || 20
-            }
-          });
-        } catch (e) {
-          console.error("Could not send hydration message:", e);
+      const newData = structuredClone(currentData);
+      let targetWeeks = newData.weeks;
+
+      if (newData.weeks.US || newData.weeks.IN) {
+        if (!newData.weeks[region]) newData.weeks[region] = {};
+        targetWeeks = newData.weeks[region];
+      }
+      if (!targetWeeks[weekKey]) targetWeeks[weekKey] = { displayName: `Week of ${weekKey}`, stocks: {} };
+      targetWeeks[weekKey].stocks[symbol] = stockData;
+
+      safeStorage.set({ trading_app_data: newData }, (err) => {
+        if (err) {
+           alert(`Failed to save: Storage limit may be reached.\n\n${err.message || 'Unknown error'}`);
+           return; // Intercept success state
         }
-      }
+        
+        // Auto-fetch metrics if enabled
+        if (newData.uiConfig?.enableApiHydration === true && isExtension) {
+          try {
+            chrome.runtime.sendMessage({
+              action: "FETCH_STOCK_METRICS",
+              payload: {
+                symbols: [symbol],
+                country: region,
+                weekKey,
+                paramDefs: newData.paramDefinitions,
+                adrDays: newData.uiConfig?.adrDays || 20,
+                liquidityDays: newData.uiConfig?.liquidityDays || 20
+              }
+            });
+          } catch (e) {
+            console.error("Could not send hydration message:", e);
+          }
+        }
 
-      setAppData(newData);
-      setSaveMessage(true);
-      setTimeout(() => { setSaveMessage(false); setIsOpen(false); }, 1200);
+        setAppData(newData);
+        setSaveMessage(true);
+        setTimeout(() => { setSaveMessage(false); setIsOpen(false); }, 1200);
+      });
     });
-  }, [appData, symbol, stockData, region, targetDate]);
+  }, [symbol, stockData, region, targetDate]);
 
   const parseTranscript = useCallback((transcript) => {
     let text = transcript.toLowerCase().trim();

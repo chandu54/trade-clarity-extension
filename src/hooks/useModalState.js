@@ -10,6 +10,12 @@ export function useModalState() {
   const [showEditingRules, setShowEditingRules] = useState(false);
   const [showColumnConfig, setShowColumnConfig] = useState(false);
   const [showManageSectors, setShowManageSectors] = useState(false);
+  const [showManageWatchlists, setShowManageWatchlists] = useState(false);
+  const [showManageTags, setShowManageTags] = useState(false);
+  const [showAnalyze, setShowAnalyze] = useState(false);
+  const [showSettings, setShowSettings] = useState(false);
+  const [showAnalytics, setShowAnalytics] = useState(false);
+  const [showUserGuide, setShowUserGuide] = useState(false);
 
   const openModal = (modalName) => {
     const setters = {
@@ -18,6 +24,12 @@ export function useModalState() {
       rules: setShowEditingRules,
       columns: setShowColumnConfig,
       sectors: setShowManageSectors,
+      watchlists: setShowManageWatchlists,
+      tags: setShowManageTags,
+      analyze: setShowAnalyze,
+      settings: setShowSettings,
+      analytics: setShowAnalytics,
+      guide: setShowUserGuide,
     };
     setters[modalName]?.(true);
   };
@@ -29,6 +41,12 @@ export function useModalState() {
       rules: setShowEditingRules,
       columns: setShowColumnConfig,
       sectors: setShowManageSectors,
+      watchlists: setShowManageWatchlists,
+      tags: setShowManageTags,
+      analyze: setShowAnalyze,
+      settings: setShowSettings,
+      analytics: setShowAnalytics,
+      guide: setShowUserGuide,
     };
     setters[modalName]?.(false);
   };
@@ -39,6 +57,12 @@ export function useModalState() {
     showEditingRules,
     showColumnConfig,
     showManageSectors,
+    showManageWatchlists,
+    showManageTags,
+    showAnalyze,
+    showSettings,
+    showAnalytics,
+    showUserGuide,
     openModal,
     closeModal,
     setShowManageParams,
@@ -46,5 +70,11 @@ export function useModalState() {
     setShowEditingRules,
     setShowColumnConfig,
     setShowManageSectors,
+    setShowManageWatchlists,
+    setShowManageTags,
+    setShowAnalyze,
+    setShowSettings,
+    setShowAnalytics,
+    setShowUserGuide,
   };
 }

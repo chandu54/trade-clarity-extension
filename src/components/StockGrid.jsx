@@ -233,6 +233,7 @@ export default function StockGrid({
   const importTypeRef = useRef("stocks"); // 'stocks', 'backup', or 'tv'
   const [copiedStocks, setCopiedStocks] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const searchInputRef = useRef(null);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -258,6 +259,35 @@ export default function StockGrid({
       document.removeEventListener("mousedown", handleClickOutside);
     };
   }, []);
+
+  /* =====================
+     KEYBOARD SHORTCUTS
+  ===================== */
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      const activeTag = document.activeElement?.tagName;
+      const isInputFocused = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
+
+      // Alt + N -> Add Stock
+      if (e.altKey && e.key.toLowerCase() === 'n') {
+        if (!isInputFocused) {
+          e.preventDefault();
+          setShowAddStock(true);
+        }
+      }
+
+      // Ctrl + / (or Cmd + /) -> Focus Search Bar
+      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+        e.preventDefault();
+        // Expand filters if they are collapsed so the search bar is actually visible
+        if (!showFilters) setShowFilters(true);
+        searchInputRef.current?.focus();
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showFilters]);
 
   /* =====================
      RESET PAGE ON CONTEXT CHANGE
@@ -540,6 +570,13 @@ export default function StockGrid({
         if (isNaN(aNum)) return 1;
         if (isNaN(bNum)) return -1;
         return sortDir === "asc" ? aNum - bNum : bNum - aNum;
+      }
+
+      if (paramDef?.type === "select" && Array.isArray(paramDef.options)) {
+        const aIdx = paramDef.options.indexOf(aVal);
+        const bIdx = paramDef.options.indexOf(bVal);
+        // If one of the values is not found in options, it will be -1
+        return sortDir === "asc" ? aIdx - bIdx : bIdx - aIdx;
       }
 
       if (typeof aVal === "boolean") {
@@ -1071,6 +1108,7 @@ export default function StockGrid({
                     </svg>
                   </span>
                   <input
+                    ref={searchInputRef}
                     type="text"
                     placeholder="Search symbols..."
                     value={searchQuery}
@@ -1475,7 +1513,7 @@ export default function StockGrid({
                 />
               </th>
               {visibleParams.map(([key, p]) => {
-                const isSortable = p.type === "number" || p.type === "date";
+                const isSortable = p.type === "number" || p.type === "date" || p.type === "select" || p.type === "checkbox";
                 return (
                   <th
                     key={key}

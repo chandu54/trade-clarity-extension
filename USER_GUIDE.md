@@ -56,7 +56,30 @@ TradeClarity organizes data by **Week**. This prevents stale watchlists and allo
 
 ---
 
-## 4. Analyzing & Filtering
+## 4. Custom Watchlists
+
+TradeClarity allows you to organize your stocks into custom watchlists for better focus and segmentation.
+
+### 📋 Creating and Managing Watchlists
+
+- Go to **Settings (⚙️) > Watchlists**.
+- **Create**: Enter a name and click "Add" to create a new watchlist.
+- **Default Watchlist**: Select the radio button next to a watchlist to make it the default view when you open the app.
+- **Edit/Delete**: Rename or delete existing watchlists. _(Note: Deleting a watchlist does not delete the stocks within it, it only removes the grouping)._
+
+### ➕ Assigning Stocks to Watchlists
+
+- **Adding/Importing**: When using **+ Add Stock** (either manually or via TradingView import), you can check the boxes for the specific watchlists you want the stocks added to.
+- **Editing**: Click on a stock's symbol in the grid to open the Edit Modal and update its assigned watchlists.
+
+### 🔍 Viewing and Customizing Watchlists
+
+- **Switching Views**: Use the Watchlist dropdown next to the Week Selector (top-left) to toggle between "All Stocks" and your custom watchlists.
+- **Per-Watchlist Configuration**: Go to **Settings > Columns** or **Settings > Filters** and change the "Configuration Scope" dropdown at the top. You can define unique visible columns and filters for _each specific watchlist_!
+
+---
+
+## 5. Analyzing & Filtering
 
 Once your stocks are in the grid, it's time to process them.
 
@@ -76,7 +99,7 @@ Once your stocks are in the grid, it's time to process them.
 
 ---
 
-## 5. Visual Insights & AI
+## 6. Visual Insights & AI
 
 ### 📊 Analytics Dashboard
 
@@ -108,7 +131,7 @@ Hover over the **"i" icon** next to the week dropdown.
 
 ---
 
-## 6. Data Management
+## 7. Data Management
 
 ### 💾 Backup & Restore (Full App)
 
@@ -123,7 +146,7 @@ Hover over the **"i" icon** next to the week dropdown.
 
 ---
 
-## 7. Configuration Tips
+## 8. Configuration Tips
 
 - **Manage Sectors**: Go to **Settings > Sectors** to customize the dropdown list to match your preferred taxonomy.
 - **Column Visibility**: Go to **Settings > Columns** to hide parameters you don't need to see in the main grid every day.
