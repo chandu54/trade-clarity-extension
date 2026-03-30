@@ -12,21 +12,22 @@ describe("ai service", () => {
 
   describe("getAiAnalysis", () => {
     it("should throw error if API key is missing", async () => {
-      const weekData = { stocks: { AAPL: { symbol: "AAPL" } }, apiKey: "" };
-      await expect(getAiAnalysis(weekData, {})).rejects.toThrow("API Key is missing");
+      const weekData = { stocks: { AAPL: { symbol: "AAPL" } } };
+      await expect(getAiAnalysis("", "", weekData, {})).rejects.toThrow("API Key is missing");
     });
 
     it("should return early if no stocks are provided", async () => {
-      const weekData = { stocks: {}, apiKey: "valid-gemini-api-key-that-is-long-enough" };
-      const result = await getAiAnalysis(weekData, {});
+      const apiKey = "valid-gemini-api-key-that-is-long-enough";
+      const weekData = { stocks: {} };
+      const result = await getAiAnalysis(apiKey, "model", weekData, {});
       expect(result.marketBias).toContain("No stocks found");
       expect(fetchMock).not.toHaveBeenCalled();
     });
 
     it("should handle custom requests correctly", async () => {
+      const apiKey = "valid-gemini-api-key-long-enough-39-chars";
       const weekData = { 
-        stocks: { AAPL: { symbol: "AAPL" } }, 
-        apiKey: "valid-gemini-api-key-long-enough-39-chars" 
+        stocks: { AAPL: { symbol: "AAPL" } }
       };
 
       fetchMock.mockResolvedValue({
@@ -36,7 +37,7 @@ describe("ai service", () => {
         })
       });
 
-      const result = await getAiAnalysis(weekData, {}, "Analyze this", true);
+      const result = await getAiAnalysis(apiKey, "model", weekData, {}, "Analyze this", true);
       expect(result.isCustom).toBe(true);
       expect(result.rawText).toBe("Custom Response");
     });
@@ -67,10 +68,10 @@ describe("ai service", () => {
 
   describe("API fetching (Gemini)", () => {
     it("should call Gemini API with correct payload", async () => {
+      const apiKey = "valid-gemini-api-key-long-enough-39-chars";
+      const model = "gemini-1.5-pro";
       const weekData = { 
-        stocks: { AAPL: { symbol: "AAPL", sector: "Tech" } }, 
-        apiKey: "valid-gemini-api-key-long-enough-39-chars",
-        model: "gemini-1.5-pro"
+        stocks: { AAPL: { symbol: "AAPL", sector: "Tech" } }
       };
 
       fetchMock.mockResolvedValue({
@@ -80,13 +81,13 @@ describe("ai service", () => {
         })
       });
 
-      const result = await getAiAnalysis(weekData, {});
+      const result = await getAiAnalysis(apiKey, model, weekData, {});
       
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining("generativelanguage.googleapis.com"),
         expect.objectContaining({
           method: "POST",
-          headers: expect.objectContaining({ "x-goog-api-key": weekData.apiKey })
+          headers: expect.objectContaining({ "x-goog-api-key": apiKey })
         })
       );
       expect(result.marketBias).toBe("Positive");

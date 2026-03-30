@@ -91,6 +91,8 @@ describe('Category Intelligence Suite', () => {
 
       // Verify getAiAnalysis was called with correctly mapped data
       expect(getAiAnalysis).toHaveBeenCalledWith(
+        'test-key',
+        'gemini',
         expect.objectContaining({
           category: 'Infrastructure',
           stockMetrics: expect.objectContaining({
@@ -118,7 +120,7 @@ describe('Category Intelligence Suite', () => {
         />
       );
 
-      const sentPrompt = getAiAnalysis.mock.calls[0][2];
+      const sentPrompt = getAiAnalysis.mock.calls[0][4];
       expect(sentPrompt).toContain('DO NOT USE TABLES');
       expect(sentPrompt).toContain('Leadership Tier');
     });
@@ -141,7 +143,7 @@ describe('Category Intelligence Suite', () => {
         />
       );
 
-      const payload = getAiAnalysis.mock.calls[0][0];
+      const payload = getAiAnalysis.mock.calls[0][2];
       expect(payload.stockMetrics['LEADER'].performance).toBe('25.0%');
       expect(payload.stockMetrics['LAGGARD_A'].performance).toBe('1.0%');
     });
@@ -164,7 +166,7 @@ describe('Category Intelligence Suite', () => {
         />
       );
 
-      const payload = getAiAnalysis.mock.calls[0][0];
+      const payload = getAiAnalysis.mock.calls[0][2];
       expect(payload.stockMetrics['STOCK_B'].performance).toBe('-15.0%');
       expect(payload.stockMetrics['STOCK_B'].isUp).toBe(false);
     });
@@ -187,7 +189,7 @@ describe('Category Intelligence Suite', () => {
         />
       );
 
-      const payload = getAiAnalysis.mock.calls[0][0];
+      const payload = getAiAnalysis.mock.calls[0][2];
       expect(payload.stockMetrics['ANOMALY'].performance).toBe('8.5%');
       expect(payload.stockMetrics['WEAK_A'].performance).toBe('-4.0%');
     });

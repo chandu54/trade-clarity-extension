@@ -6,7 +6,7 @@ export const PROMPT_TEMPLATES = [
   { value: "day", label: "Day Trading Focus", text: "Act as an aggressive day trading expert. Analyze the following watchlist for high-probability intraday setups. Focus on momentum, volume profile, VWAP bands, and catalyst-driven price action. Identify obvious support/resistance levels and key breakout levels for the upcoming session." }
 ];
 
-export async function getAiAnalysis(weekData, paramDefinitions, selectedPromptText = null, isCustom = false) {
+export async function getAiAnalysis(apiKey, model, weekData, paramDefinitions, selectedPromptText = null, isCustom = false) {
   // 1. Handle Empty Data Case immediately (Client-side)
   const stocks = Object.values(weekData?.stocks || {});
   if (stocks.length === 0) {
@@ -18,18 +18,17 @@ export async function getAiAnalysis(weekData, paramDefinitions, selectedPromptTe
     };
   }
 
-  let apiKey = weekData.apiKey;
+  // --- API Key Validation (Gemini Protocol) ---
   if (!apiKey) {
     throw new Error("API Key is missing. Please add it in Settings.");
   }
   apiKey = apiKey.trim();
 
-  // --- API Key Validation (Gemini Protocol) ---
   if (apiKey.length < 30) {
     throw new Error("Invalid Google Gemini API Key format. Key is too short.");
   }
 
-  let customModel = weekData.model;
+  let customModel = model;
   if (customModel) customModel = customModel.trim();
 
   let customPrompt = selectedPromptText;

@@ -3,8 +3,8 @@ import Modal from "./Modal";
 export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
   // Default = true (read-only ON)
   const readOnly = data.uiConfig?.lockPreviousWeeks !== false;
-  // Default = false
-  const enableApiHydration = data.uiConfig?.enableApiHydration === true;
+  // Default = true
+  const enableApiHydration = data.uiConfig?.enableApiHydration !== false;
   const adrDays = data.uiConfig?.adrDays || 20;
   const liquidityDays = data.uiConfig?.liquidityDays || 20;
 

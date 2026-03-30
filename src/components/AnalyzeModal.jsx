@@ -64,7 +64,14 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
       const analysisData = { ...currentWeekData, stocks: stocksToAnalyze };
       const stockCount = Object.keys(stocksToAnalyze).length;
 
-      const analysis = await getAiAnalysis({ ...analysisData, apiKey: data.aiSettings.apiKey, model: data.aiSettings.model }, data.paramDefinitions, activePromptObj.text, isCustomPromptGlobal);
+      const apiKey = data?.aiSettings?.apiKey;
+      const model = data?.aiSettings?.model;
+
+      if (!apiKey) {
+        throw new Error("API Key is missing. Please configure it in the AI Settings (bottom-right gear icon).");
+      }
+
+      const analysis = await getAiAnalysis(apiKey, model, analysisData, data.paramDefinitions, activePromptObj.text, isCustomPromptGlobal);
       
       // Add metadata for transparency
       const enrichedAnalysis = {
@@ -79,7 +86,7 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
       // Persist to global state and update the default prompt
       setData(prev => {
         const newData = structuredClone(prev);
-        if (newData.weeks[country][weekKey]) {
+        if (newData.weeks?.[country]?.[weekKey]) {
           newData.weeks[country][weekKey].analysis = enrichedAnalysis;
         }
         newData.aiSettings.systemPrompt = activePromptObj.text;

@@ -1,5 +1,5 @@
 import { describe, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent, act, waitFor } from '@testing-library/react';
 import AnalyzeModal from '../AnalyzeModal';
 import { ToastContext } from '../ToastContext';
 import * as aiService from '../../services/ai';
@@ -73,11 +73,9 @@ describe('AnalyzeModal', () => {
 
     expect(screen.getByText('Generating AI Analysis...')).toBeDefined();
 
-    await act(async () => {
-      await Promise.resolve();
+    await waitFor(() => {
+      expect(aiService.getAiAnalysis).toHaveBeenCalled();
     });
-
-    expect(aiService.getAiAnalysis).toHaveBeenCalled();
     expect(props.setData).toHaveBeenCalled();
   });
 
@@ -88,11 +86,9 @@ describe('AnalyzeModal', () => {
     
     fireEvent.click(screen.getByRole('button', { name: /Generate Analysis/i }));
 
-    await act(async () => {
-      await Promise.resolve();
+    await waitFor(() => {
+      expect(mockShowToast).toHaveBeenCalledWith('API Error', 'error');
     });
-
-    expect(mockShowToast).toHaveBeenCalledWith('API Error', 'error');
   });
 
   it('filters stocks by watchlist if selectedWatchlistId is set', async () => {
@@ -103,12 +99,13 @@ describe('AnalyzeModal', () => {
     
     fireEvent.click(screen.getByRole('button', { name: /Generate Analysis/i }));
 
-    await act(async () => {
-      await Promise.resolve();
+    await waitFor(() => {
+        expect(aiService.getAiAnalysis).toHaveBeenCalled();
     });
 
     // Verify that the payload passed to getAiAnalysis contained the correct stocks
-    const callArgs = aiService.getAiAnalysis.mock.calls[0][0];
+    // 3rd argument is weekData (index 2)
+    const callArgs = aiService.getAiAnalysis.mock.calls[0][2];
     expect(Object.keys(callArgs.stocks)).toContain('AAPL');
   });
 

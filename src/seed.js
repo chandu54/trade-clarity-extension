@@ -126,5 +126,6 @@ export const DEFAULT_DATA = {
     tagFilterable: true,
     sectorFilterable: true,
     tradableFilterable: true,
+    enableApiHydration: true,
   },
 };

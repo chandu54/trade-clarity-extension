@@ -90,8 +90,9 @@ export default function DeepViewAi({ categoryName, symbols, weekData, aiSettings
         };
       });
 
-      // Destructure to EXPLICITLY exclude the apiKey from the payload sent TO the model
-      const { apiKey, ...safeAiSettings } = aiSettings || {};
+      // Destructure to separate the apiKey from visual/prompt settings.
+      // This ensures the key is NOT included in the payload that might be logged or processed elsewhere.
+      const { apiKey, model, ...safeAiSettings } = aiSettings || {};
 
       const aiDataPayload = {
         ...weekData,
@@ -122,7 +123,7 @@ Identify: ${symbols.join(", ")}. Use their provided performance numbers for the 
 Start directly with the report.`;
 
       try {
-        const result = await getAiAnalysis(aiDataPayload, null, prompt, true);
+        const result = await getAiAnalysis(apiKey, model, aiDataPayload, null, prompt, true);
         if (isMounted) {
           setAnalysisText(result.rawText || result.text || result.content || "Analysis completed but no text was returned.");
           setLoading(false);

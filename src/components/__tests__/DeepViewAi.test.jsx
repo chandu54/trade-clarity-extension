@@ -1,5 +1,5 @@
 import { describe, it, vi, beforeEach } from 'vitest';
-import { render, screen, act } from '@testing-library/react';
+import { render, screen, act, waitFor } from '@testing-library/react';
 import DeepViewAi from '../DeepViewAi';
 import * as aiService from '../../services/ai';
 
@@ -36,26 +36,25 @@ describe('DeepViewAi', () => {
   it('renders analysis text correctly after loading', async () => {
     const mockResponse = { rawText: '### Executive Summary\n\n- Point 1\n- Point 2\n\n**Bold Text**' };
     aiService.getAiAnalysis.mockResolvedValue(mockResponse);
-
-    await act(async () => {
-      render(<DeepViewAi {...props} />);
-    });
-
-    expect(screen.getByText('Executive Summary')).toBeDefined();
-    expect(screen.getByText('Point 1')).toBeDefined();
-    expect(screen.getByText('Bold Text')).toBeDefined();
+    render(<DeepViewAi {...props} />);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Executive Summary')).toBeDefined();
+      expect(screen.getByText('Point 1')).toBeDefined();
+      expect(screen.getByText('Bold Text')).toBeDefined();
+    }, { timeout: 3000 });
+    
     expect(screen.queryByText(/Generating Research/i)).toBeNull();
   });
 
   it('renders error message if AI analysis fails', async () => {
     aiService.getAiAnalysis.mockRejectedValue(new Error('AI overlap error'));
-
-    await act(async () => {
-      render(<DeepViewAi {...props} />);
-    });
-
-    expect(screen.getByText('Analysis Failed')).toBeDefined();
-    expect(screen.getByText('AI overlap error')).toBeDefined();
+    render(<DeepViewAi {...props} />);
+    
+    await waitFor(() => {
+      expect(screen.getByText('Analysis Failed')).toBeDefined();
+      expect(screen.getByText('AI overlap error')).toBeDefined();
+    }, { timeout: 3000 });
   });
 
   it('shows error if no symbols provided', async () => {

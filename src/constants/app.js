@@ -6,6 +6,12 @@ export const EMPTY_DATA = {
   weeks: {},
   paramDefinitions: {},
   uiConfig: {},
+  aiSettings: {
+    apiKey: "",
+    model: "gemini-2.5-flash",
+    systemPrompt: "Act as a disciplined, risk-aware swing trading mentor...",
+    customPrompts: []
+  }
 };
 
 export const MODAL_TYPES = {
