@@ -90,9 +90,12 @@ export default function DeepViewAi({ categoryName, symbols, weekData, aiSettings
         };
       });
 
+      // Destructure to EXPLICITLY exclude the apiKey from the payload sent TO the model
+      const { apiKey, ...safeAiSettings } = aiSettings || {};
+
       const aiDataPayload = {
         ...weekData,
-        ...aiSettings,
+        ...safeAiSettings,
         category: categoryName,
         stockMetrics: stockMetrics
       };

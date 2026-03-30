@@ -5,6 +5,7 @@ import ImportWatchlistModal from "./ImportWatchlistModal";
 import TrashIcon from "./icons/TrashIcon";
 import { useToast } from "./ToastContext";
 import { useConfirm } from "./ConfirmContext";
+import { doesParamPassCheck } from "../utils/paramUtils";
 
 function getWeekRangeLabel(sundayDateStr) {
   if (!sundayDateStr) return "";
@@ -205,9 +206,7 @@ export default function StockGrid({
   const { showToast } = useToast();
   const { confirm } = useConfirm();
 
-  /* =====================
-     STATE
-  ===================== */
+
   const [showManageParams, setShowManageParams] = useState(false);
   const [showManageSectors, setShowManageSectors] = useState(false);
 
@@ -260,9 +259,7 @@ export default function StockGrid({
     };
   }, []);
 
-  /* =====================
-     KEYBOARD SHORTCUTS
-  ===================== */
+
   useEffect(() => {
     const handleKeyDown = (e) => {
       const activeTag = document.activeElement?.tagName;
@@ -289,9 +286,7 @@ export default function StockGrid({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [showFilters]);
 
-  /* =====================
-     RESET PAGE ON CONTEXT CHANGE
-  ===================== */
+
   useEffect(() => {
     setCurrentPage(1);
   }, [weekKey, pageSize, filters, sortBy, sortDir, searchQuery]);
@@ -362,44 +357,8 @@ export default function StockGrid({
 
     let passed = 0;
     checkParams.forEach(([key, p]) => {
-      const value = stock.params?.[key];
-      if (p.type === "checkbox") {
-        if (value === true) passed++;
-      } else if (p.type === "number") {
-        if (value === undefined || value === "" || value === null) return;
-        const numVal = parseFloat(value);
-        if (isNaN(numVal)) return;
-        const ideals = p.idealValues || [];
-        const match = ideals.some((ideal) => {
-          const cond = String(ideal).trim();
-          if (cond.startsWith(">=")) return numVal >= parseFloat(cond.slice(2));
-          if (cond.startsWith("<=")) return numVal <= parseFloat(cond.slice(2));
-          if (cond.startsWith(">")) return numVal > parseFloat(cond.slice(1));
-          if (cond.startsWith("<")) return numVal < parseFloat(cond.slice(1));
-          if (cond.includes("-")) {
-            const parts = cond.split("-").map((s) => parseFloat(s.trim()));
-            if (parts.length === 2 && !isNaN(parts[0]) && !isNaN(parts[1])) {
-              return numVal >= parts[0] && numVal <= parts[1];
-            }
-          }
-          return numVal == parseFloat(cond);
-        });
-        if (match) passed++;
-      } else if (p.type === "date") {
-        if (!value) return;
-        const ideals = p.idealValues || [];
-        const match = ideals.some((ideal) => {
-          const cond = String(ideal).trim();
-          if (cond.startsWith(">=")) return value >= cond.slice(2).trim();
-          if (cond.startsWith("<=")) return value <= cond.slice(2).trim();
-          if (cond.startsWith(">")) return value > cond.slice(1).trim();
-          if (cond.startsWith("<")) return value < cond.slice(1).trim();
-          return value === cond;
-        });
-        if (match) passed++;
-      } else {
-        if (!value) return;
-        if ((p.idealValues || []).some((ideal) => ideal == value)) passed++;
+      if (doesParamPassCheck(stock.params?.[key], p)) {
+        passed++;
       }
     });
 
@@ -423,36 +382,9 @@ export default function StockGrid({
     const checkParams = visibleParams.filter(([, p]) => p.isCheck === true);
     let passed = 0;
     checkParams.forEach(([key, p]) => {
-      const value = stock.params?.[key];
-      if (p.type === "checkbox") { if (value === true) passed++; }
-      else if (p.type === "number") {
-        const numVal = parseFloat(value);
-        if (isNaN(numVal)) return;
-        if ((p.idealValues || []).some(ideal => {
-          const cond = String(ideal).trim();
-          if (cond.startsWith(">=")) return numVal >= parseFloat(cond.slice(2));
-          if (cond.startsWith("<=")) return numVal <= parseFloat(cond.slice(2));
-          if (cond.startsWith(">")) return numVal > parseFloat(cond.slice(1));
-          if (cond.startsWith("<")) return numVal < parseFloat(cond.slice(1));
-          if (cond.includes("-")) {
-            const parts = cond.split("-").map(s => parseFloat(s.trim()));
-            return parts.length === 2 && numVal >= parts[0] && numVal <= parts[1];
-          }
-          return numVal == parseFloat(cond);
-        })) passed++;
+      if (doesParamPassCheck(stock.params?.[key], p)) {
+        passed++;
       }
-      else if (p.type === "date") {
-        if (!value) return;
-        if ((p.idealValues || []).some(ideal => {
-          const cond = String(ideal).trim();
-          if (cond.startsWith(">=")) return value >= cond.slice(2).trim();
-          if (cond.startsWith("<=")) return value <= cond.slice(2).trim();
-          if (cond.startsWith(">")) return value > cond.slice(1).trim();
-          if (cond.startsWith("<")) return value < cond.slice(1).trim();
-          return value === cond;
-        })) passed++;
-      }
-      else { if ((p.idealValues || []).some(ideal => ideal == value)) passed++; }
     });
     return passed;
   }
@@ -591,19 +523,16 @@ export default function StockGrid({
     });
   }, [filteredStocks, sortBy, sortDir]);
 
-  /* =====================
-     PAGINATION
-  ===================== */
+
   const totalPages = Math.max(1, Math.ceil(sortedStocks.length / pageSize));
+
 
   const start = (currentPage - 1) * pageSize;
   const end = start + pageSize;
 
   const stocks = sortedStocks.slice(start, end);
 
-  /* =====================
-     SORT TOGGLE
-  ===================== */
+
   function toggleSort(col) {
     if (sortBy === col) {
       setSortDir((d) => (d === "asc" ? "desc" : "asc"));
@@ -613,9 +542,7 @@ export default function StockGrid({
     }
   }
 
-  /* =====================
-     FILTER HELPERS
-  ===================== */
+
   function setFilter(key, value) {
     setFilters((f) => ({ ...f, [key]: value }));
   }
@@ -632,9 +559,7 @@ export default function StockGrid({
     });
   }, [filters]);
 
-  /* =====================
-     COLUMN RESIZING
-  ===================== */
+
   const [colWidths, setColWidths] = useState({});
 
   const handleMouseDown = (e, colKey) => {

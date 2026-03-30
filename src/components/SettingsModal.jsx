@@ -4,6 +4,7 @@ import { testConnection, PROMPT_TEMPLATES } from '../services/ai';
 
 const KNOWN_MODELS = [
   { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Free Default)", isPremium: false },
+  { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro (Premium)", isPremium: true },
 ];
 
 const SettingsModal = ({ isOpen, onClose, data, setData }) => {
@@ -35,7 +36,7 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
         const isKnown = KNOWN_MODELS.some((m) => m.value === savedModel);
         setIsCustomModel(!isKnown);
       } else {
-        setModel(storedIsPro ? "gemini-2.0-pro" : "gemini-2.5-flash");
+        setModel(storedIsPro ? "gemini-1.5-pro" : "gemini-2.5-flash");
         setIsCustomModel(false);
       }
 
@@ -139,7 +140,7 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
                 id="apiKey"
                 value={apiKey}
                 onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Paste your API key here..."
+                placeholder="Paste your Gemini API key here..."
                 className="settings-input-v2"
               />
               <button
@@ -323,7 +324,7 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
         </div>
 
         <div className="settings-footer-note">
-          Currently supporting Google Gemini AI. More providers coming soon.
+          Institutional-grade AI analysis powered by Google Gemini.
         </div>
       </div>
 

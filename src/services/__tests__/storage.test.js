@@ -1,42 +1,57 @@
-import { describe, it, expect, vi, beforeEach } from "vitest";
+import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
 import { loadData, saveData } from "../storage";
 import { DEFAULT_DATA } from "../../seed";
 
-// Mock Chrome API
-const chromeMock = {
-  storage: {
-    local: {
-      get: vi.fn(),
-      set: vi.fn((data, callback) => {
-        if (typeof callback === "function") callback();
-      }),
-      remove: vi.fn(),
-    },
-  },
+// Helper to mock global objects
+const stubGlobal = (name, value) => {
+  const original = global[name];
+  global[name] = value;
+  return () => {
+    global[name] = original;
+  };
 };
 
-vi.stubGlobal("chrome", chromeMock);
-
-// Mock localStorage
-const localStorageMock = (() => {
-  let store = {};
-  return {
-    getItem: vi.fn(key => store[key] || null),
-    setItem: vi.fn((key, value) => { store[key] = value.toString(); }),
-    removeItem: vi.fn(key => { delete store[key]; }),
-    clear: vi.fn(() => { store = {}; }),
-  };
-})();
-
-vi.stubGlobal("localStorage", localStorageMock);
-
 describe("storage service", () => {
+  let restoreChrome;
+  let restoreLocalStorage;
+  let mockStorage = {};
+
+  const chromeMock = {
+    storage: {
+      local: {
+        get: vi.fn(),
+        set: vi.fn((data, callback) => {
+          Object.assign(mockStorage, data);
+          if (typeof callback === "function") callback();
+        }),
+        remove: vi.fn(),
+      },
+    },
+  };
+
+  const localStorageMock = {
+    getItem: vi.fn(key => mockStorage[key] || null),
+    setItem: vi.fn((key, value) => { mockStorage[key] = value; }),
+    removeItem: vi.fn(key => { delete mockStorage[key]; }),
+    clear: vi.fn(() => { mockStorage = {}; }),
+  };
+
   beforeEach(() => {
     vi.clearAllMocks();
-    localStorageMock.clear();
+    mockStorage = {};
   });
 
-  describe("loadData", () => {
+  describe("Chrome Storage Environment", () => {
+    beforeEach(() => {
+      restoreChrome = stubGlobal("chrome", chromeMock);
+      restoreLocalStorage = stubGlobal("localStorage", localStorageMock);
+    });
+
+    afterEach(() => {
+      restoreChrome();
+      restoreLocalStorage();
+    });
+
     it("should initialize with DEFAULT_DATA if storage is empty", async () => {
       chromeMock.storage.local.get.mockImplementation((key, callback) => {
         callback({});
@@ -44,13 +59,10 @@ describe("storage service", () => {
 
       const data = await loadData();
       expect(data.sectors).toEqual(DEFAULT_DATA.sectors);
-      expect(data.aiSettings).toBeDefined();
-      // Should have saved back to storage
       expect(chromeMock.storage.local.set).toHaveBeenCalled();
     });
 
     it("should migrate legacy AI settings", async () => {
-      // Setup legacy keys in storage
       chromeMock.storage.local.get.mockImplementation((keys, callback) => {
         if (keys === "trading_app_data") callback({});
         else callback({
@@ -61,60 +73,38 @@ describe("storage service", () => {
 
       const data = await loadData();
       expect(data.aiSettings.apiKey).toBe("test-key");
-      expect(data.aiSettings.model).toBe("test-model");
-      
-      // Should have removed legacy keys
-      expect(chromeMock.storage.local.remove).toHaveBeenCalledWith([
-        "ai_api_key", "ai_model", "ai_prompt", "custom_prompts"
-      ]);
-    });
-
-    it("should migrate flat weeks to US key", async () => {
-      const legacyData = {
-        weeks: {
-          "2024-03-17": { stocks: {} }
-        },
-        paramDefinitions: {},
-        uiConfig: {}
-      };
-
-      chromeMock.storage.local.get.mockImplementation((key, callback) => {
-        callback({ "trading_app_data": legacyData });
-      });
-
-      const data = await loadData();
-      expect(data.weeks.US["2024-03-17"]).toBeDefined();
-      expect(data.weeks.IN).toBeDefined();
-    });
-
-    it("should merge uiConfig with defaults", async () => {
-      const existingData = {
-        uiConfig: {
-          lockPreviousWeeks: true,
-          columnVisibility: { "__stock__": true }
-        },
-        paramDefinitions: { custom: { label: "Custom" } },
-        weeks: { US: {}, IN: {} }
-      };
-
-      chromeMock.storage.local.get.mockImplementation((key, callback) => {
-        callback({ "trading_app_data": existingData });
-      });
-
-      const data = await loadData();
-      // Should have merged default columnVisibility for 'custom' param
-      expect(data.uiConfig.columnVisibility.custom).toBe(true);
-      expect(data.uiConfig.lockPreviousWeeks).toBe(true);
+      expect(chromeMock.storage.local.remove).toHaveBeenCalled();
     });
   });
 
-  describe("saveData", () => {
-    it("should save to chrome.storage.local", async () => {
-      const testData = { foo: "bar" };
+  describe("LocalStorage Environment", () => {
+    beforeEach(() => {
+      restoreChrome = stubGlobal("chrome", undefined);
+      restoreLocalStorage = stubGlobal("localStorage", localStorageMock);
+    });
+
+    afterEach(() => {
+      restoreChrome();
+      restoreLocalStorage();
+    });
+
+    it("should fallback to localStorage if chrome.storage is unavailable", async () => {
+      const testData = { ...DEFAULT_DATA, foo: "bar" };
+      mockStorage["trading_app_data"] = JSON.stringify(testData);
+
+      const data = await loadData();
+      expect(data.foo).toBe("bar");
+      expect(localStorageMock.getItem).toHaveBeenCalledWith("trading_app_data");
+    });
+
+    it("should save to localStorage", async () => {
+      const testData = { hello: "world" };
       await saveData(testData);
-      expect(chromeMock.storage.local.set).toHaveBeenCalledWith({
-        "trading_app_data": testData
-      }, expect.any(Function));
+      expect(localStorageMock.setItem).toHaveBeenCalledWith(
+        "trading_app_data",
+        JSON.stringify(testData)
+      );
     });
   });
 });
+

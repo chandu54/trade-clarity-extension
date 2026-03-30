@@ -1,5 +1,24 @@
 import { describe, it, expect } from "vitest";
-import { mapLiquidityBucket } from "../metrics";
+import { mapLiquidityBucket, mapAdrBucket } from "../metrics";
+
+describe("mapAdrBucket", () => {
+  it("should format as number if type is number", () => {
+    const adrDef = { type: "number" };
+    expect(mapAdrBucket(5.678, adrDef)).toBe("5.68");
+  });
+
+  it("should match closest select option", () => {
+    const adrDef = { type: "select", options: ["1", "3", "5", "10"] };
+    expect(mapAdrBucket(2.6, adrDef)).toBe("3");
+    expect(mapAdrBucket(8, adrDef)).toBe("10");
+  });
+
+  it("should fallback to range 1-10 if no definition provided", () => {
+    expect(mapAdrBucket(15, null)).toBe(10);
+    expect(mapAdrBucket(0, null)).toBe(1);
+    expect(mapAdrBucket(5.4, null)).toBe(5);
+  });
+});
 
 describe("mapLiquidityBucket", () => {
   const commonLiqDef = {
@@ -33,13 +52,13 @@ describe("mapLiquidityBucket", () => {
     expect(mapLiquidityBucket(150000000, numberDef, "US")).toBe("150.00"); 
   });
 
-  it("should fallback locally if no options matching applied", () => {
-    // Provide a generic array without specific matches
-    const nonMatchDef = {
-      type: "select",
-      options: ["Penny", "Mid", "Large"] 
-    };
-    // It should pick the first limit which parses to Infinity since they all tie
-    expect(mapLiquidityBucket(150000000, nonMatchDef, "IN")).toBe("Penny");
+  it("should fallback to hardcoded buckets if no liqDef provided for IN", () => {
+    expect(mapLiquidityBucket(150000000, null, "IN")).toBe("<=20Cr");
+    expect(mapLiquidityBucket(3500000000, null, "IN")).toBe("200Cr to 499Cr");
+  });
+
+  it("should fallback to millions for US if no liqDef provided", () => {
+    expect(mapLiquidityBucket(150000000, null, "US")).toBe("150.00M");
   });
 });
+

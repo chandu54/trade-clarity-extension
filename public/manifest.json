@@ -1,11 +1,13 @@
 {
   "name": "TradeClarity",
-  "description": "Your disciplined path to smarter trades. Manage weekly watchlists, analyze setups, and maintain trading discipline with AI insights.",
+  "description": "Professional swing trading companion for managing disciplined watchlists. Features weekly routines, automated metrics (ADR/Liquidity), and deep-view AI analysis integrated with TradingView.",
+  "author": "TradeClarity Team",
   "version": "1.0.0",
   "manifest_version": 3,
   "permissions": ["storage", "unlimitedStorage", "activeTab"],
   "host_permissions": [
-    "https://query1.finance.yahoo.com/*"
+    "https://query1.finance.yahoo.com/*",
+    "https://generativelanguage.googleapis.com/*"
   ],
   "action": {
     "default_title": "Open TradeClarity"

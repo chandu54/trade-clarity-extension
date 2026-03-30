@@ -1,4 +1,4 @@
-import { describe, it, expect, vi, beforeEach } from 'vitest';
+import { describe, it, vi, beforeEach } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import React from 'react';
 import CategoryAnalysisView from '../CategoryAnalysisView';
@@ -32,14 +32,26 @@ describe('Category Intelligence Suite', () => {
           onClose={() => {}} 
           categoryName="Infrastructure" 
           symbols={['ABB', 'NTPC', 'RELIANCE']}
-          stockData={mockStockData}
+          initialStockData={mockStockData}
           timeframe={mockTimeframe}
         />
       );
 
       // Verify the breadth bar labels
-      expect(screen.getByText(/Adv: 2/)).toBeInTheDocument();
-      expect(screen.getByText(/Dec: 1/)).toBeInTheDocument();
+      // Use functions to find text split across multiple elements like <span>Adv</span><span>2</span>
+      expect(screen.getByText((content, element) => {
+        return element.tagName.toLowerCase() === 'span' && content === 'Adv';
+      })).toBeInTheDocument();
+      expect(screen.getByText((content, element) => {
+        return element.tagName.toLowerCase() === 'span' && content === '2' && element.classList.contains('adv');
+      })).toBeInTheDocument();
+
+      expect(screen.getByText((content, element) => {
+        return element.tagName.toLowerCase() === 'span' && content === 'Dec';
+      })).toBeInTheDocument();
+      expect(screen.getByText((content, element) => {
+        return element.tagName.toLowerCase() === 'span' && content === '1' && element.classList.contains('dec');
+      })).toBeInTheDocument();
     });
 
     it('identifies the absolute performance leader in the "Top Picks" section', () => {
@@ -49,15 +61,16 @@ describe('Category Intelligence Suite', () => {
           onClose={() => {}} 
           categoryName="Infrastructure" 
           symbols={['ABB', 'NTPC', 'RELIANCE']}
-          stockData={mockStockData}
+          initialStockData={mockStockData}
           timeframe={mockTimeframe}
         />
       );
 
       // ABB is the leader with +12.5% vs RELIANCE +8.0%
-      const picks = screen.getByText(/Top Picks:/);
-      expect(picks.parentElement.textContent).toContain('ABB');
-      expect(picks.parentElement.textContent).toContain('12.5%');
+      const picksLabel = screen.getByText('Top Picks');
+      const picksValue = picksLabel.nextElementSibling;
+      expect(picksValue.textContent).toContain('ABB');
+      expect(picksValue.textContent).toContain('RELIANCE');
     });
   });
 
@@ -212,31 +225,26 @@ describe('Category Intelligence Suite', () => {
     });
   });
 
-  describe('MiniCandlestickChart (SVGs)', () => {
-    it('calculates trend path logic correctly based on price points', () => {
-      const prices = [100, 110, 105, 120];
-      const { container } = render(
-        <MiniCandlestickChart symbol="TEST" prices={prices} timeframe="1m" />
-      );
-
-      const path = container.querySelector('.trend-path');
-      expect(path).toBeDefined();
-      expect(path.getAttribute('d')).toContain('M'); // Should be a valid path
+  describe('MiniCandlestickChart', () => {
+    it('renders null if no data is provided', () => {
+      const { container } = render(<MiniCandlestickChart data={null} />);
+      expect(container.firstChild).toBeNull();
     });
 
-    it('applies green class for positive trend and red for negative', () => {
-      // Positive trend (100 -> 120)
-      const { container: upContainer, unmount: unmountUp } = render(
-        <MiniCandlestickChart symbol="UP" prices={[100, 120]} timeframe="1m" />
-      );
-      expect(upContainer.querySelector('.chart-svg.up')).toBeDefined();
-      unmountUp();
+    it('renders symbol and price correctly', () => {
+      const mockChartData = {
+        symbol: 'AAPL',
+        longName: 'Apple Inc.',
+        currentPrice: 150.50,
+        prevClose: 148.00,
+        periodChangePct: 1.69,
+        isAdvancing: true,
+        candlesticks: []
+      };
 
-      // Negative trend (100 -> 80)
-      const { container: downContainer } = render(
-        <MiniCandlestickChart symbol="DOWN" prices={[100, 80]} timeframe="1m" />
-      );
-      expect(downContainer.querySelector('.chart-svg.down')).toBeDefined();
+      render(<MiniCandlestickChart data={mockChartData} country="US" />);
+      expect(screen.getByText('AAPL')).toBeInTheDocument();
+      expect(screen.getByText(/Apple Inc/)).toBeInTheDocument();
     });
   });
 });

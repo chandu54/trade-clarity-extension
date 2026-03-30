@@ -37,7 +37,7 @@ export function mapLiquidityBucket(liquidityValue, liqDef, country) {
      
      const parsedOptions = liqDef.options.map(opt => {
          const str = String(opt);
-         const numbers = str.match(/\d+/g); 
+         const numbers = str.match(/\d*\.?\d+/g); 
          let maxInStr = numbers && numbers.length > 0 ? Math.max(...numbers.map(Number)) : Infinity;
          
          const isLessThan = str.includes("<") || str.toLowerCase().includes("under");

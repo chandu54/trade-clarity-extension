@@ -22,7 +22,12 @@ export default function Modal({ children, isOpen = true, onClose, title, subtitl
 
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
-      <div className={`modal-box ${className}`} onClick={(e) => e.stopPropagation()}>
+      <div 
+        className={`modal-box ${className}`} 
+        onClick={(e) => e.stopPropagation()}
+        role="dialog"
+        aria-modal="true"
+      >
         {(title || subtitle) && (
           <div className="modal-header">
             <div className="modal-title-group">

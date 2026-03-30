@@ -9,12 +9,13 @@ export default function CategoryAnalysisView({
   popupData,
   country,
   weekData,
-  aiSettings
+  aiSettings,
+  initialStockData = []
 }) {
   const [activeTab, setActiveTab] = useState('birdsEye');
   const [timeframe, setTimeframe] = useState('3mo');
-  const [stockData, setStockData] = useState([]);
-  const [loading, setLoading] = useState(true);
+  const [stockData, setStockData] = useState(initialStockData);
+  const [loading, setLoading] = useState(initialStockData.length === 0);
 
   // Dynamic indicator logic
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });

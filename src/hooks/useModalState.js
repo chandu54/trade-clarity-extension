@@ -1,80 +1,49 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 
 /**
- * Custom hook for managing multiple modal visibility states
- * Reduces boilerplate for managing show/hide state for modals
+ * Custom hook for managing multiple modal visibility states.
+ * Replaces multiple boolean states with a single activeModal hook to reduce boilerplate and re-renders.
  */
 export function useModalState() {
-  const [showManageParams, setShowManageParams] = useState(false);
-  const [showFilterConfig, setShowFilterConfig] = useState(false);
-  const [showEditingRules, setShowEditingRules] = useState(false);
-  const [showColumnConfig, setShowColumnConfig] = useState(false);
-  const [showManageSectors, setShowManageSectors] = useState(false);
-  const [showManageWatchlists, setShowManageWatchlists] = useState(false);
-  const [showManageTags, setShowManageTags] = useState(false);
-  const [showAnalyze, setShowAnalyze] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
-  const [showAnalytics, setShowAnalytics] = useState(false);
-  const [showUserGuide, setShowUserGuide] = useState(false);
+  const [activeModal, setActiveModal] = useState(null);
 
-  const openModal = (modalName) => {
-    const setters = {
-      params: setShowManageParams,
-      filter: setShowFilterConfig,
-      rules: setShowEditingRules,
-      columns: setShowColumnConfig,
-      sectors: setShowManageSectors,
-      watchlists: setShowManageWatchlists,
-      tags: setShowManageTags,
-      analyze: setShowAnalyze,
-      settings: setShowSettings,
-      analytics: setShowAnalytics,
-      guide: setShowUserGuide,
-    };
-    setters[modalName]?.(true);
-  };
+  const openModal = useCallback((modalName) => {
+    setActiveModal(modalName);
+  }, []);
 
-  const closeModal = (modalName) => {
-    const setters = {
-      params: setShowManageParams,
-      filter: setShowFilterConfig,
-      rules: setShowEditingRules,
-      columns: setShowColumnConfig,
-      sectors: setShowManageSectors,
-      watchlists: setShowManageWatchlists,
-      tags: setShowManageTags,
-      analyze: setShowAnalyze,
-      settings: setShowSettings,
-      analytics: setShowAnalytics,
-      guide: setShowUserGuide,
-    };
-    setters[modalName]?.(false);
-  };
+  const closeModal = useCallback(() => {
+    setActiveModal(null);
+  }, []);
 
   return {
-    showManageParams,
-    showFilterConfig,
-    showEditingRules,
-    showColumnConfig,
-    showManageSectors,
-    showManageWatchlists,
-    showManageTags,
-    showAnalyze,
-    showSettings,
-    showAnalytics,
-    showUserGuide,
+    activeModal,
     openModal,
     closeModal,
-    setShowManageParams,
-    setShowFilterConfig,
-    setShowEditingRules,
-    setShowColumnConfig,
-    setShowManageSectors,
-    setShowManageWatchlists,
-    setShowManageTags,
-    setShowAnalyze,
-    setShowSettings,
-    setShowAnalytics,
-    setShowUserGuide,
+    
+    // Legacy support for boolean flags to avoid breaking other components immediately
+    showManageParams: activeModal === 'params',
+    showFilterConfig: activeModal === 'filter',
+    showEditingRules: activeModal === 'rules',
+    showColumnConfig: activeModal === 'columns',
+    showManageSectors: activeModal === 'sectors',
+    showManageWatchlists: activeModal === 'watchlists',
+    showManageTags: activeModal === 'tags',
+    showAnalyze: activeModal === 'analyze',
+    showSettings: activeModal === 'settings',
+    showAnalytics: activeModal === 'analytics',
+    showUserGuide: activeModal === 'guide',
+    
+    // Legacy setters for individual modals
+    setShowManageParams: (val) => val ? setActiveModal('params') : setActiveModal(null),
+    setShowFilterConfig: (val) => val ? setActiveModal('filter') : setActiveModal(null),
+    setShowEditingRules: (val) => val ? setActiveModal('rules') : setActiveModal(null),
+    setShowColumnConfig: (val) => val ? setActiveModal('columns') : setActiveModal(null),
+    setShowManageSectors: (val) => val ? setActiveModal('sectors') : setActiveModal(null),
+    setShowManageWatchlists: (val) => val ? setActiveModal('watchlists') : setActiveModal(null),
+    setShowManageTags: (val) => val ? setActiveModal('tags') : setActiveModal(null),
+    setShowAnalyze: (val) => val ? setActiveModal('analyze') : setActiveModal(null),
+    setShowSettings: (val) => val ? setActiveModal('settings') : setActiveModal(null),
+    setShowAnalytics: (val) => val ? setActiveModal('analytics') : setActiveModal(null),
+    setShowUserGuide: (val) => val ? setActiveModal('guide') : setActiveModal(null),
   };
 }

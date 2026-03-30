@@ -37,9 +37,6 @@ function AppContent() {
   const { confirm } = useConfirm();
   const { showToast } = useToast();
 
-  /* =========================
-     LOAD DATA ON MOUNT
-  ========================= */
   useEffect(() => {
     async function init() {
       const stored = await loadData();
@@ -53,7 +50,7 @@ function AppContent() {
       // Default to US weeks for initial load
       const latestWeek = getLatestWeekKey(stored.weeks?.US || {});
       if (latestWeek) {
-        setWeekKey(latestWeek);
+        handleSetWeekKey(latestWeek);
       }
 
       hasLoaded.current = true;
@@ -62,17 +59,13 @@ function AppContent() {
     init();
   }, []);
 
-  /* =========================
-     PERSIST DATA TO STORAGE
-  ========================= */
+
   useEffect(() => {
     if (!hasLoaded.current || !data) return;
     saveData(data);
   }, [data]);
 
-  /* =========================
-     SYNC WITH BACKGROUND UPDATES
-  ========================= */
+
   useEffect(() => {
     if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
 
@@ -80,42 +73,49 @@ function AppContent() {
       if (namespace === "local" && changes["trading_app_data"]) {
         const newData = changes["trading_app_data"].newValue;
         if (newData && hasLoaded.current) {
-           setData((currentData) => {
-              if (!currentData) return newData;
-              
-              // To prevent infinite loop with saveData:
-              // Check if the actual stocks data has changed (which is what background script mutates)
-              const currentStr = JSON.stringify(currentData.weeks);
-              const newStr = JSON.stringify(newData.weeks);
-              
-              if (currentStr !== newStr) {
-                  return newData;
-              }
+          setData((currentData) => {
+            if (!currentData) return newData;
+            
+            // Shallow compare weeks for high-level changes before committing to a merge
+            // This is significantly faster than JSON.stringify for large datasets
+            if (currentData.weeks === newData.weeks) {
               return currentData;
-           });
+            }
+
+            return {
+              ...currentData,
+              weeks: newData.weeks, // Background only touches weeks/stocks
+              aiSettings: newData.aiSettings || currentData.aiSettings
+            };
+          });
         }
       }
     };
 
     chrome.storage.onChanged.addListener(handleStorageChange);
-    return () => {
-      chrome.storage.onChanged.removeListener(handleStorageChange);
-    };
+    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, []);
 
-  /* =========================
-     ENSURE WEEK EXISTS
-  ========================= */
-  useEffect(() => {
-    if (!weekKey || !data) return;
+
+  /**
+   * Safe setter for weekKey that ensures the target week exists in data.
+   * Prevents expensive reactive clones.
+   */
+  const handleSetWeekKey = (newKey) => {
+    if (!newKey || !data) return;
+    
+    setWeekKey(newKey);
+
     const countryWeeks = data.weeks[country] || {};
-    if (!countryWeeks[weekKey]) {
-      const newData = structuredClone(data);
-      if (!newData.weeks[country]) newData.weeks[country] = {};
-      newData.weeks[country][weekKey] = { stocks: {} };
-      setData(newData);
+    if (!countryWeeks[newKey]) {
+      setData(prev => {
+        const newData = { ...prev };
+        if (!newData.weeks[country]) newData.weeks[country] = {};
+        newData.weeks[country][newKey] = { stocks: {} };
+        return newData;
+      });
     }
-  }, [weekKey, data, country]);
+  };
 
   /* =========================
      DERIVED STATE
@@ -127,9 +127,7 @@ function AppContent() {
 
   const isReadOnly = isWeekReadOnly(weekKey, currentWeekKey, data?.uiConfig);
 
-  /* =========================
-     GLOBAL KEYBOARD SHORTCUTS
-  ========================= */
+
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
       // Ignore shortcuts if the user is actively typing inside an input/textarea
@@ -156,9 +154,6 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
-  /* =========================
-     CLEAR DATA HANDLERS
-  ========================= */
   const clearWeekData = async () => {
     if (!weekKey) return;
     if (!(await confirm("Clear all stocks for this week?"))) return;
@@ -171,7 +166,7 @@ function AppContent() {
   const clearAllData = async () => {
     // Header handles the confirmation for this action usually, but if called directly:
     setData(structuredClone(EMPTY_DATA));
-    setWeekKey(null);
+    handleSetWeekKey(null);
   };
 
   const createCurrentWeek = () => {
@@ -180,12 +175,10 @@ function AppContent() {
     if (!newData.weeks[country]) newData.weeks[country] = {};
     newData.weeks[country][key] = { stocks: {} };
     setData(newData);
-    setWeekKey(key);
+    handleSetWeekKey(key);
   };
 
-  /* =========================
-     EXPORT ALL DATA
-  ========================= */
+
   const exportAllData = () => {
     if (!data || !data.weeks || !data.paramDefinitions) {
       showToast(
@@ -214,9 +207,7 @@ function AppContent() {
     showToast("Full backup exported successfully", "success");
   };
 
-  /* =========================
-     IMPORT ALL DATA
-  ========================= */
+
   const importAllData = async (importedData) => {
     const isValid =
       importedData &&
@@ -243,14 +234,12 @@ function AppContent() {
     ) {
       setData(importedData);
       const latestWeek = getLatestWeekKey(importedData.weeks?.[country] || {});
-      setWeekKey(latestWeek || null);
+      handleSetWeekKey(latestWeek || null);
       showToast("Full backup restored successfully", "success");
     }
   };
 
-  /* =========================
-     INITIAL STATE
-  ========================= */
+
   if (!data) return null;
 
   if (!weekKey && Object.keys(data.weeks?.[country] || {}).length === 0) {
@@ -262,9 +251,7 @@ function AppContent() {
     );
   }
 
-  /* =========================
-     RENDER
-  ========================= */
+
   return (
     <>
       <GlobalTooltip />
@@ -287,7 +274,7 @@ function AppContent() {
         setData={setData}
         country={country}
         weekKey={weekKey}
-        setWeekKey={setWeekKey}
+        setWeekKey={handleSetWeekKey}
         selectedWatchlistId={selectedWatchlistId}
         setSelectedWatchlistId={setSelectedWatchlistId}
         onClearWeek={clearWeekData}

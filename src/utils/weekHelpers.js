@@ -5,15 +5,14 @@ export function getLatestWeekKey(weeks) {
 }
 
 export function isWeekReadOnly(weekKey, currentWeekKey, uiConfig) {
-  if (!weekKey) return false;
+  if (!weekKey || !currentWeekKey) return false;
   
   // If the user disabled the "Lock Previous Weeks" setting, everything is editable
   if (uiConfig?.lockPreviousWeeks === false) return false;
 
   // Otherwise, lock only if the week is strictly BEFORE the current week
-  const weekDate = new Date(weekKey);
-  const currentDate = new Date(currentWeekKey);
-  return weekDate < currentDate;
+  // Lexicographical comparison works perfectly for YYYY-MM-DD strings
+  return weekKey < currentWeekKey;
 }
 
 export function getLocalDateString(date) {

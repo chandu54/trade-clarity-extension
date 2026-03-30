@@ -835,7 +835,7 @@ const AnalyticsDashboard = ({ country, stocks, allWeeksData, aiSettings, paramet
   }, [stocks, selectedWatchlistId]);
 
   const aggregatedData = useMemo(() => {
-    if (!filteredStocks || !parameters) return [];
+    if (!filteredStocks || !parameters || !Array.isArray(parameters)) return [];
 
     const systemMetrics = [];
 

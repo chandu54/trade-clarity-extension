@@ -1,19 +1,21 @@
 import React, { useEffect, useRef } from 'react';
 import { createChart, CrosshairMode, CandlestickSeries } from 'lightweight-charts';
 
-export default function MiniCandlestickChart({ data, country, onClick }) {
+export default function MiniCandlestickChart({ data, country, onClick = () => {} }) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
+
+  if (!data) return null;
 
   const {
     symbol,
     longName,
-    currentPrice,
-    prevClose,
-    dailyChangePct,
-    periodChangePct,
+    currentPrice = 0,
+    prevClose = 0,
+    dailyChangePct = 0,
+    periodChangePct = 0,
     isAdvancing,
-    candlesticks
+    candlesticks = []
   } = data;
 
   const isUp = isAdvancing;

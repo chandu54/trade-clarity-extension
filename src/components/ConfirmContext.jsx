@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback } from "react";
 import Modal from "./Modal";
 
-const ConfirmContext = createContext({
+export const ConfirmContext = createContext({
   confirm: (message) => {
     // Fallback to native confirm if Provider is missing
     return Promise.resolve(window.confirm(message));

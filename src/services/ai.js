@@ -1,6 +1,5 @@
 // Constants for default AI models
 const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
-const DEFAULT_OPENAI_MODEL = "gpt-4o-mini";
 
 export const PROMPT_TEMPLATES = [
   { value: "swing", label: "Swing Trading (Default)", text: "Act as a disciplined, risk-aware swing trading mentor (referencing Mark Minervini's SEPA and William O'Neil's CANSLIM). \nAnalyze the following watchlist to provide a clear, objective, and actionable trading plan. \nBe conservative: do not force patterns if they are not clear. Focus on quality over quantity." },
@@ -25,18 +24,9 @@ export async function getAiAnalysis(weekData, paramDefinitions, selectedPromptTe
   }
   apiKey = apiKey.trim();
 
-  // --- API Key Validation ---
-  const isOpenAI = apiKey.startsWith("sk-");
-  if (isOpenAI) {
-    // OpenAI keys are typically 51 characters long.
-    if (apiKey.length < 40) {
-      throw new Error("Invalid OpenAI API Key format. Key is too short.");
-    }
-  } else {
-    // Google Gemini keys are typically 39 characters long.
-    if (apiKey.length < 30) {
-      throw new Error("Invalid Google API Key format. Key is too short.");
-    }
+  // --- API Key Validation (Gemini Protocol) ---
+  if (apiKey.length < 30) {
+    throw new Error("Invalid Google Gemini API Key format. Key is too short.");
   }
 
   let customModel = weekData.model;
@@ -49,22 +39,15 @@ export async function getAiAnalysis(weekData, paramDefinitions, selectedPromptTe
   const prompt = generatePrompt(stocks, customPrompt, isCustom);
 
   try {
-    if (isOpenAI) {
-      return await fetchOpenAI(
-        apiKey,
-        prompt,
-        customModel || DEFAULT_OPENAI_MODEL,
-        isCustom
-      );
-    } else {
-      // Use custom model if set, otherwise default.
-      let modelToUse = customModel || DEFAULT_GEMINI_MODEL;
-
-      return await fetchGemini(apiKey, prompt, modelToUse, isCustom);
-    }
+    // Use custom model if set, otherwise default.
+    let modelToUse = customModel || DEFAULT_GEMINI_MODEL;
+    return await fetchGemini(apiKey, prompt, modelToUse, isCustom);
   } catch (error) {
-    console.error("AI Analysis Failed:", error.message || "Unknown error occurred.");
-    throw error;
+    const errorMsg = error.message || "Unknown error";
+    // Security: Ensure the error message doesn't contain the raw API key if it's logged
+    const safeErrorMsg = errorMsg.replace(apiKey, "REDACTED");
+    console.error("AI Analysis Failed:", safeErrorMsg);
+    throw new Error(safeErrorMsg);
   }
 }
 
@@ -74,28 +57,14 @@ export async function testConnection(apiKey, model) {
     throw new Error("API Key is required");
   }
 
-  const isOpenAI = apiKey.startsWith("sk-");
-  if (isOpenAI) {
-    if (apiKey.length < 40) {
-      throw new Error("Invalid OpenAI API Key format. Key is too short.");
-    }
-  } else {
-    if (apiKey.length < 30) {
-      throw new Error("Invalid Google API Key format. Key is too short.");
-    }
+  if (apiKey.length < 30) {
+    throw new Error("Invalid Google Gemini API Key format. Key is too short.");
   }
 
   const prompt = 'Test connection. Respond with valid JSON: { "status": "OK" }';
-  let modelToUse = model;
-  if (!modelToUse) {
-    modelToUse = isOpenAI ? DEFAULT_OPENAI_MODEL : DEFAULT_GEMINI_MODEL;
-  }
+  let modelToUse = model || DEFAULT_GEMINI_MODEL;
 
-  if (isOpenAI) {
-    return await fetchOpenAI(apiKey, prompt, modelToUse);
-  } else {
-    return await fetchGemini(apiKey, prompt, modelToUse);
-  }
+  return await fetchGemini(apiKey, prompt, modelToUse);
 }
 
 async function fetchGemini(apiKey, prompt, model, isCustom = false) {
@@ -130,61 +99,27 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false) {
   return parseResponse(text, isCustom);
 }
 
-async function fetchOpenAI(apiKey, prompt, model, isCustom = false) {
-  const url = "https://api.openai.com/v1/chat/completions";
-
-  const response = await fetch(url, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-    },
-    body: JSON.stringify({
-      model: model,
-      messages: [
-        {
-          role: "system",
-          content: isCustom ? "You are a helpful trading assistant." : "You are a helpful trading assistant. Respond in JSON.",
-        },
-        { role: "user", content: prompt },
-      ],
-      ...(isCustom ? {} : { response_format: { type: "json_object" } }),
-    }),
-  });
-
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({}));
-    throw new Error(
-      err.error?.message || `OpenAI API Error: ${response.status} (${model})`,
-    );
-  }
-
-  const data = await response.json();
-  const text = data.choices?.[0]?.message?.content;
-
-  return parseResponse(text, isCustom);
-}
 
 function parseResponse(text, isCustom = false) {
   if (isCustom) {
-     return { isCustom: true, rawText: text };
+    return { isCustom: true, rawText: text };
   }
 
   try {
-    // Extract JSON substring by finding the first '{' and last '}'
-    const startIndex = text.indexOf("{");
-    const endIndex = text.lastIndexOf("}");
-
-    if (startIndex === -1 || endIndex === -1) {
-      throw new Error("No JSON object found in response");
+    // Robust extraction: Look for the first '{' and the last '}' across the entire response
+    // capturing everything in between. This handles markdown blocks (```json) gracefully.
+    // The [\s\S]* pattern ensures we match across multiple lines (including newlines).
+    const jsonMatch = text.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error("No valid JSON structure found in the AI response.");
     }
 
-    const jsonString = text.substring(startIndex, endIndex + 1);
+    const jsonString = jsonMatch[0];
     return JSON.parse(jsonString);
   } catch (e) {
-    console.error("JSON Parse Error: Failed to parse AI response.", e.message);
+    console.warn("Raw AI response trace:", text); // Use warn instead of error for cleaner production logs
     throw new Error(
-      "Failed to parse AI response. The model might have returned invalid JSON.",
+      "The AI model returned an invalid response format. Please try again or refine your prompt."
     );
   }
 }

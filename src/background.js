@@ -6,9 +6,6 @@ chrome.action.onClicked.addListener(() => {
   });
 });
 
-/* =========================================================================
-   BACKGROUND API HYDRATION FOR ADR & LIQUIDITY
-========================================================================= */
 
 let processingQueue = [];
 let isProcessing = false;
@@ -56,7 +53,7 @@ async function processQueue() {
 
   // Take the next batch
   const batch = processingQueue.splice(0, BATCH_SIZE);
-  console.log(`Processing batch of ${batch.length} stocks. Remaining in queue: ${processingQueue.length}`);
+  // Production: Remove noisy logs, keep them in dev only if needed.
 
   const results = await Promise.allSettled(batch.map(item => fetchAndCalculateMetrics(item.symbol, item.country, item.paramDefs, item.adrDays, item.liquidityDays)));
 
@@ -82,7 +79,6 @@ async function processQueue() {
   if (processingQueue.length > 0) {
     setTimeout(processQueue, BATCH_DELAY_MS);
   } else {
-    console.log("Finished processing all background API hydration requests.");
     isProcessing = false;
   }
 }

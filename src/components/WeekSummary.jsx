@@ -1,5 +1,6 @@
 import { useMemo, useState, useRef, useEffect } from "react";
 import { calculateCheckStats } from "../utils/checks";
+import { getStockCheckSummary } from "../utils/paramUtils";
 
 export default function WeekSummary({ data, weekKey, country }) {
   const [open, setOpen] = useState(false);
@@ -60,17 +61,7 @@ export default function WeekSummary({ data, weekKey, country }) {
       map[sector].total += 1;
       if (stock.tradable) map[sector].tradable += 1;
 
-      let passed = 0;
-
-      params.forEach(([key, p]) => {
-        if (!p.isCheck) return;
-
-        const value = stock.params?.[key];
-        if (p.type === "checkbox" && value === true) passed++;
-        if (p.type === "select" && p.idealValues?.includes(value)) passed++;
-        if (p.type === "text" && p.idealValues?.includes(value)) passed++;
-      });
-
+      const { passed } = getStockCheckSummary(stock, data.paramDefinitions);
       map[sector].passedChecks += passed;
     });
 
@@ -134,20 +125,8 @@ export default function WeekSummary({ data, weekKey, country }) {
       map[sector].total += 1;
       if (stock.tradable) map[sector].tradable += 1;
 
-      let passed = 0;
-      let totalChecks = 0;
-
-      params.forEach(([key, p]) => {
-        if (!p.isCheck) return;
-        totalChecks++;
-
-        const value = stock.params?.[key];
-        if (p.type === "checkbox" && value === true) passed++;
-        if (p.type === "select" && p.idealValues?.includes(value)) passed++;
-        if (p.type === "text" && p.idealValues?.includes(value)) passed++;
-      });
-
-      map[sector].passedChecks += totalChecks > 0 ? passed : 0;
+      const { passed } = getStockCheckSummary(stock, data.paramDefinitions);
+      map[sector].passedChecks += passed;
     });
 
     return Object.values(map)
@@ -177,23 +156,10 @@ export default function WeekSummary({ data, weekKey, country }) {
     stocks.forEach((stock) => {
       if (stock.tradable) tradable++;
 
-      let total = 0;
-      let passed = 0;
-
-      params.forEach(([key, p]) => {
-        if (!p.isCheck) return;
-
-        total++;
-        const value = stock.params?.[key];
-
-        if (p.type === "checkbox" && value === true) passed++;
-        if (p.type === "select" && p.idealValues?.includes(value)) passed++;
-        if (p.type === "text" && p.idealValues?.includes(value)) passed++;
-      });
-
+      const { ratio, total } = getStockCheckSummary(stock, data.paramDefinitions);
       if (total === 0) return;
 
-      const pct = (passed / total) * 100;
+      const pct = ratio * 100;
 
       if (pct >= 80) pass80++;
       else if (pct >= 60) pass60++;

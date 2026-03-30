@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useCallback } from "react";
 import Toast from "../components/Toast";
 
-const ToastContext = createContext({
+export const ToastContext = createContext({
   showToast: (message) => {
     // Fallback to native alert if Provider is missing
     if (typeof window !== 'undefined') window.alert(message);
