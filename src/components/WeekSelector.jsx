@@ -123,6 +123,9 @@ export default function WeekSelector({
             onClick={(e) => e.target.showPicker && e.target.showPicker()}
           />
         </div>
+        <span className="date-label">
+          <strong>Week: </strong>
+        </span>
         <select
           className="select-control-v2"
           value={weekKey || ""}
@@ -135,6 +138,9 @@ export default function WeekSelector({
           ))}
         </select>
 
+        <span className="date-label">
+          <strong>Watchlist: </strong>
+        </span>
         <select
           className="select-control-v2"
           value={selectedWatchlistId}

@@ -34,11 +34,19 @@ describe('StockGrid', () => {
       US: {
         '2024-03-17': {
           stocks: {
-            AAPL: { symbol: 'AAPL', sector: 'Tech', params: { volume: 100, rs: 80 }, note: 'Buy' },
-            MSFT: { symbol: 'MSFT', sector: 'Tech', params: { volume: 200, rs: 90 }, note: 'Hold' }
+            AAPL: { symbol: 'AAPL', sector: 'Tech', params: { volume: 100, rs: 80 }, notes: 'Buy' },
+            MSFT: { symbol: 'MSFT', sector: 'Tech', params: { volume: 200, rs: 90 }, notes: 'Hold' }
           }
         }
       }
+    },
+    watchlists: [],
+    uiConfig: {
+      columnVisibility: { volume: true, rs: true },
+      sectors: ['Tech', 'Finance'],
+      tags: ['Growth', 'Value'],
+      sectorFilterable: true,
+      tradableFilterable: true
     }
   };
 
@@ -50,7 +58,8 @@ describe('StockGrid', () => {
     country: 'US',
     selectedWatchlistId: 'all',
     onExportAll: vi.fn(),
-    onImportAll: vi.fn()
+    onImportAll: vi.fn(),
+    availableTags: []
   };
 
   beforeEach(() => {
@@ -70,7 +79,7 @@ describe('StockGrid', () => {
     const filterToggle = screen.getByText(/Show All Filters/i);
     fireEvent.click(filterToggle);
 
-    const searchInput = screen.getByPlaceholderText(/Search symbols\.\.\./i);
+    const searchInput = screen.getByLabelText(/Search symbols/i);
     fireEvent.change(searchInput, { target: { value: 'AAPL' } });
 
     expect(screen.getByText('AAPL')).toBeDefined();
@@ -83,7 +92,7 @@ describe('StockGrid', () => {
     const filterToggle = screen.getByText(/Show All Filters/i);
     fireEvent.click(filterToggle);
 
-    const sectorSelect = screen.getAllByRole('combobox')[0]; // Assuming first select is sector
+    const sectorSelect = screen.getByLabelText('Sector');
     fireEvent.change(sectorSelect, { target: { value: 'Finance' } });
 
     expect(screen.queryByText('AAPL')).toBeNull();

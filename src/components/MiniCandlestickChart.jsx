@@ -1,9 +1,17 @@
 import React, { useEffect, useRef } from 'react';
 import { createChart, CrosshairMode, CandlestickSeries } from 'lightweight-charts';
 
-export default function MiniCandlestickChart({ data, country, onClick = () => {} }) {
+export default function MiniCandlestickChart({ 
+  data, 
+  country, 
+  onClick = () => {}, 
+  hideHeaders = false,
+  interactive = false,
+  disableZoom = false
+}) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
+  const seriesRef = useRef(null);
 
   if (!data) return null;
 
@@ -12,13 +20,20 @@ export default function MiniCandlestickChart({ data, country, onClick = () => {}
     longName,
     currentPrice = 0,
     prevClose = 0,
-    dailyChangePct = 0,
     periodChangePct = 0,
     isAdvancing,
     candlesticks = []
   } = data;
 
   const isUp = isAdvancing;
+
+  // Currency formatting based on country
+  const currencySymbol = country === 'US' ? '$' : '₹';
+  const locale = country === 'US' ? 'en-US' : 'en-IN';
+  const formattedPrice = currentPrice.toLocaleString(locale, { 
+    minimumFractionDigits: 2, 
+    maximumFractionDigits: 2 
+  });
 
   const handleOpenTradingView = (e) => {
     e.stopPropagation();
@@ -30,38 +45,66 @@ export default function MiniCandlestickChart({ data, country, onClick = () => {}
     if (!chartContainerRef.current) return;
 
     const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    const textColor = isDark ? 'rgba(148, 163, 184, 0.7)' : 'rgba(100, 116, 139, 0.7)';
+    
+    // Theme-Aware Chart Colors (Respecting Global CSS Variables)
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#0f172a';
+    const gridColor = getComputedStyle(document.documentElement).getPropertyValue('--border').trim() || 'rgba(0,0,0,0.1)';
 
     const chart = createChart(chartContainerRef.current, {
       layout: {
         background: { type: 'solid', color: 'transparent' },
-        textColor,
+        textColor: textColor,
         attributionLogo: false,
-        fontSize: 9,
+        fontSize: 10,
+        fontFamily: "'Inter', sans-serif",
       },
       grid: {
         vertLines: { visible: false },
-        horzLines: { visible: false },
+        horzLines: { 
+          visible: true, 
+          color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+          style: 2, // Dashed
+        },
       },
-      timeScale: { visible: false },
+      timeScale: { 
+        visible: interactive,
+        borderVisible: false,
+        timeVisible: true,
+      },
       rightPriceScale: {
         visible: true,
         borderVisible: false,
         entireTextOnly: true,
-        scaleMargins: { top: 0.05, bottom: 0.05 },
+        scaleMargins: { top: 0.1, bottom: 0.1 },
         ticksVisible: false,
       },
       crosshair: {
         mode: CrosshairMode.Magnet,
-        vertLine: { visible: false },
-        horzLine: { visible: false },
+        vertLine: { 
+          visible: interactive,
+          labelVisible: interactive,
+          color: 'rgba(56, 189, 248, 0.4)',
+          style: 1, 
+        },
+        horzLine: { 
+          visible: true,
+          labelVisible: true,
+          color: 'rgba(56, 189, 248, 0.4)',
+          style: 1,
+        },
       },
-      handleScroll: false,
-      handleScale: false,
+      handleScroll: {
+        mouseWheel: !disableZoom,
+        pressedMouseMove: true,
+        horzTouchDrag: true,
+        vertTouchDrag: true,
+      },
+      handleScale: {
+        mouseWheel: !disableZoom,
+        pinch: !disableZoom,
+        axisPressedMouseMove: true,
+      },
     });
-
-    const pricePrecision = currentPrice >= 1000 ? 0 : currentPrice >= 100 ? 1 : 2;
-    const priceMinMove = currentPrice >= 1000 ? 1 : currentPrice >= 100 ? 0.1 : 0.01;
 
     const series = chart.addSeries(CandlestickSeries, {
       upColor: '#10b981',
@@ -69,76 +112,79 @@ export default function MiniCandlestickChart({ data, country, onClick = () => {}
       borderVisible: false,
       wickUpColor: '#10b981',
       wickDownColor: '#ef4444',
-      priceFormat: {
-        type: 'price',
-        precision: pricePrecision,
-        minMove: priceMinMove,
-      },
     });
 
     if (candlesticks && candlesticks.length > 0) {
       series.setData(candlesticks);
       chart.timeScale().fitContent();
 
-      series.createPriceLine({
-        price: prevClose,
-        color: isDark ? 'rgba(255, 255, 255, 0.15)' : 'rgba(0, 0, 0, 0.12)',
-        lineWidth: 1,
-        lineStyle: 3,
-        axisLabelVisible: true,
-        title: '',
-        axisLabelTextColor: '#fff',
-        axisLabelColor: isUp ? '#10b981' : '#ef4444',
-      });
+      if (interactive) {
+        series.createPriceLine({
+          price: prevClose,
+          color: 'rgba(128, 128, 128, 0.5)',
+          lineWidth: 1,
+          lineStyle: 3, // Dotted
+          axisLabelVisible: true,
+          title: '', 
+        });
+      }
     }
 
     chartRef.current = chart;
+    seriesRef.current = series;
 
-    const handleResize = () => {
-      if (chartContainerRef.current && chartRef.current) {
-        chartRef.current.applyOptions({
-          width: chartContainerRef.current.clientWidth,
-          height: chartContainerRef.current.clientHeight,
-        });
-        chartRef.current.timeScale().fitContent();
-      }
-    };
+    const resizeObserver = new ResizeObserver((entries) => {
+      if (entries.length === 0 || !chartRef.current) return;
+      const { width, height } = entries[0].contentRect;
+      chartRef.current.applyOptions({ width, height });
+      // Ensure we immediately fit content if it's a new or significant resize
+      chartRef.current.timeScale().fitContent();
+    });
 
-    window.addEventListener('resize', handleResize);
-    setTimeout(handleResize, 0);
+    if (chartContainerRef.current) {
+      resizeObserver.observe(chartContainerRef.current);
+    }
 
     return () => {
-      window.removeEventListener('resize', handleResize);
-      if (chartRef.current) {
-        chartRef.current.remove();
-      }
+      resizeObserver.disconnect();
+      chart.remove();
     };
-  }, [candlesticks, prevClose, isUp, currentPrice]);
+  }, [candlesticks, prevClose, interactive]);
+
+  const cardStyle = hideHeaders ? { height: '100%', border: 'none', background: 'transparent', boxShadow: 'none' } : {};
 
   return (
-    <div className="mini-chart-card" onClick={onClick}>
-      <div className="card-top-row">
-        <span className="card-symbol">{symbol}</span>
-        <div className="card-changes">
-          <span className={`period-pct ${periodChangePct >= 0 ? 'up-text' : 'down-text'}`}>
-            {periodChangePct > 0 ? '+' : ''}{periodChangePct.toFixed(1)}%
-          </span>
-          <button className="tv-launch-btn" onClick={handleOpenTradingView} title="Open in TradingView">
-            <svg width="16" height="16" viewBox="0 0 36 28" fill="currentColor">
-              <path d="M14 22H7V11H0V4h14v18zM28 22h-7V11h7v11zm8-18H22v18h14V4z" />
-            </svg>
-          </button>
+    <div className={`mini-chart-card ${hideHeaders ? 'no-headers' : ''}`} onClick={onClick} style={cardStyle}>
+      {!hideHeaders && (
+        <div className="card-top-row">
+          <span className="card-symbol">{symbol}</span>
+          <div className="card-changes">
+            <span className={`period-pct ${periodChangePct >= 0 ? 'up-text' : 'down-text'}`}>
+              {periodChangePct > 0 ? '+' : ''}{periodChangePct.toFixed(1)}%
+            </span>
+            <button className="tv-launch-btn" onClick={handleOpenTradingView} title="Open in TradingView">
+              <svg width="16" height="16" viewBox="0 0 36 28" fill="currentColor">
+                <path d="M14 22H7V11H0V4h14v18zM28 22h-7V11h7v11zm8-18H22v18h14V4z" />
+              </svg>
+            </button>
+          </div>
         </div>
-      </div>
+      )}
       
-      <div className="chart-container-wrapper" ref={chartContainerRef} />
+      <div 
+        className="chart-container-wrapper" 
+        ref={chartContainerRef} 
+        style={{ width: '100%', height: hideHeaders ? '100%' : '140px' }}
+      />
       
-      <div className="card-bottom-row">
-        <span className="card-name" title={longName}>{longName}</span>
-        <span className="card-price">
-          ₹{currentPrice.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-        </span>
-      </div>
+      {!hideHeaders && (
+        <div className="card-bottom-row">
+          <span className="card-name" title={longName}>{longName}</span>
+          <span className="card-price">
+            {currencySymbol}{formattedPrice}
+          </span>
+        </div>
+      )}
     </div>
   );
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef } from "react";
 
 import Header from "./components/Header";
 import WeekSelector from "./components/WeekSelector";
@@ -75,7 +75,7 @@ function AppContent() {
         if (newData && hasLoaded.current) {
           setData((currentData) => {
             if (!currentData) return newData;
-            
+
             // Shallow compare weeks for high-level changes before committing to a merge
             // This is significantly faster than JSON.stringify for large datasets
             if (currentData.weeks === newData.weeks) {
@@ -103,7 +103,7 @@ function AppContent() {
    */
   const handleSetWeekKey = (newKey) => {
     if (!newKey || !data) return;
-    
+
     setWeekKey(newKey);
 
     const countryWeeks = data.weeks[country] || {};
@@ -251,6 +251,26 @@ function AppContent() {
     );
   }
 
+  const currentWeekStocks = Object.values(data.weeks?.[country]?.[weekKey]?.stocks || {});
+  const tagsSet = new Set(data.uiConfig?.tags || []);
+  currentWeekStocks.forEach((s) => {
+    if (Array.isArray(s.tags)) s.tags.forEach((t) => tagsSet.add(t));
+  });
+  const availableTags = Array.from(tagsSet).sort();
+
+  const handleUpdateStock = (updatedStock) => {
+    if (!weekKey || !updatedStock) return;
+
+    setData(prev => {
+      const newData = structuredClone(prev);
+      const weekStocks = newData.weeks[country][weekKey].stocks;
+      if (weekStocks[updatedStock.symbol]) {
+        weekStocks[updatedStock.symbol] = updatedStock;
+        showToast(`Updated ${updatedStock.symbol}`, "success");
+      }
+      return newData;
+    });
+  };
 
   return (
     <>
@@ -291,6 +311,8 @@ function AppContent() {
         isReadOnly={isReadOnly}
         onExportAll={exportAllData}
         onImportAll={importAllData}
+        availableTags={availableTags}
+        aiSettings={data.aiSettings}
       />
 
       {modals.showManageParams && (
@@ -397,6 +419,10 @@ function AppContent() {
           selectedWatchlistId={selectedWatchlistId}
           watchlists={data.watchlists || []}
           onClose={() => modals.setShowAnalytics(false)}
+          sectors={data.sectors || []}
+          availableTags={availableTags}
+          paramDefinitions={data.paramDefinitions || {}}
+          onUpdateStock={handleUpdateStock}
         />
       )}
 

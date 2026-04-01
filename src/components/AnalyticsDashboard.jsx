@@ -793,7 +793,21 @@ function getWeekRangeLabel(sundayDateStr) {
   return `${formatDate(monday)} to ${formatDate(friday)}`;
 }
 
-const AnalyticsDashboard = ({ country, stocks, allWeeksData, aiSettings, parameters, weekKey, selectedWatchlistId, watchlists, onClose }) => {
+const AnalyticsDashboard = ({ 
+  country, 
+  stocks, 
+  allWeeksData, 
+  aiSettings, 
+  parameters, 
+  weekKey, 
+  selectedWatchlistId, 
+  watchlists, 
+  onClose,
+  sectors = [],
+  availableTags = [],
+  paramDefinitions = {},
+  onUpdateStock = null
+}) => {
   const [expandedParam, setExpandedParam] = useState(null);
   const [stockListPopup, setStockListPopup] = useState(null);
   const [categoryAnalysisData, setCategoryAnalysisData] = useState(null);
@@ -1165,7 +1179,7 @@ const AnalyticsDashboard = ({ country, stocks, allWeeksData, aiSettings, paramet
         <div className="analytics-content">
           {trendData.length > 0 && (
             <div className="chart-card trend-card">
-              <h3 className="chart-title">Weekly stock universe trend</h3>
+              <h3 className="chart-title">Weekly {activeWatchlistName} trend</h3>
               <SimpleTrendChart data={trendData} />
             </div>
           )}
@@ -1249,6 +1263,11 @@ const AnalyticsDashboard = ({ country, stocks, allWeeksData, aiSettings, paramet
           country={country || 'IN'}
           weekData={allWeeksData[weekKey] || {}}
           aiSettings={aiSettings}
+          sectors={sectors}
+          availableTags={availableTags}
+          paramDefinitions={paramDefinitions}
+          onUpdateStock={onUpdateStock}
+          weekInfo={getWeekRangeLabel(weekKey)}
         />
       )}
     </div>

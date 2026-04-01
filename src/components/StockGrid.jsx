@@ -200,6 +200,8 @@ export default function StockGrid({
   selectedWatchlistId,
   onExportAll,
   onImportAll,
+  availableTags,
+  aiSettings,
 }) {
   const week = data.weeks?.[country]?.[weekKey];
   const params = data.paramDefinitions;
@@ -306,7 +308,7 @@ export default function StockGrid({
 
   const visibleParams = Object.entries(params).filter(([key]) => {
     if (selectedWatchlistId !== "all" && activeWatchlist) {
-      return activeWatchlist.visibleParams.includes(key);
+      return (activeWatchlist.visibleParams || []).includes(key);
     }
     return columnConfig[key] !== false;
   });
@@ -326,7 +328,7 @@ export default function StockGrid({
   const filterableParams = useMemo(() => {
     return Object.entries(params).filter(([key, p]) => {
       if (selectedWatchlistId !== "all" && activeWatchlist) {
-        return activeWatchlist.visibleFilters.includes(key);
+        return (activeWatchlist.visibleFilters || []).includes(key);
       }
       return p.filterable;
     });
@@ -342,10 +344,6 @@ export default function StockGrid({
       a.localeCompare(b),
     );
   }, [data.uiConfig?.sectors]);
-
-  const availableTags = useMemo(() => {
-    return [...(data.uiConfig?.tags || [])].sort();
-  }, [data.uiConfig?.tags]);
 
   /* =====================
      CHECKS PASSED
@@ -1036,6 +1034,7 @@ export default function StockGrid({
                     ref={searchInputRef}
                     type="text"
                     placeholder="Search symbols..."
+                    aria-label="Search symbols"
                     value={searchQuery}
                     onChange={(e) => setSearchQuery(e.target.value)}
                   />
@@ -1083,9 +1082,10 @@ export default function StockGrid({
               <div className="filter-items">
                 {isSectorFilterable && (
                   <div className="filter-item">
-                    <label>Sector</label>
+                    <label htmlFor="sector-filter">Sector</label>
                     <div style={{ position: "relative", width: "100%" }}>
                       <select
+                        id="sector-filter"
                         className="select-control"
                         value={filters.__sector__ || ""}
                         onChange={(e) => setFilter("__sector__", e.target.value)}
@@ -1108,11 +1108,12 @@ export default function StockGrid({
                   </div>
                 )}
 
-                {availableTags.length > 0 && isTagFilterable && (
+                {(availableTags || []).length > 0 && isTagFilterable && (
                   <div className="filter-item">
-                    <label>Tag</label>
+                    <label htmlFor="tag-filter">Tag</label>
                     <div style={{ position: "relative", width: "100%" }}>
                       <select
+                        id="tag-filter"
                         className="select-control"
                         value={filters.__tag__ || ""}
                         onChange={(e) => setFilter("__tag__", e.target.value)}
@@ -1137,7 +1138,7 @@ export default function StockGrid({
 
                 {filterableParams.map(([key, p]) => (
                   <div key={key} className="filter-item">
-                    <label>
+                    <label htmlFor={`filter-param-${key}`}>
                       {p.label}
                       {(p.type === "number" || p.type === "date") && (
                         <span
@@ -1157,6 +1158,7 @@ export default function StockGrid({
                       {p.type === "checkbox" && (
                         <>
                           <select
+                            id={`filter-param-${key}`}
                             className="select-control"
                             value={filters[key] ?? ""}
                             onChange={(e) =>
@@ -1185,6 +1187,7 @@ export default function StockGrid({
                       {p.type === "select" && (
                         <>
                           <select
+                            id={`filter-param-${key}`}
                             className="select-control"
                             value={filters[key] || ""}
                             onChange={(e) => setFilter(key, e.target.value)}
@@ -1209,6 +1212,7 @@ export default function StockGrid({
                         p.type === "date") && (
                           <>
                             <input
+                              id={`filter-param-${key}`}
                               type="text"
                               className="filter-input"
                               value={filters[key] || ""}
@@ -1368,7 +1372,9 @@ export default function StockGrid({
           weekInfo={getWeekRangeLabel(weekKey)}
           country={country}
           showTags={showTags}
+          isDeepView={true}
           watchlists={data.watchlists || []}
+          aiSettings={aiSettings}
         />
       )}
 

@@ -3,7 +3,8 @@ const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
 
 export const PROMPT_TEMPLATES = [
   { value: "swing", label: "Swing Trading (Default)", text: "Act as a disciplined, risk-aware swing trading mentor (referencing Mark Minervini's SEPA and William O'Neil's CANSLIM). \nAnalyze the following watchlist to provide a clear, objective, and actionable trading plan. \nBe conservative: do not force patterns if they are not clear. Focus on quality over quantity." },
-  { value: "day", label: "Day Trading Focus", text: "Act as an aggressive day trading expert. Analyze the following watchlist for high-probability intraday setups. Focus on momentum, volume profile, VWAP bands, and catalyst-driven price action. Identify obvious support/resistance levels and key breakout levels for the upcoming session." }
+  { value: "day", label: "Day Trading Focus", text: "Act as an aggressive day trading expert. Analyze the following watchlist for high-probability intraday setups. Focus on momentum, volume profile, VWAP bands, and catalyst-driven price action. Identify obvious support/resistance levels and key breakout levels for the upcoming session." },
+  { value: "deep_view", label: "Single Stock Deep Analysis", text: "Act as a senior institutional technical analyst. Conduct a high-conviction deep dive on a single stock using provided metrics and technical context. \n\nOutput MUST follow this EXACT structure:\n\n### TREND\n[Primary bias & momentum state]\n\n### KEY LEVELS\n[S1/S2 | R1/R2 with brief context]\n\n### SETUP\n[Specific technical pattern or context]\n\n### TRIGGER\n[The exact 'if this, then that' entry condition]\n\n### VERDICT\n[BUY/WAIT/SELL] - [Brief summary of reasoning]" }
 ];
 
 export async function getAiAnalysis(apiKey, model, weekData, paramDefinitions, selectedPromptText = null, isCustom = false) {
@@ -46,6 +47,52 @@ export async function getAiAnalysis(apiKey, model, weekData, paramDefinitions, s
     // Security: Ensure the error message doesn't contain the raw API key if it's logged
     const safeErrorMsg = errorMsg.replace(apiKey, "REDACTED");
     console.error("AI Analysis Failed:", safeErrorMsg);
+    throw new Error(safeErrorMsg);
+  }
+}
+
+export async function getSingleStockAnalysis(apiKey, model, stock, timeframe) {
+  if (!apiKey) throw new Error("API Key is missing. Please add it in Settings.");
+  
+  const prompt = `
+    Act as a senior institutional technical analyst. 
+    Conduct a high-conviction deep dive on the stock: ${stock.symbol} (${stock.longName || ''}).
+    
+    Current Quote Context:
+    - Price: ${stock.currentPrice}
+    - Day Change: ${stock.dailyChangePct}%
+    - Period (${timeframe}) Change: ${stock.periodChangePct}%
+    - Sector: ${stock.sector || 'Unknown'}
+    - Tags: ${(stock.tags || []).join(', ')}
+    - Notes: ${stock.notes || 'None'}
+    
+    Output MUST follow this EXACT 5-section markdown structure:
+
+    ### TREND
+    (Identify the primary bias: Bullish, Bearish, or Neutral. Mention short-term vs long-term alignment.)
+
+    ### KEY LEVELS
+    (Specify S1/S2 for support and R1/R2 for resistance. Provide exact numbers if possible based on current price.)
+
+    ### SETUP
+    (Identify the technical setup: e.g., Mean Reversion, Momentum Breakout, Bull Flag, 10/20EMA Bounce, etc.)
+
+    ### TRIGGER
+    (Define the exact entry condition: e.g., 'Close above Friday high of 150.50 on volume' or 'Reclaim of 50DMA'.)
+
+    ### VERDICT
+    [BUY/WAIT/SELL] - (A concise, one-sentence summary of the reasoning.)
+
+    Keep the analysis professional, objective, and institutional-grade. Do not use filler or excessive adjectives.
+  `;
+
+  try {
+    let modelToUse = model || DEFAULT_GEMINI_MODEL;
+    return await fetchGemini(apiKey, prompt, modelToUse, true); // Use isCustom=true to get raw text
+  } catch (error) {
+    const errorMsg = error.message || "Unknown error";
+    const safeErrorMsg = errorMsg.replace(apiKey, "REDACTED");
+    console.error("Single Stock Analysis Failed:", safeErrorMsg);
     throw new Error(safeErrorMsg);
   }
 }

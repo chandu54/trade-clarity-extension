@@ -21,7 +21,7 @@ describe('EditStockModal', () => {
     paramDefinitions: { rs: { label: 'RS', type: 'number' } },
     sectors: ['Tech', 'Finance'],
     availableTags: ['Growth', 'Value'],
-    weekInfo: {},
+    weekInfo: 'Week 14',
     country: 'US',
     showTags: true,
     watchlists: [{ id: 'wl1', name: 'Watchlist 1' }, { id: 'wl2', name: 'Watchlist 2' }]
@@ -33,7 +33,8 @@ describe('EditStockModal', () => {
 
   it('renders correctly with stock data', () => {
     render(<EditStockModal {...props} />);
-    expect(screen.getByText('AAPL')).toBeDefined();
+    // Symbol is rendered in a larger header string in both modes
+    expect(screen.getByText(/AAPL/)).toBeDefined();
     expect(screen.getByDisplayValue('Tech')).toBeDefined();
     expect(screen.getByDisplayValue('Good stock')).toBeDefined();
   });
@@ -41,7 +42,7 @@ describe('EditStockModal', () => {
   it('updates form data on change', () => {
     render(<EditStockModal {...props} />);
     
-    const notesArea = screen.getByPlaceholderText(/Add your analysis notes/i);
+    const notesArea = screen.getByPlaceholderText(/Technical triggers, conviction level/i);
     fireEvent.change(notesArea, { target: { value: 'Updated notes' } });
     
     expect(screen.getByDisplayValue('Updated notes')).toBeDefined();
@@ -53,7 +54,7 @@ describe('EditStockModal', () => {
     const rsInput = screen.getByDisplayValue('85');
     fireEvent.change(rsInput, { target: { value: '90' } });
     
-    fireEvent.click(screen.getByText('Save Changes'));
+    fireEvent.click(screen.getByText(/^Save( Changes)?$/));
     
     expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({
       params: { rs: '90' }
@@ -63,11 +64,11 @@ describe('EditStockModal', () => {
   it('toggles tags on correctly', () => {
     render(<EditStockModal {...props} />);
     
-    // Tag labels are "Growth ✓" (selected) or "Value +" (unselected)
-    const valueTag = screen.getByText(/Value \+/);
+    // Clicking the tag text should bubble to the pill container's onClick
+    const valueTag = screen.getByText('Value');
     fireEvent.click(valueTag);
     
-    fireEvent.click(screen.getByText('Save Changes'));
+    fireEvent.click(screen.getByText(/^Save( Changes)?$/));
     expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({
       tags: ['Growth', 'Value']
     }));
@@ -76,25 +77,53 @@ describe('EditStockModal', () => {
   it('toggles tags off correctly', () => {
     render(<EditStockModal {...props} />);
     
-    // Toggle off existing tag
-    const growthTag = screen.getByText(/Growth ✓/);
+    // Toggle off existing tag by clicking its text
+    const growthTag = screen.getByText('Growth');
     fireEvent.click(growthTag);
     
-    fireEvent.click(screen.getByText('Save Changes'));
+    fireEvent.click(screen.getByText(/^Save( Changes)?$/));
     expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({
       tags: []
+    }));
+  });
+
+  it('supports keyboard navigation for tags (Enter/Space)', () => {
+    render(<EditStockModal {...props} />);
+    
+    // Find the focusable pill container
+    const valueTag = screen.getByText('Value').closest('.tag-chip-selectable');
+    
+    // Toggle on with Enter
+    fireEvent.keyDown(valueTag, { key: 'Enter' });
+    
+    fireEvent.click(screen.getByText(/^Save( Changes)?$/));
+    expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({
+      tags: ['Growth', 'Value']
     }));
   });
 
   it('toggles watchlists correctly', () => {
     render(<EditStockModal {...props} />);
     
-    const wl2Checkbox = screen.getByLabelText('Watchlist 2');
-    fireEvent.click(wl2Checkbox);
+    // Search for the watchlist pill and click its container
+    const wl2Pill = screen.getByText('Watchlist 2').closest('.tag-chip-selectable');
+    fireEvent.click(wl2Pill);
     
-    fireEvent.click(screen.getByText('Save Changes'));
+    fireEvent.click(screen.getByText(/^Save( Changes)?$/));
     expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({
       watchlists: ['wl1', 'wl2']
     }));
+  });
+
+  it('renders research links correctly', () => {
+    render(<EditStockModal {...props} isDeepView={true} />);
+    
+    const tvLink = screen.getByTitle(/View on TradingView/i);
+    const screenerLink = screen.getByTitle(/View on Screener/i);
+    
+    expect(tvLink.getAttribute('href')).toContain('tradingview.com');
+    // US stock (AAPL) should have NASDAQ prefix in URL logic
+    expect(tvLink.getAttribute('href')).toContain('NASDAQ:AAPL');
+    expect(screenerLink.getAttribute('href')).toContain('screener.in/company/AAPL');
   });
 });

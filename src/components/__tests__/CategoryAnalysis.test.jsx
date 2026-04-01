@@ -1,5 +1,5 @@
 import { describe, it, vi, beforeEach } from 'vitest';
-import { render, screen, cleanup } from '@testing-library/react';
+import { render, screen, cleanup, fireEvent } from '@testing-library/react';
 import React from 'react';
 import CategoryAnalysisView from '../CategoryAnalysisView';
 import DeepViewAi from '../DeepViewAi';
@@ -71,6 +71,41 @@ describe('Category Intelligence Suite', () => {
       const picksValue = picksLabel.nextElementSibling;
       expect(picksValue.textContent).toContain('ABB');
       expect(picksValue.textContent).toContain('RELIANCE');
+    });
+
+    it('Scenario: Data Persistence - accurately merges local weekData with fetched stockData', () => {
+      const mockWeekData = {
+        stocks: {
+          ABB: { symbol: 'ABB', sector: 'Power', notes: 'Local conviction high', params: { rs: 99 } }
+        }
+      };
+
+      render(
+        <CategoryAnalysisView 
+          isOpen={true} 
+          onClose={() => {}} 
+          categoryName="Infrastructure" 
+          symbols={['ABB']}
+          initialStockData={mockStockData}
+          weekData={mockWeekData}
+          paramDefinitions={{ rs: { label: 'RS', type: 'number' } }}
+          sectors={['Power']}
+        />
+      );
+
+      // Open the edit modal for ABB to see if merged data is there
+      // We target the one inside the grid to avoid summary matches in the header
+      const abbTile = screen.getAllByText('ABB').find(el => el.closest('.mini-chart-card'));
+      fireEvent.click(abbTile);
+      
+      // Expand parameters so the notes (renderFormContent) become visible in Deep View
+      const expandBtn = screen.getByTitle(/Expand Parameters/i);
+      fireEvent.click(expandBtn);
+
+      // Verify local data (conviction notes) is present in the document (within textarea)
+      expect(screen.getByDisplayValue('Local conviction high')).toBeDefined();
+      expect(screen.getByDisplayValue('99')).toBeDefined();
+      expect(screen.getByDisplayValue('Power')).toBeDefined();
     });
   });
 

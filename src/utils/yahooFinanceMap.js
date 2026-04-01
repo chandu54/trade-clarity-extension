@@ -1,13 +1,17 @@
-export async function fetchStockData(symbols, country, timeframe = '3mo') {
+export async function fetchStockData(symbols, country, timeframe = '3mo', customInterval = null) {
   if (!symbols || !symbols.length) return [];
 
   const validTimeframes = {
+    '1d': { range: '1d', interval: '5m' },
+    '5d': { range: '5d', interval: '15m' },
+    '1w': { range: '5d', interval: '15m' },
     '1mo': { range: '1mo', interval: '1d' },
     '3mo': { range: '3mo', interval: '1d' },
     '6mo': { range: '6mo', interval: '1d' },
     '1y': { range: '1y', interval: '1d' }
   };
   const tf = validTimeframes[timeframe] || validTimeframes['3mo'];
+  const fetchInterval = customInterval && customInterval !== 'auto' ? customInterval : tf.interval;
 
   const fetchSymbolData = async (symbol) => {
     let ticker = symbol;
@@ -18,7 +22,7 @@ export async function fetchStockData(symbols, country, timeframe = '3mo') {
     try {
       const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
       const baseUrl = isLocalhost ? '/yahoo-api' : 'https://query1.finance.yahoo.com';
-      const url = `${baseUrl}/v8/finance/chart/${ticker}?range=${tf.range}&interval=${tf.interval}`;
+      const url = `${baseUrl}/v8/finance/chart/${ticker}?range=${tf.range}&interval=${fetchInterval}`;
       const response = await fetch(url, { cache: 'no-cache' });
       
       if (!response.ok) {

@@ -2,6 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { fetchStockData } from '../utils/yahooFinanceMap';
 import BirdsEyeGrid from './BirdsEyeGrid';
 import DeepViewAi from './DeepViewAi';
+import EditStockModal from './EditStockModal';
 import './CategoryAnalysis.css';
 
 export default function CategoryAnalysisView({
@@ -10,15 +11,22 @@ export default function CategoryAnalysisView({
   country,
   weekData,
   aiSettings,
-  initialStockData = []
+  initialStockData = [],
+  sectors = [],
+  availableTags = [],
+  paramDefinitions = {},
+  onUpdateStock = null,
+  weekInfo = ""
 }) {
   const [activeTab, setActiveTab] = useState('birdsEye');
   const [timeframe, setTimeframe] = useState('3mo');
   const [stockData, setStockData] = useState(initialStockData);
   const [loading, setLoading] = useState(initialStockData.length === 0);
+  const [selectedStockForEdit, setSelectedStockForEdit] = useState(null);
 
   // Dynamic indicator logic
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
+// ... existing code ...
   const snapshotRef = useRef(null);
   const phenomenaRef = useRef(null);
 
@@ -50,21 +58,28 @@ export default function CategoryAnalysisView({
     return () => { isMounted = false; };
   }, [symbols, country, timeframe]);
 
+  const mergedStockData = useMemo(() => {
+    return stockData.map(s => {
+      const localData = weekData?.stocks?.[s.symbol] || {};
+      return { ...localData, ...s };
+    });
+  }, [stockData, weekData]);
+
   const { advancing, declining, topWeights } = useMemo(() => {
     let adv = 0;
     let dec = 0;
     
     // Sort by performance (Relative Strength) instead of absolute price
-    const sortedByPerformance = [...stockData].sort((a, b) => (b.periodChangePct || 0) - (a.periodChangePct || 0));
+    const sortedByPerformance = [...mergedStockData].sort((a, b) => (b.periodChangePct || 0) - (a.periodChangePct || 0));
     const top = sortedByPerformance.slice(0, 3).map(s => s.symbol).join(', ');
 
-    stockData.forEach(d => {
+    mergedStockData.forEach(d => {
       if (d.isAdvancing) adv++;
       else dec++;
     });
 
     return { advancing: adv, declining: dec, topWeights: top };
-  }, [stockData]);
+  }, [mergedStockData]);
 
   useEffect(() => {
     document.body.style.overflow = 'hidden';
@@ -80,7 +95,7 @@ export default function CategoryAnalysisView({
         width: activeRef.offsetWidth
       });
     }
-  }, [activeTab, stockData]); // Re-run if stockData changes (badge size might change)
+  }, [activeTab, mergedStockData]); // Re-run if stockData changes (badge size might change)
 
   return (
     <div className="category-analysis-overlay" onClick={e => e.stopPropagation()}>
@@ -162,9 +177,9 @@ export default function CategoryAnalysisView({
                 stocksCount={symbols.length}
                 timeframe={timeframe}
                 setTimeframe={setTimeframe}
-                data={stockData}
+                data={mergedStockData}
                 country={country}
-                onTileClick={() => setActiveTab('deepView')}
+                onTileClick={(stock) => setSelectedStockForEdit(stock)}
               />
             </div>
           )}
@@ -175,11 +190,27 @@ export default function CategoryAnalysisView({
               symbols={symbols}
               weekData={weekData}
               aiSettings={aiSettings}
-              stockData={stockData}
+              stockData={mergedStockData}
               timeframe={timeframe}
             />
           )}
         </div>
+
+        {selectedStockForEdit && (
+          <EditStockModal
+            isOpen={!!selectedStockForEdit}
+            onClose={() => setSelectedStockForEdit(null)}
+            stock={selectedStockForEdit}
+            paramDefinitions={paramDefinitions}
+            sectors={sectors}
+            availableTags={availableTags}
+            weekInfo={weekInfo}
+            country={country}
+            aiSettings={aiSettings}
+            isDeepView={true}
+            onUpdateStock={onUpdateStock}
+          />
+        )}
       </div>
     </div>
   );

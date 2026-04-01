@@ -48,7 +48,7 @@ export default function BirdsEyeGrid({ stocksCount, timeframe, setTimeframe, dat
             key={item.symbol} 
             data={item} 
             country={country}
-            onClick={() => onTileClick(item.symbol)} 
+            onClick={() => onTileClick(item)} 
           />
         ))}
       </div>
