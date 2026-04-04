@@ -47,9 +47,9 @@ describe("mapLiquidityBucket", () => {
 
   it("should fallback to number formatted if type is number", () => {
     const numberDef = { type: "number" };
-    expect(mapLiquidityBucket(150000000, numberDef, "IN")).toBe("15.00");
+    expect(mapLiquidityBucket(150000000, numberDef, "IN")).toBe("15.00Cr");
     // US uses Million divisor instead of Crore
-    expect(mapLiquidityBucket(150000000, numberDef, "US")).toBe("150.00"); 
+    expect(mapLiquidityBucket(150000000, numberDef, "US")).toBe("150.00M"); 
   });
 
   it("should fallback to hardcoded buckets if no liqDef provided for IN", () => {

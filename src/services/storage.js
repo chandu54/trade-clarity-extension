@@ -50,10 +50,22 @@ export async function loadData() {
     }
   });
   /* =========================
-     MERGE DEFAULT SECTORS
+     MERGE DEFAULT SECTORS & MIGRATION
   ========================= */
   if (!Array.isArray(data.sectors)) {
     data.sectors = structuredClone(DEFAULT_DATA.sectors);
+  } else if (data.sectors.length > 0 && typeof data.sectors[0] === "string") {
+    // Migration: string[] -> object[]
+    data.sectors = data.sectors.map(s => ({ name: s, countries: ["IN", "US"] }));
+  }
+
+  if (data.uiConfig && Array.isArray(data.uiConfig.sectors)) {
+    if (data.uiConfig.sectors.length > 0 && typeof data.uiConfig.sectors[0] === "string") {
+      // Migration: string[] -> object[]
+      data.uiConfig.sectors = data.uiConfig.sectors.map(s => ({ name: s, countries: ["IN", "US"] }));
+    }
+  } else if (data.uiConfig) {
+    data.uiConfig.sectors = structuredClone(DEFAULT_DATA.uiConfig.sectors);
   }
 
   /* =========================

@@ -2,6 +2,7 @@ import { useState, useEffect, Fragment } from "react";
 import Modal from "./Modal";
 
 import { getAiAnalysis, PROMPT_TEMPLATES } from "../services/ai";
+import { isParamRelevantForCountry } from "../utils/paramUtils";
 import { useToast } from "./ToastContext";
 
 export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, country, selectedWatchlistId }) {
@@ -71,7 +72,11 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
         throw new Error("API Key is missing. Please configure it in the AI Settings (bottom-right gear icon).");
       }
 
-      const analysis = await getAiAnalysis(apiKey, model, analysisData, data.paramDefinitions, activePromptObj.text, isCustomPromptGlobal);
+      const filteredParamDefs = Object.fromEntries(
+        Object.entries(data.paramDefinitions).filter(([, p]) => isParamRelevantForCountry(p, country))
+      );
+
+      const analysis = await getAiAnalysis(apiKey, model, analysisData, filteredParamDefs, activePromptObj.text, isCustomPromptGlobal);
       
       // Add metadata for transparency
       const enrichedAnalysis = {
@@ -243,6 +248,10 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
                     )}
                  </>
               )}
+
+              <div className="ai-disclaimer-v2">
+                AI can make mistakes. Verify with your own research. For informational purposes only.
+              </div>
             </div>
           )}
 

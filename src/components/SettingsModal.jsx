@@ -325,6 +325,9 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
 
         <div className="settings-footer-note">
           Institutional-grade AI analysis powered by Google Gemini.
+          <div className="ai-disclaimer-v2" style={{ marginTop: '8px', borderTop: 'none' }}>
+            AI can make mistakes. Verify with your own research. For informational purposes only.
+          </div>
         </div>
       </div>
 

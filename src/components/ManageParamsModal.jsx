@@ -16,6 +16,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
   /* 🆕 CHECK CONFIG */
   const [isCheck, setIsCheck] = useState(false);
   const [idealValues, setIdealValues] = useState("");
+  const [countries, setCountries] = useState([]);
   const { confirm } = useConfirm();
 
   /* =========================
@@ -29,6 +30,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
       options: type === "select" ? options.split(",").map(o => o.trim()) : [],
       isCheck,
       idealValues: isCheck && !['checkbox'].includes(type) ? idealValues.split(",").map(v => v.trim()) : [],
+      countries,
     };
 
     setData({ ...data });
@@ -58,6 +60,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
       filterable: false,
       isCheck,
       idealValues: isCheck && !['checkbox'].includes(type) ? idealValues.split(",").map(v => v.trim()) : [],
+      countries,
     };
 
     setData({ ...data });
@@ -94,6 +97,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
     setOptions(p.options?.join(",") || "");
     setIsCheck(!!p.isCheck);
     setIdealValues(p.idealValues?.join(",") || "");
+    setCountries(p.countries || []);
   }
 
   function resetForm() {
@@ -104,6 +108,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
     setOptions("");
     setIsCheck(false);
     setIdealValues("");
+    setCountries([]);
     setError("");
   }
 
@@ -120,6 +125,11 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
           <div key={k} className="param-row">
             <div className="param-info">
               <strong>{p.label}</strong>
+              {p.countries && p.countries.length > 0 ? (
+                <span className="muted small" style={{marginLeft: "8px", verticalAlign: "middle"}}>[{p.countries.join(", ")}]</span>
+              ) : (
+                <span className="muted small" style={{marginLeft: "8px", verticalAlign: "middle"}}>[Global]</span>
+              )}
             </div>
             <div className="param-actions">
               <button
@@ -244,6 +254,42 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
             />
           </div>
         )}
+
+        <div className="form-field">
+          <label>
+            Applicable Countries
+            <span
+              className="info-icon"
+              title="Select which countries this parameter applies to. Leave both unchecked to make it Global."
+            >
+              ℹ️
+            </span>
+          </label>
+          <div style={{ display: "flex", gap: "16px", marginTop: "4px" }}>
+            <label className="checkbox-label" style={{ margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={countries.includes("IN")}
+                onChange={(e) => {
+                  if (e.target.checked) setCountries([...countries, "IN"]);
+                  else setCountries(countries.filter(c => c !== "IN"));
+                }}
+              />
+              <span>India (IN)</span>
+            </label>
+            <label className="checkbox-label" style={{ margin: 0 }}>
+              <input
+                type="checkbox"
+                checked={countries.includes("US")}
+                onChange={(e) => {
+                  if (e.target.checked) setCountries([...countries, "US"]);
+                  else setCountries(countries.filter(c => c !== "US"));
+                }}
+              />
+              <span>USA (US)</span>
+            </label>
+          </div>
+        </div>
       </div>
 
       <div className="modal-actions">

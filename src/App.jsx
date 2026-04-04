@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from "react";
+import React, { useEffect, useState, useRef, useMemo } from "react";
 
 import Header from "./components/Header";
 import WeekSelector from "./components/WeekSelector";
@@ -24,8 +24,12 @@ import { useModalState } from "./hooks/useModalState";
 import { useTheme } from "./hooks/useTheme";
 import { EMPTY_DATA } from "./constants/app";
 import { getLatestWeekKey, isWeekReadOnly, getLocalDateString, getSundayOfWeek } from "./utils/weekHelpers";
+import { isParamRelevantForCountry, scrubParamDefinitions } from "./utils/paramUtils";
 
 function AppContent() {
+  /* =========================
+     HOOKS (Must be at the TOP)
+  ========================= */
   const [data, setData] = useState(null);
   const [country, setCountry] = useState("IN");
   const [weekKey, setWeekKey] = useState(null);
@@ -37,21 +41,45 @@ function AppContent() {
   const { confirm } = useConfirm();
   const { showToast } = useToast();
 
+  // Country-aware sector filtering (safe-guarded for null data)
+  const filteredSectors = useMemo(() => {
+    const rawSectors = data?.uiConfig?.sectors || [];
+    return rawSectors
+      .filter(s => {
+        if (typeof s === 'string') return true;
+        if (!s.countries || s.countries.length === 0) return true;
+        return s.countries.includes(country);
+      })
+      .map(s => typeof s === 'string' ? s : s.name)
+      .sort((a, b) => a.localeCompare(b));
+  }, [data?.uiConfig?.sectors, country]);
+
   useEffect(() => {
     async function init() {
       const stored = await loadData();
-      setData(stored);
+      let finalData = { ...stored };
 
       const defaultList = stored.watchlists?.find((w) => w.isDefault);
       if (defaultList) {
         setSelectedWatchlistId(defaultList.id);
       }
 
-      // Default to US weeks for initial load
-      const latestWeek = getLatestWeekKey(stored.weeks?.US || {});
-      if (latestWeek) {
-        handleSetWeekKey(latestWeek);
+      const initialCountry = "IN";
+      let latestWeek = getLatestWeekKey(finalData.weeks?.[initialCountry] || {});
+
+      if (!latestWeek) {
+        const todayStr = getLocalDateString(new Date());
+        latestWeek = getSundayOfWeek(todayStr);
+        
+        if (!finalData.weeks) finalData.weeks = {};
+        if (!finalData.weeks[initialCountry]) finalData.weeks[initialCountry] = {};
+        finalData.weeks[initialCountry][latestWeek] = { stocks: {} };
       }
+
+      finalData = scrubParamDefinitions(finalData);
+
+      setData(finalData);
+      setWeekKey(latestWeek);
 
       hasLoaded.current = true;
     }
@@ -59,12 +87,10 @@ function AppContent() {
     init();
   }, []);
 
-
   useEffect(() => {
     if (!hasLoaded.current || !data) return;
     saveData(data);
   }, [data]);
-
 
   useEffect(() => {
     if (typeof chrome === "undefined" || !chrome.storage?.onChanged) return;
@@ -76,15 +102,13 @@ function AppContent() {
           setData((currentData) => {
             if (!currentData) return newData;
 
-            // Shallow compare weeks for high-level changes before committing to a merge
-            // This is significantly faster than JSON.stringify for large datasets
             if (currentData.weeks === newData.weeks) {
               return currentData;
             }
 
             return {
               ...currentData,
-              weeks: newData.weeks, // Background only touches weeks/stocks
+              weeks: newData.weeks,
               aiSettings: newData.aiSettings || currentData.aiSettings
             };
           });
@@ -96,41 +120,8 @@ function AppContent() {
     return () => chrome.storage.onChanged.removeListener(handleStorageChange);
   }, []);
 
-
-  /**
-   * Safe setter for weekKey that ensures the target week exists in data.
-   * Prevents expensive reactive clones.
-   */
-  const handleSetWeekKey = (newKey) => {
-    if (!newKey || !data) return;
-
-    setWeekKey(newKey);
-
-    const countryWeeks = data.weeks[country] || {};
-    if (!countryWeeks[newKey]) {
-      setData(prev => {
-        const newData = { ...prev };
-        if (!newData.weeks[country]) newData.weeks[country] = {};
-        newData.weeks[country][newKey] = { stocks: {} };
-        return newData;
-      });
-    }
-  };
-
-  /* =========================
-     DERIVED STATE
-  ========================= */
-
-  // Calculate current week key locally using consistent utility
-  const todayStr = getLocalDateString(new Date());
-  const currentWeekKey = getSundayOfWeek(todayStr);
-
-  const isReadOnly = isWeekReadOnly(weekKey, currentWeekKey, data?.uiConfig);
-
-
   useEffect(() => {
     const handleGlobalKeyDown = (e) => {
-      // Ignore shortcuts if the user is actively typing inside an input/textarea
       const activeTag = document.activeElement?.tagName;
       if (activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT') {
         return;
@@ -138,7 +129,7 @@ function AppContent() {
 
       if (e.altKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
-        setShowSettings(true);
+        modals.setShowSettings(true);
       }
       if (e.altKey && e.key.toLowerCase() === 'a') {
         e.preventDefault();
@@ -154,37 +145,62 @@ function AppContent() {
     return () => window.removeEventListener('keydown', handleGlobalKeyDown);
   }, []);
 
+  /* =========================
+     HANDLERS
+  ========================= */
+
+  const handleCountryChange = (newCountry) => {
+    setCountry(newCountry);
+    const countryWeeks = data?.weeks?.[newCountry] || {};
+    
+    let targetWeek = weekKey;
+    if (!countryWeeks[weekKey]) {
+      const latestWeek = getLatestWeekKey(countryWeeks);
+      if (latestWeek) {
+        targetWeek = latestWeek;
+      } else {
+        const todayStr = getLocalDateString(new Date());
+        targetWeek = getSundayOfWeek(todayStr);
+        
+        setData(prev => {
+          const newData = structuredClone(prev);
+          if (!newData.weeks) newData.weeks = {};
+          if (!newData.weeks[newCountry]) newData.weeks[newCountry] = {};
+          newData.weeks[newCountry][targetWeek] = { stocks: {} };
+          return newData;
+        });
+      }
+      setWeekKey(targetWeek);
+    }
+  };
+
   const clearWeekData = async () => {
     if (!weekKey) return;
     if (!(await confirm("Clear all stocks for this week?"))) return;
 
     const newData = structuredClone(data);
-    newData.weeks[country][weekKey].stocks = {};
-    setData(newData);
+    if (newData.weeks?.[country]?.[weekKey]) {
+      newData.weeks[country][weekKey].stocks = {};
+      setData(newData);
+    }
   };
 
   const clearAllData = async () => {
-    // Header handles the confirmation for this action usually, but if called directly:
-    setData(structuredClone(EMPTY_DATA));
-    handleSetWeekKey(null);
+    const todayStr = getLocalDateString(new Date());
+    const currentWk = getSundayOfWeek(todayStr);
+    
+    const initialData = structuredClone(EMPTY_DATA);
+    if (!initialData.weeks) initialData.weeks = {};
+    if (!initialData.weeks[country]) initialData.weeks[country] = {};
+    initialData.weeks[country][currentWk] = { stocks: {} };
+    
+    setData(initialData);
+    setWeekKey(currentWk);
   };
-
-  const createCurrentWeek = () => {
-    const key = currentWeekKey;
-    const newData = structuredClone(data);
-    if (!newData.weeks[country]) newData.weeks[country] = {};
-    newData.weeks[country][key] = { stocks: {} };
-    setData(newData);
-    handleSetWeekKey(key);
-  };
-
 
   const exportAllData = () => {
     if (!data || !data.weeks || !data.paramDefinitions) {
-      showToast(
-        "Cannot export: Application data is incomplete or corrupted.",
-        "error",
-      );
+      showToast("Cannot export: Application data is incomplete or corrupted.", "error");
       return;
     }
 
@@ -193,9 +209,7 @@ function AppContent() {
       exportData.aiSettings.apiKey = ""; // Scrub API key before export
     }
 
-    const blob = new Blob([JSON.stringify(exportData, null, 2)], {
-      type: "application/json",
-    });
+    const blob = new Blob([JSON.stringify(exportData, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
     const link = document.createElement("a");
     link.href = url;
@@ -207,56 +221,38 @@ function AppContent() {
     showToast("Full backup exported successfully", "success");
   };
 
-
   const importAllData = async (importedData) => {
-    const isValid =
-      importedData &&
-      typeof importedData === "object" &&
-      importedData.weeks &&
-      importedData.paramDefinitions;
+    const isValid = importedData && typeof importedData === "object" && importedData.weeks && importedData.paramDefinitions;
 
     if (!isValid) {
       const exampleFormat = {
-        weeks: { US: { "2024-01-01": { stocks: {} } } },
+        weeks: { US: { "2024-01-01": { stocks: {} } }, IN: { "2024-01-01": { stocks: {} } } },
         paramDefinitions: { exampleParam: { label: "Example", type: "text" } },
         uiConfig: {},
       };
-      alert(
-        `Invalid Backup File.\n\nThe file is missing required 'weeks' or 'paramDefinitions' structures.\n\nExpected Format:\n${JSON.stringify(exampleFormat, null, 2)}`,
-      );
+      alert(`Invalid Backup File.\n\nThe file is missing required 'weeks' or 'paramDefinitions' structures.\n\nExpected Format:\n${JSON.stringify(exampleFormat, null, 2)}`);
       return;
     }
 
-    if (
-      await confirm(
-        "⚠️ Restoring a backup will replace ALL current data. This cannot be undone. Are you sure?",
-      )
-    ) {
-      setData(importedData);
-      const latestWeek = getLatestWeekKey(importedData.weeks?.[country] || {});
-      handleSetWeekKey(latestWeek || null);
+    if (await confirm("⚠️ Restoring a backup will replace ALL current data. This cannot be undone. Are you sure?")) {
+      let finalData = importedData;
+      let latestWeek = getLatestWeekKey(finalData.weeks?.[country] || {});
+      
+      if (!latestWeek) {
+        const todayStr = getLocalDateString(new Date());
+        latestWeek = getSundayOfWeek(todayStr);
+        
+        finalData = structuredClone(importedData);
+        if (!finalData.weeks) finalData.weeks = {};
+        if (!finalData.weeks[country]) finalData.weeks[country] = {};
+        finalData.weeks[country][latestWeek] = { stocks: {} };
+      }
+      
+      setData(finalData);
+      setWeekKey(latestWeek);
       showToast("Full backup restored successfully", "success");
     }
   };
-
-
-  if (!data) return null;
-
-  if (!weekKey && Object.keys(data.weeks?.[country] || {}).length === 0) {
-    return (
-      <div style={{ padding: 20 }}>
-        <h3>No weeks available</h3>
-        <button onClick={createCurrentWeek}>Create Current Week</button>
-      </div>
-    );
-  }
-
-  const currentWeekStocks = Object.values(data.weeks?.[country]?.[weekKey]?.stocks || {});
-  const tagsSet = new Set(data.uiConfig?.tags || []);
-  currentWeekStocks.forEach((s) => {
-    if (Array.isArray(s.tags)) s.tags.forEach((t) => tagsSet.add(t));
-  });
-  const availableTags = Array.from(tagsSet).sort();
 
   const handleUpdateStock = (updatedStock) => {
     if (!weekKey || !updatedStock) return;
@@ -272,6 +268,23 @@ function AppContent() {
     });
   };
 
+  /* =========================
+     CONDITIONAL RENDERING (Late Exit)
+  ========================= */
+  if (!data) return null;
+
+  const currentWeekStocks = Object.values(data.weeks?.[country]?.[weekKey]?.stocks || {});
+  const tagsSet = new Set(data.uiConfig?.tags || []);
+  currentWeekStocks.forEach((s) => {
+    if (Array.isArray(s.tags)) s.tags.forEach((t) => tagsSet.add(t));
+  });
+  const availableTags = Array.from(tagsSet).sort();
+
+  // Calculate read-only status
+  const todayStr = getLocalDateString(new Date());
+  const currentWeekKey = getSundayOfWeek(todayStr);
+  const isReadOnly = isWeekReadOnly(weekKey, currentWeekKey, data?.uiConfig);
+
   return (
     <>
       <GlobalTooltip />
@@ -286,7 +299,7 @@ function AppContent() {
         theme={theme}
         onToggleTheme={toggleTheme}
         country={country}
-        setCountry={setCountry}
+        setCountry={handleCountryChange}
       />
 
       <WeekSelector
@@ -294,7 +307,7 @@ function AppContent() {
         setData={setData}
         country={country}
         weekKey={weekKey}
-        setWeekKey={handleSetWeekKey}
+        setWeekKey={setWeekKey}
         selectedWatchlistId={selectedWatchlistId}
         setSelectedWatchlistId={setSelectedWatchlistId}
         onClearWeek={clearWeekData}
@@ -329,6 +342,7 @@ function AppContent() {
           isOpen={modals.showFilterConfig}
           data={data}
           setData={setData}
+          country={country}
           selectedWatchlistId={selectedWatchlistId}
           onClose={() => modals.setShowFilterConfig(false)}
         />
@@ -339,6 +353,7 @@ function AppContent() {
           isOpen={modals.showColumnConfig}
           data={data}
           setData={setData}
+          country={country}
           selectedWatchlistId={selectedWatchlistId}
           onClose={() => modals.setShowColumnConfig(false)}
         />
@@ -409,19 +424,21 @@ function AppContent() {
           stocks={Object.values(data.weeks?.[country]?.[weekKey]?.stocks || {})}
           allWeeksData={data.weeks?.[country] || {}}
           aiSettings={data.aiSettings}
-          parameters={Object.entries(data.paramDefinitions).map(
-            ([key, def]) => ({
+          parameters={Object.entries(data.paramDefinitions)
+            .filter(([, def]) => isParamRelevantForCountry(def, country))
+            .map(([key, def]) => ({
               ...def,
               id: key,
-            }),
-          )}
+            }))}
           weekKey={weekKey}
           selectedWatchlistId={selectedWatchlistId}
           watchlists={data.watchlists || []}
           onClose={() => modals.setShowAnalytics(false)}
-          sectors={data.sectors || []}
+          sectors={filteredSectors}
           availableTags={availableTags}
-          paramDefinitions={data.paramDefinitions || {}}
+          paramDefinitions={Object.fromEntries(
+            Object.entries(data.paramDefinitions || {}).filter(([, def]) => isParamRelevantForCountry(def, country))
+          )}
           onUpdateStock={handleUpdateStock}
         />
       )}

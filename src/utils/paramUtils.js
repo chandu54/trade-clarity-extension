@@ -1,4 +1,9 @@
 
+export function isParamRelevantForCountry(paramDef, country) {
+  if (!paramDef || !paramDef.countries || paramDef.countries.length === 0) return true;
+  return paramDef.countries.includes(country);
+}
+
 export function doesParamPassCheck(value, paramDef) {
   if (!paramDef || paramDef.isCheck === false) return false;
 
@@ -58,10 +63,13 @@ export function doesParamPassCheck(value, paramDef) {
 }
 
 
-export function getStockCheckSummary(stock, paramDefinitions) {
-  const checkParams = Object.entries(paramDefinitions).filter(([, p]) => p.isCheck !== false);
-  const total = checkParams.length;
+export function getStockCheckSummary(stock, paramDefinitions, country) {
+  const checkParams = Object.entries(paramDefinitions).filter(([, p]) => {
+    if (p.isCheck === false) return false;
+    return isParamRelevantForCountry(p, country);
+  });
   
+  const total = checkParams.length;
   if (total === 0) return { passed: 0, total: 0, ratio: 0 };
   
   let passed = 0;
@@ -73,4 +81,43 @@ export function getStockCheckSummary(stock, paramDefinitions) {
   });
 
   return { passed, total, ratio: passed / total };
+}
+
+/**
+ * Data scrubbing utility to fix orphaned or incorrectly scoped parameter definitions.
+ * It also retires legacy global parameters (liquidity, adr) that have been superseded by country-specific versions.
+ */
+export function scrubParamDefinitions(currentData) {
+  if (!currentData || !currentData.paramDefinitions) return currentData;
+
+  let changed = false;
+  const newParams = { ...currentData.paramDefinitions };
+
+  Object.keys(newParams).forEach(key => {
+    const p = newParams[key];
+    const isMissingCountries = !p.countries || p.countries.length === 0;
+
+    // 1. Auto-scope known country-specific prefixes if they are currently "Global"
+    if (isMissingCountries) {
+      if (key.startsWith('in.')) {
+        p.countries = ['IN'];
+        changed = true;
+      } else if (key.startsWith('us.')) {
+        p.countries = ['US'];
+        changed = true;
+      }
+    }
+
+    // 2. Retire legacy redundant parameters (Deep Fix for duplicates)
+    const isLegacyKey = ['liquidity', 'adr'].includes(key);
+    if (isLegacyKey && isMissingCountries) {
+      // Hide if market-specific modern keys exist
+      if (newParams[`in.${key}`] || newParams[`us.${key}`]) {
+        p.countries = ['_legacy_']; 
+        changed = true;
+      }
+    }
+  });
+
+  return changed ? { ...currentData, paramDefinitions: newParams } : currentData;
 }

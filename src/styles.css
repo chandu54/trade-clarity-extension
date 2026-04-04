@@ -284,7 +284,7 @@ body {
 }
 
 .dropdown-header {
-  font-size: 10px;
+  font-size: 11.5px !important;
   font-weight: 800;
   text-transform: uppercase;
   color: var(--muted);
@@ -493,7 +493,8 @@ td {
   border-bottom: 1px solid var(--border);
   text-align: center;
   white-space: nowrap;
-  font-size: 13.5px;
+  font-size: 15px;
+  font-weight: 700;
 }
 
 th {
@@ -502,10 +503,10 @@ th {
   top: 0;
   z-index: 20;
   color: var(--muted);
-  font-size: 10.5px;
-  letter-spacing: 0.08em;
+  font-size: 13.5px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
   border-bottom: 2px solid var(--border);
-  transition: background 0.2s;
   user-select: none;
 }
 
@@ -5564,10 +5565,10 @@ input[type="date"].input-with-clear {
 }
 
 .section-title {
-  font-size: 11px !important;
-  font-weight: 900 !important;
+  font-size: 13px !important;
+  font-weight: 800 !important;
   color: var(--muted) !important;
-  /* Removed forced uppercase */
+  letter-spacing: 0.02em !important;
 }
 
 /* 6. AI DIAGNOSTICS TYPOGRAPHY & SHIMMERS */
@@ -5592,11 +5593,12 @@ input[type="date"].input-with-clear {
 }
 
 .analysis-section-title {
-  font-size: 11px !important;
-  font-weight: 900 !important;
+  font-size: 12.5px !important;
+  font-weight: 800 !important;
   color: var(--primary) !important;
-  /* Removed forced uppercase */
-  margin-bottom: 4px !important;
+  border-bottom: 2px solid color-mix(in srgb, var(--primary) 20%, transparent) !important;
+  display: inline-block !important;
+  margin-bottom: 8px !important;
 }
 
 .analysis-section-content {
@@ -5673,12 +5675,12 @@ input[type="date"].input-with-clear {
 }
 
 .ai-last-run-timestamp {
-  font-size: 10px !important;
+  font-size: 11px !important;
   color: var(--muted) !important;
-  font-weight: 600 !important;
-  letter-spacing: 0.02em !important;
-  margin-left: 12px !important;
-  opacity: 0.8 !important;
+  font-weight: 700 !important;
+  letter-spacing: 0.01em !important;
+  margin-left: 14px !important;
+  opacity: 0.7 !important;
 }
 
 /* 7. GLOBAL FOOTER & DURATION CONTROLS */
@@ -6128,6 +6130,181 @@ input[type="date"].input-with-clear {
   display: block !important;
 }
 
+
+/* ============================================================ */
+/* 📂 SECTOR MANAGEMENT V2 (ENTERPRISE REFINED)                */
+/* ============================================================ */
+
+.sector-config-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 10px !important;
+  max-height: 480px !important;
+  overflow-y: auto !important;
+  padding: 8px 12px !important;
+  margin: 0 !important;
+}
+
+.sector-config-header {
+  display: grid !important;
+  grid-template-columns: 1fr 60px 60px 48px !important;
+  gap: 16px !important;
+  padding: 12px 16px !important;
+  background: var(--table-header-bg) !important;
+  border-radius: 8px 8px 0 0 !important;
+  font-size: 12px !important;
+  font-weight: 800 !important;
+  text-transform: uppercase !important;
+  color: var(--muted) !important;
+  letter-spacing: 0.12em !important;
+  margin-bottom: 0 !important;
+  border-bottom: 1px solid var(--border) !important;
+}
+
+.sector-config-row-v2 {
+  display: grid !important;
+  grid-template-columns: 1fr 60px 60px 48px !important;
+  gap: 16px !important;
+  align-items: center !important;
+  padding: 10px 16px !important;
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 10px !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.sector-config-row-v2:hover {
+  border-color: var(--primary) !important;
+  background: color-mix(in srgb, var(--primary) 2%, var(--panel)) !important;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.04) !important;
+  transform: translateY(-1px) !important;
+}
+
+.sector-name-input-wrapper input {
+  width: 100% !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  font-weight: 700 !important;
+  color: var(--text) !important;
+  font-size: 14.5px !important;
+  outline: none !important;
+  padding: 6px 0 !important;
+}
+
+.sector-name-input-wrapper.has-error input {
+  border-bottom-color: var(--danger) !important;
+}
+
+.modal-validation-notice {
+  font-size: 11.5px !important;
+  font-weight: 700 !important;
+  color: var(--danger) !important;
+  margin-right: auto !important;
+  padding: 4px 8px !important;
+  background: rgba(220, 38, 38, 0.05) !important;
+  border-radius: 4px !important;
+  letter-spacing: 0.02em !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.sector-country-toggle {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+}
+
+/* Premium Checkbox Styling for Sectors */
+.checkbox-label-premium {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+}
+
+.checkbox-label-premium input[type="checkbox"] {
+  width: 18px !important;
+  height: 18px !important;
+  border-radius: 4px !important;
+  cursor: pointer !important;
+  accent-color: var(--primary) !important;
+}
+
+.sector-actions {
+  display: flex !important;
+  justify-content: flex-end !important;
+}
+
+.modal-footer-premium {
+  display: flex !important;
+  justify-content: flex-end !important;
+  align-items: center !important;
+  gap: 16px !important;
+  padding-top: 24px !important;
+  border-top: 1px solid var(--border) !important;
+  margin-top: 12px !important;
+}
+
+.btn-modal-primary {
+  background: var(--primary) !important;
+  color: #fff !important;
+  padding: 10px 24px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+  border: none !important;
+  cursor: pointer !important;
+  transition: all 0.2s !important;
+  box-shadow: 0 4px 15px rgba(37, 99, 235, 0.2) !important;
+}
+
+.btn-modal-primary:hover:not(:disabled) {
+  filter: brightness(1.1) !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 6px 20px rgba(37, 99, 235, 0.3) !important;
+}
+
+.btn-modal-primary:disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+  box-shadow: none !important;
+  transform: none !important;
+}
+
+.btn-modal-secondary {
+  background: transparent !important;
+  color: var(--text) !important;
+  padding: 10px 24px !important;
+  font-size: 14px !important;
+  font-weight: 700 !important;
+  border-radius: 10px !important;
+  border: 1px solid var(--border) !important;
+  cursor: pointer !important;
+  transition: all 0.2s !important;
+}
+
+.btn-modal-secondary:hover:not(:disabled) {
+  background: var(--table-header-bg) !important;
+  border-color: var(--muted) !important;
+}
+
+.btn-modal-secondary:disabled {
+  opacity: 0.4 !important;
+  cursor: not-allowed !important;
+}
+
+.sector-country-toggle {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+}
+
+.sector-actions {
+  display: flex !important;
+  justify-content: flex-end !important;
+}
+
 .header-icon-action-btn:hover svg {
   opacity: 1 !important;
 }
@@ -6493,3 +6670,18 @@ input[type="date"].input-with-clear {
 .checkbox-label-premium:has(input:checked)::after {
   display: block !important;
 }
+
+/* AI Disclaimer Styling */
+.ai-disclaimer-v2 {
+  font-size: 11px !important;
+  color: var(--muted) !important;
+  font-style: italic !important;
+  margin-top: 12px !important;
+  padding-top: 8px !important;
+  border-top: 1px dotted var(--border) !important;
+  line-height: 1.4 !important;
+  text-align: center !important;
+  opacity: 0.8 !important;
+  width: 100% !important;
+  box-sizing: border-box !important;
+}

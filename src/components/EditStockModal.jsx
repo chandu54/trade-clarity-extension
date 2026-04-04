@@ -3,6 +3,7 @@ import Modal from "./Modal";
 import MiniCandlestickChart from "./MiniCandlestickChart";
 import { fetchStockData } from "../utils/yahooFinanceMap";
 import { getSingleStockAnalysis } from "../services/ai";
+import { isParamRelevantForCountry } from "../utils/paramUtils";
 
 export default function EditStockModal({
   isOpen,
@@ -193,9 +194,9 @@ export default function EditStockModal({
     }
   };
 
-  const sortedParams = Object.entries(paramDefinitions || {}).sort(
-    (a, b) => (a[1].order || 0) - (b[1].order || 0)
-  );
+  const sortedParams = Object.entries(paramDefinitions || {})
+    .filter(([, def]) => isParamRelevantForCountry(def, country))
+    .sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
 
   const renderAiAnalysis = () => {
     if (!aiAnalysis) return null;
@@ -423,11 +424,11 @@ export default function EditStockModal({
                     </svg>
                   </a>
                   <a
-                    href={`https://www.screener.in/company/${formData.symbol}/`}
+                    href={country === 'IN' ? `https://www.screener.in/company/${formData.symbol}/` : `https://finance.yahoo.com/quote/${formData.symbol}/`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="header-icon-action-btn"
-                    title="View on Screener"
+                    title={country === 'IN' ? "View on Screener" : "View on Yahoo Finance"}
                   >
                     <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M3 3v18h18" />
@@ -594,6 +595,11 @@ export default function EditStockModal({
 
                   <div className="ai-analysis-container themed-scroll">
                     {renderAiAnalysis()}
+                    {aiAnalysis && (
+                      <div className="ai-disclaimer-v2" style={{ padding: '0 16px', marginBottom: '16px' }}>
+                         AI can make mistakes. Verify with your own research. For informational purposes only.
+                      </div>
+                    )}
                   </div>
 
                   {!aiAnalysis && !loadingAi && !aiError && (

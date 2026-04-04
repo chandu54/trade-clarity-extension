@@ -182,7 +182,10 @@ Start directly with the report.`;
         <div className="phenomena-report-footer">
           <div className="footer-line" />
           <div className="footer-text">
-            <strong>Decision Disclosure:</strong> Tiers and triggers are derived from current group performance divergence. Standard risk management is recommended.
+            <strong>Decision Disclosure:</strong> Tiers and triggers are derived from current group performance divergence. Standard risk management is recommended.<br />
+            <span className="ai-disclaimer-v2" style={{ borderTop: 'none', marginTop: '4px', paddingTop: 0, display: 'block' }}>
+              AI can make mistakes. Verify with your own research. For informational purposes only.
+            </span>
           </div>
         </div>
       </div>

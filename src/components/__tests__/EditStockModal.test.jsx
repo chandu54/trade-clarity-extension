@@ -115,15 +115,28 @@ describe('EditStockModal', () => {
     }));
   });
 
-  it('renders research links correctly', () => {
+  it('renders research links correctly for US', () => {
     render(<EditStockModal {...props} isDeepView={true} />);
+    
+    const tvLink = screen.getByTitle(/View on TradingView/i);
+    const yahooLink = screen.getByTitle(/View on Yahoo Finance/i);
+    
+    expect(tvLink.getAttribute('href')).toContain('tradingview.com');
+    // US stock (AAPL) should have NASDAQ prefix
+    expect(tvLink.getAttribute('href')).toContain('NASDAQ:AAPL');
+    expect(yahooLink.getAttribute('href')).toContain('finance.yahoo.com/quote/AAPL');
+  });
+
+  it('renders research links correctly for IN', () => {
+    // Override props with country="IN"
+    render(<EditStockModal {...props} country="IN" isDeepView={true} />);
     
     const tvLink = screen.getByTitle(/View on TradingView/i);
     const screenerLink = screen.getByTitle(/View on Screener/i);
     
     expect(tvLink.getAttribute('href')).toContain('tradingview.com');
-    // US stock (AAPL) should have NASDAQ prefix in URL logic
-    expect(tvLink.getAttribute('href')).toContain('NASDAQ:AAPL');
+    // IN stock should have NSE prefix
+    expect(tvLink.getAttribute('href')).toContain('NSE:AAPL');
     expect(screenerLink.getAttribute('href')).toContain('screener.in/company/AAPL');
   });
 });

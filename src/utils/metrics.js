@@ -31,7 +31,7 @@ export function mapLiquidityBucket(liquidityValue, liqDef, country) {
   }
 
   if (liqDef?.type === "number") {
-     return targetNumVal.toFixed(2);
+     return country === "IN" ? `${targetNumVal.toFixed(2)}Cr` : `${targetNumVal.toFixed(2)}M`;
   } else if (liqDef?.type === "select" && Array.isArray(liqDef.options) && liqDef.options.length > 0) {
      let matchedBucket = null;
      

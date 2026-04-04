@@ -26,7 +26,7 @@ export default function CategoryAnalysisView({
 
   // Dynamic indicator logic
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
-// ... existing code ...
+  // ... existing code ...
   const snapshotRef = useRef(null);
   const phenomenaRef = useRef(null);
 
@@ -68,7 +68,7 @@ export default function CategoryAnalysisView({
   const { advancing, declining, topWeights } = useMemo(() => {
     let adv = 0;
     let dec = 0;
-    
+
     // Sort by performance (Relative Strength) instead of absolute price
     const sortedByPerformance = [...mergedStockData].sort((a, b) => (b.periodChangePct || 0) - (a.periodChangePct || 0));
     const top = sortedByPerformance.slice(0, 3).map(s => s.symbol).join(', ');
@@ -157,12 +157,12 @@ export default function CategoryAnalysisView({
             >
               Phenomena
             </button>
-            <div 
-              className="ca-tab-indicator" 
-              style={{ 
-                width: indicatorStyle.width, 
-                transform: `translateX(${indicatorStyle.left}px)` 
-              }} 
+            <div
+              className="ca-tab-indicator"
+              style={{
+                width: indicatorStyle.width,
+                transform: `translateX(${indicatorStyle.left}px)`
+              }}
             />
           </div>
         </div>

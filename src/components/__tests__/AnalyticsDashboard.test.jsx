@@ -1,4 +1,4 @@
-import { describe, it, vi, beforeEach } from 'vitest';
+import { describe, it, vi, beforeEach, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import AnalyticsDashboard from '../AnalyticsDashboard';
 import { ToastContext } from '../ToastContext';
@@ -46,42 +46,50 @@ describe('AnalyticsDashboard', () => {
 
   it('renders correctly with overview stats', () => {
     renderWithContext(<AnalyticsDashboard {...props} />);
-    // Title is now "Analytics Dashboard"
     expect(screen.getByText('Analytics Dashboard')).toBeDefined();
-    // Check total stocks count (it's in a specific card now, but search for it)
+    // Total stocks count (2) should be displayed
     expect(screen.getAllByText('2').length).toBeGreaterThan(0);
   });
 
-  it('renders sector breakdown chart', () => {
+  it('renders correctly for a specific country (e.g. IN)', () => {
+    const indiaProps = { ...props, country: 'IN' };
+    renderWithContext(<AnalyticsDashboard {...indiaProps} />);
+    // Verify the country is passed down or reflected in UI if title uses it
+    expect(screen.getByText('Analytics Dashboard')).toBeDefined();
+  });
+
+  it('only renders charts for the parameters provided in props', () => {
+    // If only one param is passed (e.g. filtered by country elsewhere)
+    const limitedParams = [{ id: 'rs', label: 'RS', type: 'number' }];
+    renderWithContext(<AnalyticsDashboard {...props} parameters={limitedParams} />);
+    
+    expect(screen.getByText('RS')).toBeDefined();
+    expect(screen.queryByText('Volume')).toBeNull();
+  });
+
+  it('renders sector distribution based on stocks passed', () => {
     renderWithContext(<AnalyticsDashboard {...props} />);
-    // Title is now "Sector Distribution"
     expect(screen.getByText('Sector Distribution')).toBeDefined();
-    // Use regex to find Tech (might be in tooltips or list)
+    // Check if 'Tech' is present (our mock stocks are in Tech)
     expect(screen.getAllByText(/Tech/i).length).toBeGreaterThan(0);
   });
 
-  it('opens expanded view when clicking a parameter', () => {
+  it('opens expanded view when clicking a parameter card', () => {
     renderWithContext(<AnalyticsDashboard {...props} />);
     
-    // Find the RS card title
-    const rsTitle = screen.getByText('RS');
-    expect(rsTitle).toBeDefined();
-    
-    // Target the "View details" button in that card
-    const cardHeaders = screen.getAllByRole('heading', { level: 3 });
-    const rsHeader = cardHeaders.find(h => h.textContent === 'RS');
-    const container = rsHeader.closest('.chart-card');
-    const expandBtn = container.querySelector('.expand-btn');
+    // Find the RS header
+    const rsHeader = screen.getByText('RS');
+    const card = rsHeader.closest('.chart-card');
+    const expandBtn = card.querySelector('.expand-btn');
     
     fireEvent.click(expandBtn);
     
-    // "Breakdown" is added by ExpandedView
+    // Expanded view should show the breakdown title
     expect(screen.getByText('RS Breakdown')).toBeDefined();
   });
 
-  it('closes the dashboard when close button is clicked', () => {
+  it('calls onClose when the close button is clicked', () => {
     renderWithContext(<AnalyticsDashboard {...props} />);
-    // Target by class since we haven't added the title yet, or just check for the multiplication sign
     const closeBtn = screen.getByText('×');
     fireEvent.click(closeBtn);
     expect(props.onClose).toHaveBeenCalled();

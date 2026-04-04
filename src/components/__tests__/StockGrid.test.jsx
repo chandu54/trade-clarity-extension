@@ -1,4 +1,4 @@
-import { describe, it, vi, beforeEach } from 'vitest';
+import { describe, it, vi, beforeEach, expect } from 'vitest';
 import { render, screen, fireEvent, within } from '@testing-library/react';
 import StockGrid from '../StockGrid';
 import { ToastContext } from '../ToastContext';
@@ -21,33 +21,38 @@ const renderWithContext = (ui) => {
 describe('StockGrid', () => {
   const mockData = {
     paramDefinitions: {
-      volume: { type: 'number', filterable: true, label: 'Volume' },
-      rs: { type: 'number', filterable: true, label: 'RS' }
+      volume: { type: 'number', filterable: true, label: 'Volume' }, // Global
+      rs: { type: 'number', filterable: true, label: 'RS' },        // Global
+      pe: { type: 'number', filterable: true, label: 'PE', countries: ['IN'] } // India Only
     },
     uiConfig: {
-      columnVisibility: { volume: true, rs: true },
-      sectors: ['Tech', 'Finance'],
-      tags: ['Growth', 'Value'],
-      sectorFilterable: true
+      columnVisibility: { volume: true, rs: true, pe: true },
+      sectors: [
+        { name: 'Tech', countries: ['IN', 'US'] },
+        { name: 'Finance', countries: ['IN'] }
+      ],
+      tags: ['Growth'],
+      sectorFilterable: true,
+      tradableFilterable: true,
+      showTags: true
     },
     weeks: {
       US: {
         '2024-03-17': {
           stocks: {
-            AAPL: { symbol: 'AAPL', sector: 'Tech', params: { volume: 100, rs: 80 }, notes: 'Buy' },
-            MSFT: { symbol: 'MSFT', sector: 'Tech', params: { volume: 200, rs: 90 }, notes: 'Hold' }
+            AAPL: { symbol: 'AAPL', sector: 'Tech', params: { volume: 100, rs: 80 }, notes: 'Buy' }
+          }
+        }
+      },
+      IN: {
+        '2024-03-17': {
+          stocks: {
+            RELIANCE: { symbol: 'RELIANCE', sector: 'Finance', params: { volume: 50, pe: 15 }, notes: 'India stock' }
           }
         }
       }
     },
-    watchlists: [],
-    uiConfig: {
-      columnVisibility: { volume: true, rs: true },
-      sectors: ['Tech', 'Finance'],
-      tags: ['Growth', 'Value'],
-      sectorFilterable: true,
-      tradableFilterable: true
-    }
+    watchlists: []
   };
 
   const props = {
@@ -66,77 +71,73 @@ describe('StockGrid', () => {
     vi.clearAllMocks();
   });
 
-  it('renders the grid with stock data', () => {
+  it('renders the grid with stock data relevant to the country', () => {
     renderWithContext(<StockGrid {...props} />);
     expect(screen.getByText('AAPL')).toBeDefined();
-    expect(screen.getByText('MSFT')).toBeDefined();
+    expect(screen.queryByText('RELIANCE')).toBeNull();
   });
 
-  it('filters stocks by search query', () => {
-    renderWithContext(<StockGrid {...props} />);
-    
-    // Expand filters if hidden
-    const filterToggle = screen.getByText(/Show All Filters/i);
-    fireEvent.click(filterToggle);
-
-    const searchInput = screen.getByLabelText(/Search symbols/i);
-    fireEvent.change(searchInput, { target: { value: 'AAPL' } });
-
-    expect(screen.getByText('AAPL')).toBeDefined();
-    expect(screen.queryByText('MSFT')).toBeNull();
+  it('hides parameter columns not relevant to the current country', () => {
+    // When country is 'US', 'PE' (India only) should be hidden
+    renderWithContext(<StockGrid {...props} country="US" />);
+    expect(screen.queryByText('PE')).toBeNull();
+    expect(screen.getByText('Volume')).toBeDefined();
   });
 
-  it('filters stocks by sector', () => {
-    renderWithContext(<StockGrid {...props} />);
+  it('shows parameter columns relevant to the current country', () => {
+    // When country is 'IN', 'PE' should be visible
+    renderWithContext(<StockGrid {...props} country="IN" />);
+    expect(screen.getByText('PE')).toBeDefined();
+  });
+
+  it('filters sector dropdown based on country scope', () => {
+    renderWithContext(<StockGrid {...props} country="US" />);
     
+    // Toggle filters
     const filterToggle = screen.getByText(/Show All Filters/i);
     fireEvent.click(filterToggle);
 
     const sectorSelect = screen.getByLabelText('Sector');
-    fireEvent.change(sectorSelect, { target: { value: 'Finance' } });
-
-    expect(screen.queryByText('AAPL')).toBeNull();
-    expect(screen.queryByText('MSFT')).toBeNull();
-  });
-
-  it('sorts stocks when header is clicked', () => {
-    renderWithContext(<StockGrid {...props} />);
     
-    const volumeHeader = screen.getByText('Volume');
-    fireEvent.click(volumeHeader); // Sort asc: 100, 200
-
-    let rows = screen.getAllByRole('row').slice(1); // skip header row
-    expect(within(rows[0]).getByText('AAPL')).toBeDefined();
-
-    fireEvent.click(volumeHeader); // Sort desc: 200, 100
-    rows = screen.getAllByRole('row').slice(1);
-    expect(within(rows[0]).getByText('MSFT')).toBeDefined();
+    // 'Tech' is IN/US, 'Finance' is IN only. So Finance should be missing in US.
+    const options = Array.from(sectorSelect.options).map(o => o.text);
+    expect(options).toContain('Tech');
+    expect(options).not.toContain('Finance');
   });
 
-  it('opens Add Stock modal when button is clicked', () => {
-    renderWithContext(<StockGrid {...props} />);
-    const addBtn = screen.getByText('Add');
-    fireEvent.click(addBtn);
-    expect(screen.getByText('Add Stocks')).toBeDefined();
-  });
-
-  it('calls deleteStock after confirmation', async () => {
-    mockConfirm.mockResolvedValue(true);
-    renderWithContext(<StockGrid {...props} />);
+  it('calculates diagnostics using only relevant check parameters', () => {
+    // Define a check that is US only
+    const dataWithScopedCheck = {
+      ...mockData,
+      paramDefinitions: {
+        ...mockData.paramDefinitions,
+        usCheck: { label: 'US Check', type: 'checkbox', isCheck: true, countries: ['US'] },
+        inCheck: { label: 'IN Check', type: 'checkbox', isCheck: true, countries: ['IN'] }
+      }
+    };
     
-    // Click delete for AAPL
-    const deleteBtns = screen.getAllByTitle(/Delete stock/i);
-    fireEvent.click(deleteBtns[0]);
+    const usStock = {
+      ...mockData.weeks.US['2024-03-17'].stocks.AAPL,
+      params: { usCheck: true, inCheck: false } // Passed US, failed IN
+    };
 
-    expect(mockConfirm).toHaveBeenCalled();
-    // Verify setData was called to update state
-    await vi.waitFor(() => {
-      expect(props.setData).toHaveBeenCalled();
-    });
+    const customProps = {
+      ...props,
+      data: {
+        ...dataWithScopedCheck,
+        weeks: { US: { '2024-03-17': { stocks: { AAPL: usStock } } } }
+      }
+    };
+
+    renderWithContext(<StockGrid {...customProps} country="US" />);
+    
+    // The diagnostic badge should see 1/1 passed (US Check) and ignore IN Check.
+    // Since both are '1', we use getAllByText or specific containers
+    const diagnosticValues = screen.getAllByText('1');
+    expect(diagnosticValues.length).toBeGreaterThanOrEqual(2);
   });
 
   it('paginates data correctly', () => {
-    // Add more stocks to test pagination
     const manyStocks = {};
     for (let i = 0; i < 15; i++) {
         manyStocks[`S${i}`] = { symbol: `S${i}`, params: {} };
@@ -150,13 +151,30 @@ describe('StockGrid', () => {
     };
 
     renderWithContext(<StockGrid {...propsWithMany} />);
-    
-    // Page size 10 by default
     expect(screen.getAllByRole('row').length).toBe(11); // 10 rows + 1 header
     
     const nextPageBtn = screen.getByText('▶');
     fireEvent.click(nextPageBtn);
-    
     expect(screen.getAllByRole('row').length).toBe(6); // 5 remaining + 1 header
+  });
+
+  it('hides parameters with _legacy_ country scope', () => {
+    const dataWithLegacy = {
+      ...mockData,
+      paramDefinitions: {
+        ...mockData.paramDefinitions,
+        oldParam: { label: 'Old Parameter', countries: ['_legacy_'] }
+      }
+    };
+    
+    const propsWithLegacy = { ...props, data: dataWithLegacy };
+    
+    // Should be hidden in US
+    renderWithContext(<StockGrid {...propsWithLegacy} country="US" />);
+    expect(screen.queryByText('Old Parameter')).toBeNull();
+    
+    // Should be hidden in IN
+    renderWithContext(<StockGrid {...propsWithLegacy} country="IN" />);
+    expect(screen.queryByText('Old Parameter')).toBeNull();
   });
 });

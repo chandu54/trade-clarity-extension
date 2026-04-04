@@ -5,7 +5,7 @@ import ImportWatchlistModal from "./ImportWatchlistModal";
 import TrashIcon from "./icons/TrashIcon";
 import { useToast } from "./ToastContext";
 import { useConfirm } from "./ConfirmContext";
-import { doesParamPassCheck } from "../utils/paramUtils";
+import { doesParamPassCheck, isParamRelevantForCountry } from "../utils/paramUtils";
 
 function getWeekRangeLabel(sundayDateStr) {
   if (!sundayDateStr) return "";
@@ -306,7 +306,8 @@ export default function StockGrid({
 
   const activeWatchlist = (data.watchlists || []).find(w => w.id === selectedWatchlistId);
 
-  const visibleParams = Object.entries(params).filter(([key]) => {
+  const visibleParams = Object.entries(params).filter(([key, p]) => {
+    if (!isParamRelevantForCountry(p, country)) return false;
     if (selectedWatchlistId !== "all" && activeWatchlist) {
       return (activeWatchlist.visibleParams || []).includes(key);
     }
@@ -327,12 +328,13 @@ export default function StockGrid({
   ===================== */
   const filterableParams = useMemo(() => {
     return Object.entries(params).filter(([key, p]) => {
+      if (!isParamRelevantForCountry(p, country)) return false;
       if (selectedWatchlistId !== "all" && activeWatchlist) {
         return (activeWatchlist.visibleFilters || []).includes(key);
       }
       return p.filterable;
     });
-  }, [params, selectedWatchlistId, activeWatchlist]);
+  }, [params, selectedWatchlistId, activeWatchlist, country]);
 
   const isSectorFilterable = data.uiConfig?.sectorFilterable === true;
   const isTradableFilterable = data.uiConfig?.tradableFilterable === true;
@@ -340,10 +342,17 @@ export default function StockGrid({
   const showTags = data.uiConfig?.showTags !== false;
 
   const sectors = useMemo(() => {
-    return [...(data.uiConfig?.sectors || [])].sort((a, b) =>
-      a.localeCompare(b),
-    );
-  }, [data.uiConfig?.sectors]);
+    const rawSectors = data.uiConfig?.sectors || [];
+    return rawSectors
+      .filter(s => {
+        // Handle legacy string format or items with empty countries array
+        if (typeof s === 'string') return true;
+        if (!s.countries || s.countries.length === 0) return true;
+        return s.countries.includes(country);
+      })
+      .map(s => typeof s === 'string' ? s : s.name)
+      .sort((a, b) => a.localeCompare(b));
+  }, [data.uiConfig?.sectors, country]);
 
   /* =====================
      CHECKS PASSED

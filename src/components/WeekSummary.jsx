@@ -30,9 +30,9 @@ export default function WeekSummary({ data, weekKey, country }) {
 
   const prevStats = prevWeekKey
     ? calculateCheckStats(
-        Object.values(data.weeks[country][prevWeekKey].stocks || {}),
-        data.paramDefinitions,
-      )
+      Object.values(data.weeks[country][prevWeekKey].stocks || {}),
+      data.paramDefinitions,
+    )
     : null;
 
   // =========================
@@ -297,11 +297,10 @@ export default function WeekSummary({ data, weekKey, country }) {
                 <div className="wow-card">
                   <span className="wow-label">Total</span>
                   <span
-                    className={`wow-value ${
-                      currentStats.totalStocks - prevStats.totalStocks >= 0
+                    className={`wow-value ${currentStats.totalStocks - prevStats.totalStocks >= 0
                         ? "up"
                         : "down"
-                    }`}
+                      }`}
                   >
                     {currentStats.totalStocks - prevStats.totalStocks >= 0
                       ? "▲"
@@ -321,11 +320,10 @@ export default function WeekSummary({ data, weekKey, country }) {
                 <div className="wow-card">
                   <span className="wow-label">≥ 80%</span>
                   <span
-                    className={`wow-value ${
-                      currentStats.passed80 - prevStats.passed80 >= 0
+                    className={`wow-value ${currentStats.passed80 - prevStats.passed80 >= 0
                         ? "up"
                         : "down"
-                    }`}
+                      }`}
                   >
                     {currentStats.passed80 - prevStats.passed80 >= 0
                       ? "▲"
@@ -345,11 +343,10 @@ export default function WeekSummary({ data, weekKey, country }) {
                 <div className="wow-card">
                   <span className="wow-label">60–79%</span>
                   <span
-                    className={`wow-value ${
-                      currentStats.passed60 - prevStats.passed60 >= 0
+                    className={`wow-value ${currentStats.passed60 - prevStats.passed60 >= 0
                         ? "up"
                         : "down"
-                    }`}
+                      }`}
                   >
                     {currentStats.passed60 - prevStats.passed60 >= 0
                       ? "▲"
