@@ -1124,13 +1124,13 @@ const TradeClarityWidget = () => {
               {(stockData?.tags || []).map(tag => (
                 <span
                   key={tag}
-                  className="text-[10px] pl-1.5 pr-1 h-[18px] rounded flex items-center gap-1 shadow-sm border bg-slate-700 text-blue-300 border-slate-600/50"
+                  className="text-[10px] pl-1.5 pr-1 h-[20px] rounded flex items-center gap-1 shadow-sm border bg-slate-700 text-blue-300 border-slate-600/50 transition-colors"
                 >
-                  <span className="leading-none mt-[1px]">{tag}</span>
+                  <span className="leading-none">{tag}</span>
                   <button
                     type="button"
                     onClick={(e) => { e.stopPropagation(); handleRemoveTag(tag); }}
-                    className="leading-none font-bold text-[11px] flex items-center justify-center w-3 h-3 rounded transition-colors hover:text-red-400 hover:bg-slate-600"
+                    className="leading-none font-bold text-[11px] flex items-center justify-center w-3.5 h-3.5 rounded transition-colors hover:text-red-400 hover:bg-slate-600"
                   >×</button>
                 </span>
               ))}
@@ -1146,10 +1146,10 @@ const TradeClarityWidget = () => {
                   key={t}
                   type="button"
                   onClick={(e) => { e.stopPropagation(); handleAddTag(t); }}
-                  className="group flex items-center gap-0.5 border text-[10px] px-1.5 h-[18px] rounded transition-all shadow-sm bg-indigo-900/30 border-indigo-700/50 text-indigo-300 hover:bg-indigo-600 hover:border-indigo-500 hover:text-white"
+                  className="group flex items-center gap-0.5 border text-[10px] px-1.5 h-[20px] rounded transition-colors shadow-sm bg-indigo-900/30 border-indigo-700/50 text-indigo-300 hover:bg-indigo-600 hover:border-indigo-500 hover:text-white"
                 >
                   <span className="opacity-70 group-hover:opacity-100 font-bold leading-none">+</span>
-                  <span className="leading-none mt-[1px]">{t}</span>
+                  <span className="leading-none">{t}</span>
                 </button>
               ))}
 
@@ -1167,7 +1167,7 @@ const TradeClarityWidget = () => {
                   }
                 }}
                 placeholder="Type tag & Enter..."
-                className="flex-1 min-w-[80px] bg-transparent text-[11px] outline-none h-[18px] ml-0.5 font-medium text-slate-200 placeholder-slate-500"
+                className="flex-1 min-w-[80px] bg-transparent text-[11px] outline-none h-[20px] ml-0.5 font-medium text-slate-200 placeholder-slate-500"
               />
             </div>
           </div>
