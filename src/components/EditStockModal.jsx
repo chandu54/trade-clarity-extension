@@ -198,21 +198,53 @@ export default function EditStockModal({
     .filter(([, def]) => isParamRelevantForCountry(def, country))
     .sort((a, b) => (a[1].order || 0) - (b[1].order || 0));
 
+  const SafeMarkdown = ({ text }) => {
+    if (!text) return null;
+
+    // Split by lines to handle bullet points and blocks
+    const lines = text.split('\n');
+    const elements = [];
+    let currentList = [];
+    const flushList = (key) => {
+      if (currentList.length > 0) {
+        elements.push(
+          <ul key={`list-${key}`} className="analysis-unordered-list">
+            {currentList.map((item, i) => <li key={i}>{parseInline(item)}</li>)}
+          </ul>
+        );
+        currentList = [];
+      }
+    };
+
+    const parseInline = (str) => {
+      // Handle bold **text**
+      const parts = str.split(/(\*\*.*?\*\*)/g);
+      return parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return <strong key={i}>{part.slice(2, -2)}</strong>;
+        }
+        return part;
+      });
+    };
+
+    lines.forEach((line, index) => {
+      const trimmed = line.trim();
+      if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+        currentList.push(trimmed.slice(2));
+      } else {
+        flushList(index);
+        if (trimmed) {
+          elements.push(<p key={index} className="analysis-text-block">{parseInline(trimmed)}</p>);
+        }
+      }
+    });
+    flushList('final');
+
+    return <>{elements}</>;
+  };
+
   const renderAiAnalysis = () => {
     if (!aiAnalysis) return null;
-
-    const parseMarkdown = (text) => {
-      // Handle Bold
-      let html = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
-      // Handle Bullet Points
-      html = html.replace(/^\s*[-*]\s+(.*)/gm, '<li>$1</li>');
-      // Wrap lists
-      if (html.includes('<li>')) {
-        const parts = html.split(/(<li>.*<\/li>)/gms);
-        html = parts.map(p => p.startsWith('<li>') ? `<ul class="analysis-list">${p}</ul>` : p).join('');
-      }
-      return <div dangerouslySetInnerHTML={{ __html: html }} />;
-    };
 
     const sections = aiAnalysis.split(/###\s+/).filter(Boolean);
     return (
@@ -225,7 +257,7 @@ export default function EditStockModal({
             <div key={idx} className="analysis-section-box">
               <h4 className="analysis-section-title">{title}</h4>
               <div className="analysis-section-content">
-                {parseMarkdown(content)}
+                <SafeMarkdown text={content} />
               </div>
             </div>
           );
@@ -596,7 +628,7 @@ export default function EditStockModal({
                   <div className="ai-analysis-container themed-scroll">
                     {renderAiAnalysis()}
                     {aiAnalysis && (
-                      <div className="ai-disclaimer-v2" style={{ padding: '0 16px', marginBottom: '16px' }}>
+                      <div className="ai-disclaimer-v2 ai-analysis-disclaimer-box">
                          AI can make mistakes. Verify with your own research. For informational purposes only.
                       </div>
                     )}

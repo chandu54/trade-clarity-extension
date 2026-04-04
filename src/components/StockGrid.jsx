@@ -91,38 +91,16 @@ function parseTradingViewData(content, sectorList) {
 
 const ClearButton = ({ onClick, isSelect }) => (
   <button
+    className="clear-filter-btn"
     onClick={onClick}
-    style={{
-      position: "absolute",
-      right: isSelect ? "22px" : "6px",
-      top: "50%",
-      transform: "translateY(-50%)",
-      background: "transparent",
-      border: "none",
-      color: "#94a3b8",
-      cursor: "pointer",
-      padding: "4px",
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      zIndex: 10,
-      borderRadius: "50%",
-    }}
-    onMouseEnter={(e) => {
-      e.currentTarget.style.color = "#ef4444";
-      e.currentTarget.style.backgroundColor = "rgba(255,255,255,0.1)";
-    }}
-    onMouseLeave={(e) => {
-      e.currentTarget.style.color = "#94a3b8";
-      e.currentTarget.style.backgroundColor = "transparent";
-    }}
+    style={{ right: isSelect ? "22px" : "6px" }}
     title="Clear filter"
   >
     <svg
       xmlns="http://www.w3.org/2000/svg"
       viewBox="0 0 20 20"
       fill="currentColor"
-      style={{ width: "14px", height: "14px" }}
+      className="clear-filter-icon"
     >
       <path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" />
     </svg>
@@ -206,10 +184,7 @@ export default function StockGrid({
   const week = data.weeks?.[country]?.[weekKey];
   const params = data.paramDefinitions;
   const { showToast } = useToast();
-  const { confirm } = useConfirm();
-
-
-  const [showManageParams, setShowManageParams] = useState(false);
+  const { confirm } = useConfirm();  const [showManageParams, setShowManageParams] = useState(false);
   const [showManageSectors, setShowManageSectors] = useState(false);
 
   const [importPendingStocks, setImportPendingStocks] = useState(null);
@@ -797,7 +772,7 @@ export default function StockGrid({
     ];
 
     const rows = exportData.map((stock) => {
-      const checks = getChecksResult(stock);
+      const checks = getChecksCount(stock);
       return [
         stock.symbol,
         stock.sector,
@@ -1092,13 +1067,12 @@ export default function StockGrid({
                 {isSectorFilterable && (
                   <div className="filter-item">
                     <label htmlFor="sector-filter">Sector</label>
-                    <div style={{ position: "relative", width: "100%" }}>
+                    <div className="filter-input-wrapper">
                       <select
                         id="sector-filter"
-                        className="select-control"
+                        className="select-control filter-select-control"
                         value={filters.__sector__ || ""}
                         onChange={(e) => setFilter("__sector__", e.target.value)}
-                        style={{ width: "100%", paddingRight: "24px" }}
                       >
                         <option value="">All</option>
                         {sectors.map((s) => (
@@ -1120,13 +1094,12 @@ export default function StockGrid({
                 {(availableTags || []).length > 0 && isTagFilterable && (
                   <div className="filter-item">
                     <label htmlFor="tag-filter">Tag</label>
-                    <div style={{ position: "relative", width: "100%" }}>
+                    <div className="filter-input-wrapper">
                       <select
                         id="tag-filter"
-                        className="select-control"
+                        className="select-control filter-select-control"
                         value={filters.__tag__ || ""}
                         onChange={(e) => setFilter("__tag__", e.target.value)}
-                        style={{ width: "100%", paddingRight: "24px" }}
                       >
                         <option value="">All</option>
                         {availableTags.map((t) => (
@@ -1151,24 +1124,19 @@ export default function StockGrid({
                       {p.label}
                       {(p.type === "number" || p.type === "date") && (
                         <span
-                          className="info-icon"
+                          className="info-help-icon"
                           title="Supports operators: > < >= <= = and ranges (e.g. 10-20)"
-                          style={{
-                            marginLeft: "4px",
-                            cursor: "help",
-                            fontSize: "0.8em",
-                          }}
                         >
                           ℹ️
                         </span>
                       )}
                     </label>
-                    <div style={{ position: "relative", width: "100%" }}>
+                    <div className="filter-input-wrapper">
                       {p.type === "checkbox" && (
                         <>
                           <select
                             id={`filter-param-${key}`}
-                            className="select-control"
+                            className="select-control filter-select-control"
                             value={filters[key] ?? ""}
                             onChange={(e) =>
                               setFilter(
@@ -1178,7 +1146,6 @@ export default function StockGrid({
                                   : e.target.value === "true",
                               )
                             }
-                            style={{ width: "100%", paddingRight: "24px" }}
                           >
                             <option value="">All</option>
                             <option value="true">Yes</option>
@@ -1197,10 +1164,9 @@ export default function StockGrid({
                         <>
                           <select
                             id={`filter-param-${key}`}
-                            className="select-control"
+                            className="select-control filter-select-control"
                             value={filters[key] || ""}
                             onChange={(e) => setFilter(key, e.target.value)}
-                            style={{ width: "100%", paddingRight: "24px" }}
                           >
                             <option value="">All</option>
                             {p.options?.map((o) => (
@@ -1558,22 +1524,13 @@ export default function StockGrid({
                   <div className="stock-cell-content">
                     <div className="stock-header-row">
                       <span
-                        className="stock-name"
+                        className={!isReadOnly ? "stock-name stock-symbol-link" : "stock-name"}
                         onClick={(e) => {
                           if (!isReadOnly) {
                             e.stopPropagation();
                             setEditingStock(stock);
                           }
                         }}
-                        style={
-                          !isReadOnly
-                            ? {
-                              cursor: "pointer",
-                              color: "var(--primary)",
-                              fontWeight: "600",
-                            }
-                            : {}
-                        }
                         title={!isReadOnly ? "Click to edit details" : ""}
                       >
                         {stock.symbol}
@@ -1596,7 +1553,7 @@ export default function StockGrid({
                               xmlns="http://www.w3.org/2000/svg"
                               viewBox="0 0 20 20"
                               fill="currentColor"
-                              style={{ width: "10px", height: "10px" }}
+                              className="tag-icon-small"
                             >
                               <path
                                 fillRule="evenodd"
@@ -1858,7 +1815,6 @@ export default function StockGrid({
                 </td>
               </tr>
             ))}
-
             {stocks.length === 0 && (
               <tr>
                 <td colSpan={colCount}>No data matches filters</td>

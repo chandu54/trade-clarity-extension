@@ -126,9 +126,9 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
             <div className="param-info">
               <strong>{p.label}</strong>
               {p.countries && p.countries.length > 0 ? (
-                <span className="muted small" style={{marginLeft: "8px", verticalAlign: "middle"}}>[{p.countries.join(", ")}]</span>
+                <span className="muted small param-country-tag">[{p.countries.join(", ")}]</span>
               ) : (
-                <span className="muted small" style={{marginLeft: "8px", verticalAlign: "middle"}}>[Global]</span>
+                <span className="muted small param-country-tag">[Global]</span>
               )}
             </div>
             <div className="param-actions">
@@ -171,9 +171,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
             placeholder="e.g. relativeStrength"
           />
           {error && (
-            <div
-              style={{ color: "#d32f2f", fontWeight: "600", marginTop: "8px" }}
-            >
+            <div className="form-error-msg">
               {error}
             </div>
           )}
@@ -265,8 +263,8 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
               ℹ️
             </span>
           </label>
-          <div style={{ display: "flex", gap: "16px", marginTop: "4px" }}>
-            <label className="checkbox-label" style={{ margin: 0 }}>
+          <div className="countries-flex-group">
+            <label className="checkbox-label checkbox-no-margin">
               <input
                 type="checkbox"
                 checked={countries.includes("IN")}
@@ -277,7 +275,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
               />
               <span>India (IN)</span>
             </label>
-            <label className="checkbox-label" style={{ margin: 0 }}>
+            <label className="checkbox-label checkbox-no-margin">
               <input
                 type="checkbox"
                 checked={countries.includes("US")}

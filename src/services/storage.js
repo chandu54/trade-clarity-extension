@@ -1,6 +1,8 @@
 import { DEFAULT_DATA } from "../seed";
+import { CONFIG } from "../constants/config";
+import { getActualCurrentSunday } from "../utils/weekHelpers";
 
-const KEY = "trading_app_data";
+const KEY = CONFIG.STORAGE_KEY;
 
 function isChromeStorage() {
   return typeof chrome !== "undefined" && chrome.storage?.local;
@@ -8,6 +10,7 @@ function isChromeStorage() {
 
 export async function loadData() {
   let data;
+  let needsSave = false;
 
   /* =========================
      LOAD RAW DATA
@@ -27,45 +30,58 @@ export async function loadData() {
   ========================= */
   if (!data) {
     data = structuredClone(DEFAULT_DATA);
+    needsSave = true;
   }
   if (!data.watchlists) {
     data.watchlists = structuredClone(DEFAULT_DATA.watchlists);
+    needsSave = true;
   }
 
   /* =========================
    MERGE UI CONFIG (IMPORTANT)
-========================= */
-  data.uiConfig = {
-    ...structuredClone(DEFAULT_DATA.uiConfig),
-    ...(data.uiConfig || {}),
-    columns: {
-      ...structuredClone(DEFAULT_DATA.uiConfig.columns),
-      ...(data.uiConfig?.columns || {}),
-    },
-  };
+ ========================= */
+  if (!data.uiConfig || !data.uiConfig.columns) {
+    data.uiConfig = {
+      ...structuredClone(DEFAULT_DATA.uiConfig),
+      ...(data.uiConfig || {}),
+      columns: {
+        ...structuredClone(DEFAULT_DATA.uiConfig.columns),
+        ...(data.uiConfig?.columns || {}),
+      },
+    };
+    needsSave = true;
+  }
 
   Object.keys(data.paramDefinitions).forEach((key) => {
     if (!(key in data.uiConfig.columnVisibility)) {
       data.uiConfig.columnVisibility[key] = true;
+      needsSave = true;
     }
   });
+
   /* =========================
      MERGE DEFAULT SECTORS & MIGRATION
   ========================= */
-  if (!Array.isArray(data.sectors)) {
-    data.sectors = structuredClone(DEFAULT_DATA.sectors);
-  } else if (data.sectors.length > 0 && typeof data.sectors[0] === "string") {
-    // Migration: string[] -> object[]
-    data.sectors = data.sectors.map(s => ({ name: s, countries: ["IN", "US"] }));
+  const migrateSectors = (sectors) => {
+    if (!Array.isArray(sectors)) return { list: structuredClone(DEFAULT_DATA.sectors), changed: true };
+    if (sectors.length > 0 && typeof sectors[0] === "string") {
+      return { list: sectors.map(s => ({ name: s, countries: ["IN", "US"] })), changed: true };
+    }
+    return { list: sectors, changed: false };
+  };
+
+  const sectorResult = migrateSectors(data.sectors);
+  if (sectorResult.changed) {
+    data.sectors = sectorResult.list;
+    needsSave = true;
   }
 
-  if (data.uiConfig && Array.isArray(data.uiConfig.sectors)) {
-    if (data.uiConfig.sectors.length > 0 && typeof data.uiConfig.sectors[0] === "string") {
-      // Migration: string[] -> object[]
-      data.uiConfig.sectors = data.uiConfig.sectors.map(s => ({ name: s, countries: ["IN", "US"] }));
+  if (data.uiConfig) {
+    const uiSectorResult = migrateSectors(data.uiConfig.sectors);
+    if (uiSectorResult.changed) {
+      data.uiConfig.sectors = uiSectorResult.list;
+      needsSave = true;
     }
-  } else if (data.uiConfig) {
-    data.uiConfig.sectors = structuredClone(DEFAULT_DATA.uiConfig.sectors);
   }
 
   /* =========================
@@ -78,10 +94,11 @@ export async function loadData() {
   if (!data.aiSettings) {
     data.aiSettings = {
        apiKey: "",
-       model: "gemini-2.5-flash",
-       systemPrompt: "Act as a disciplined, risk-aware swing trading mentor...",
+       model: CONFIG.DEFAULT_AI_MODEL,
+       systemPrompt: CONFIG.DEFAULT_SYSTEM_PROMPT,
        customPrompts: []
     };
+    needsSave = true;
   }
 
   // Check for legacy root-level keys
@@ -93,81 +110,67 @@ export async function loadData() {
         [CUSTOM_PROMPTS_STORE]: localStorage.getItem(CUSTOM_PROMPTS_STORE)
       };
 
-  let migrated = false;
-  
   if (legacyData[AI_KEY_STORE]) {
     data.aiSettings.apiKey = legacyData[AI_KEY_STORE];
-    migrated = true;
+    needsSave = true;
   }
   if (legacyData[AI_MODEL_STORE]) {
     data.aiSettings.model = legacyData[AI_MODEL_STORE];
-    migrated = true;
+    needsSave = true;
   }
   if (legacyData[CUSTOM_PROMPTS_STORE]) {
     try {
-      // Chrome storage might return the array directly, local storage returns string
       data.aiSettings.customPrompts = typeof legacyData[CUSTOM_PROMPTS_STORE] === 'string' 
         ? JSON.parse(legacyData[CUSTOM_PROMPTS_STORE]) 
         : legacyData[CUSTOM_PROMPTS_STORE];
-    } catch (e) { console.error("Could not parse legacy custom prompts", e); }
-    migrated = true;
+      needsSave = true;
+    } catch (e) { /* ignore silently */ }
   }
 
-  if (migrated) {
-    console.log("Migrating legacy AI settings to trading_app_data...");
-    if (isChromeStorage()) {
-      chrome.storage.local.remove([AI_KEY_STORE, AI_MODEL_STORE, "ai_prompt", CUSTOM_PROMPTS_STORE]);
-    } else {
-      localStorage.removeItem(AI_KEY_STORE);
-      localStorage.removeItem(AI_MODEL_STORE);
-      localStorage.removeItem("ai_prompt");
-      localStorage.removeItem(CUSTOM_PROMPTS_STORE);
-    }
+  if (needsSave && isChromeStorage()) {
+    chrome.storage.local.remove([AI_KEY_STORE, AI_MODEL_STORE, "ai_prompt", CUSTOM_PROMPTS_STORE]);
   }
 
   /* =========================
      MERGE DEFAULT PARAMS
   ========================= */
+  const originalParamCount = Object.keys(data.paramDefinitions).length;
   data.paramDefinitions = {
     ...structuredClone(DEFAULT_DATA.paramDefinitions),
     ...(data.paramDefinitions || {}),
   };
+  if (Object.keys(data.paramDefinitions).length !== originalParamCount) {
+    needsSave = true;
+  }
 
   /* =========================
      ENSURE CURRENT WEEK
   ========================= */
-  // MIGRATION: Check if weeks are flat (old format) and move to US
   if (data.weeks && !data.weeks.US && !data.weeks.IN) {
     const oldWeeks = data.weeks;
-    data.weeks = {
-      US: oldWeeks,
-      IN: {},
-    };
+    data.weeks = { US: oldWeeks, IN: {} };
+    needsSave = true;
   }
 
-  // Ensure structure
-  if (!data.weeks) data.weeks = { US: {}, IN: {} };
-  if (!data.weeks.US) data.weeks.US = {};
-  if (!data.weeks.IN) data.weeks.IN = {};
+  if (!data.weeks) {
+    data.weeks = { US: {}, IN: {} };
+    needsSave = true;
+  }
 
-  // Calculate current week key using local time
-  const now = new Date();
-  const day = now.getDay();
-  const diff = now.getDate() - (day === 0 ? 7 : day);
-  const sunday = new Date(now.setDate(diff));
-  const weekKey = `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, "0")}-${String(sunday.getDate()).padStart(2, "0")}`;
+  // Use robust utility for current weekKey
+  const weekKey = getActualCurrentSunday();
 
-  if (!data.weeks.US[weekKey]) {
-    data.weeks.US[weekKey] = {
-      displayName: `Week of ${weekKey}`,
-      stocks: {},
-    };
+  if (!data.weeks.US[weekKey] && !data.weeks.IN[weekKey]) {
+    data.weeks.US[weekKey] = { displayName: `Week of ${weekKey}`, stocks: {} };
+    needsSave = true;
   }
 
   /* =========================
-     SAVE BACK (IMPORTANT)
+     SAVE BACK ONLY IF CHANGED
   ========================= */
-  await saveData(data);
+  if (needsSave) {
+    await saveData(data);
+  }
 
   return data;
 }

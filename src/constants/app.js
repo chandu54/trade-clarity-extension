@@ -1,6 +1,4 @@
-/**
- * Constants used throughout the application
- */
+import { CONFIG } from "./config";
 
 export const EMPTY_DATA = {
   weeks: {},
@@ -8,8 +6,8 @@ export const EMPTY_DATA = {
   uiConfig: {},
   aiSettings: {
     apiKey: "",
-    model: "gemini-2.5-flash",
-    systemPrompt: "Act as a disciplined, risk-aware swing trading mentor...",
+    model: CONFIG.DEFAULT_AI_MODEL,
+    systemPrompt: CONFIG.DEFAULT_SYSTEM_PROMPT,
     customPrompts: []
   }
 };

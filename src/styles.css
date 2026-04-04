@@ -6,31 +6,40 @@
   --header-bg: #020617;
   --header-text: #ffffff;
   --text: #0f172a;
-  --muted: #555;
-  --border: #e5e7eb;
+  --muted: #64748b;
+  --muted-light: #94a3b8;
+  --border: #e2e8f0;
   --primary: #2563eb;
-  --danger: #dc2626;
-  --success: #16a34a;
-  --filter-bg: #f8f9fb;
+  --primary-light: #3b82f6;
+  --danger: #ef4444;
+  --success: #10b981;
+  --warning: #f59e0b;
+  --info: #3b82f6;
+  --filter-bg: #f8fafc;
   --table-header-bg: #f1f5f9;
   --tradable-bg: #ecfdf5;
   color-scheme: light;
+  transition: background-color 0.2s, color 0.2s, border-color 0.2s;
 }
 
 [data-theme=dark] {
-  --bg: #121821;
+  --bg: #0f172a;
   --panel: #1e293b;
-  --table-header-bg: #253142;
-  --filter-bg: #1b2330;
-  --tradable-bg: #24332d80;
-  --text: #e5e9f0;
+  --header-bg: #020617;
+  --header-text: #ffffff;
+  --text: #f1f5f9;
   --muted: #94a3b8;
-  --border: #2c3a4a;
-  --primary: #4f8ce9;
-  --primary-light: #629ef0;
-  --danger: #ee6c75;
-  --success: #3fc380;
-  --info: #64b5f6;
+  --muted-light: #64748b;
+  --border: #334155;
+  --primary: #3b82f6;
+  --primary-light: #60a5fa;
+  --danger: #f87171;
+  --success: #34d399;
+  --warning: #fbbf24;
+  --info: #60a5fa;
+  --filter-bg: #1e293b;
+  --table-header-bg: #334155;
+  --tradable-bg: #064e3b40;
   color-scheme: dark;
 }
 
@@ -89,15 +98,269 @@ body {
   gap: 12px;
 }
 
+.brand-lockup {
+  display: flex !important;
+  align-items: center;
+  gap: 24px;
+}
+
 .app-name {
+  display: flex !important;
+  align-items: baseline;
+  gap: 0;
   margin: 0;
-  font-size: 1.4rem;
+  font-size: 1.55rem !important;
+  color: #fff !important;
+  background: none !important;
+  -webkit-text-fill-color: initial !important;
+  cursor: pointer;
+  transition: opacity 0.2s ease;
+  user-select: none;
+}
+
+.app-name:hover {
+  opacity: 0.8;
+}
+
+.brand-primary {
   font-weight: 800;
   letter-spacing: -0.02em;
-  background: linear-gradient(to right, #fff, rgba(255, 255, 255, 0.7));
-  background-clip: text;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
+}
+
+.brand-dot {
+  color: #00d1ff;
+  font-weight: 900;
+  margin: 0 1px;
+  text-shadow: 0 0 15px rgba(0, 209, 255, 0.4);
+  display: inline-block;
+  transform: scale(1.15);
+}
+
+.brand-secondary {
+  font-weight: 300;
+  letter-spacing: 0.08em;
+  opacity: 0.9;
+  display: inline-block;
+  transform: translateY(0.5px);
+}
+
+.app-tagline-v2 {
+  font-size: 0.72rem;
+  color: rgba(255, 255, 255, 0.7);
+  font-weight: 400;
+  font-style: italic;
+  letter-spacing: 0.02em;
+  height: 12px;
+  display: flex;
+  align-items: center;
+  margin-top: 4px;
+}
+
+/* Header Icons & Flags */
+.flag-icon {
+  width: 22px;
+  height: 16px;
+  border-radius: 2px;
+  display: block;
+}
+
+.sun-icon {
+  color: var(--warning);
+}
+
+.moon-icon {
+  color: #6366f1; /* Kept specific brand purple for moon */
+}
+
+.header-icon {
+  width: 16px;
+  height: 16px;
+  stroke: currentColor;
+}
+
+.system-reset-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--danger);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: rgba(239, 68, 68, 0.1);
+  transition: all 0.2s;
+}
+
+.system-reset-btn:hover {
+  background: var(--danger);
+  color: #fff;
+}
+
+/* StockGrid Filter Buttons */
+.clear-filter-btn {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: transparent;
+  border: none;
+  color: var(--muted-light);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  border-radius: 50%;
+  transition: all 0.2s;
+}
+
+.clear-filter-btn:hover {
+  color: var(--danger);
+  background: rgba(239, 68, 68, 0.1);
+}
+
+.clear-filter-icon {
+  width: 14px;
+  height: 14px;
+}
+
+/* Filter Controls */
+.filter-input-wrapper {
+  position: relative;
+  width: 100%;
+}
+
+.filter-select-control {
+  width: 100%;
+  padding-right: 24px;
+}
+
+.info-help-icon {
+  margin-left: 4px;
+  cursor: help;
+  font-size: 0.8em;
+  opacity: 0.7;
+}
+
+.info-help-icon:hover {
+  opacity: 1;
+}
+
+.stock-symbol-link {
+  cursor: pointer;
+  color: var(--primary);
+  font-weight: 600;
+  transition: opacity 0.2s;
+}
+
+.stock-symbol-link:hover {
+  opacity: 0.8;
+  text-decoration: underline;
+}
+
+.tag-icon-small {
+  width: 10px;
+  height: 10px;
+}
+
+/* Settings Modal Specifics */
+.settings-form-group {
+  margin-top: 16px;
+}
+
+.settings-label-mb {
+  margin-bottom: 12px;
+  display: block;
+}
+
+.create-strategy-option {
+  font-weight: bold;
+  color: var(--primary);
+}
+
+.settings-disclaimer-note {
+  margin-top: 8px;
+  border-top: none;
+}
+
+.settings-save-btn {
+  padding: 0 24px;
+  font-weight: 700;
+}
+
+.settings-spacer {
+  margin-bottom: 12px;
+}
+
+/* ManageParamsModal Specifics */
+.param-country-tag {
+  margin-left: 8px;
+  vertical-align: middle;
+  opacity: 0.8;
+}
+
+.form-error-msg {
+  color: var(--danger);
+  font-weight: 600;
+  margin-top: 8px;
+  font-size: 13px;
+}
+
+.countries-flex-group {
+  display: flex;
+  gap: 16px;
+  margin-top: 4px;
+}
+
+.checkbox-no-margin {
+  margin: 0 !important;
+}
+
+/* EditStockModal & AddStockModal Specifics */
+.ai-analysis-disclaimer-box {
+  padding: 0 16px;
+  margin-bottom: 16px;
+}
+
+.analysis-text-block {
+  margin-bottom: 8px;
+}
+
+.analysis-unordered-list {
+  margin-left: 16px;
+  margin-bottom: 8px;
+  list-style-type: disc;
+}
+
+.form-field-mt {
+  margin-top: 16px !important;
+}
+
+.watchlist-checkbox-group {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.watchlist-checkbox-item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.modal-actions-mt {
+  margin-top: 24px !important;
+}
+
+.ai-disclaimer-deepview {
+  border-top: none !important;
+  margin-top: 4px !important;
+  padding-top: 0 !important;
+  display: block !important;
 }
 
 .app-tagline-v2 {

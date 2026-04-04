@@ -1,16 +1,26 @@
 {
-  "name": "TradeClarity",
-  "description": "Professional swing trading companion for managing disciplined watchlists. Features weekly routines, automated metrics (ADR/Liquidity), and deep-view AI analysis integrated with TradingView.",
+  "name": "TradeClarity.market",
+  "description": "Elevate your trading discipline with TradeClarity.market. A professional-grade research terminal featuring institutional AI insights.",
   "author": "TradeClarity Team",
   "version": "1.0.0",
   "manifest_version": 3,
-  "permissions": ["storage", "unlimitedStorage", "activeTab"],
+  "permissions": ["storage", "activeTab"],
   "host_permissions": [
     "https://query1.finance.yahoo.com/*",
     "https://generativelanguage.googleapis.com/*"
   ],
   "action": {
-    "default_title": "Open TradeClarity"
+    "default_title": "Open TradeClarity.market",
+    "default_icon": {
+      "16": "app_logo.png",
+      "48": "app_logo.png",
+      "128": "app_logo.png"
+    }
+  },
+  "icons": {
+    "16": "app_logo.png",
+    "48": "app_logo.png",
+    "128": "app_logo.png"
   },
   "background": {
     "service_worker": "background.js",

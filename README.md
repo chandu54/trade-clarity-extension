@@ -1,8 +1,8 @@
-# TradeClarity
+# TradeClarity.market
 
 **Your disciplined path to smarter trades.**
 
-TradeClarity is a powerful React-based application designed for swing traders to manage weekly watchlists, analyze stock setups, and maintain trading discipline. It functions both as a standalone web application and a browser extension, allowing you to keep your trading data organized and accessible.
+TradeClarity.market is a powerful React-based application designed for swing traders to manage weekly watchlists, analyze stock setups, and maintain trading discipline. It functions both as a standalone web application and a browser extension, allowing you to keep your trading data organized and accessible.
 <img width="956" height="454" alt="image" src="https://github.com/user-attachments/assets/8341508c-b4fd-44ba-ac4c-870ca5ccd65c" />
 
 ## 🚀 Features
@@ -76,7 +76,7 @@ Use this mode for development or if you want to host it as a static website.
 
 ### 2. As a Chrome Browser Extension
 
-Use this mode to have TradeClarity accessible as a sidebar or popup in your browser.
+Use this mode to have TradeClarity.market accessible as a sidebar or popup in your browser.
 
 1.  **Install dependencies** (if not already done):
     ```bash
@@ -95,7 +95,7 @@ Use this mode to have TradeClarity accessible as a sidebar or popup in your brow
     - Enable **Developer mode** (toggle in the top right corner).
     - Click **Load unpacked**.
     - Select the `dist` folder generated in the previous step.
-    - The TradeClarity extension icon should now appear in your browser toolbar.
+    - The TradeClarity.market extension icon should now appear in your browser toolbar.
 
 ---
 

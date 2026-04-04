@@ -1,8 +1,7 @@
-// Constants for default AI models
-const DEFAULT_GEMINI_MODEL = "gemini-2.5-flash";
+import { CONFIG } from "../constants/config";
 
 export const PROMPT_TEMPLATES = [
-  { value: "swing", label: "Swing Trading (Default)", text: "Act as a disciplined, risk-aware swing trading mentor (referencing Mark Minervini's SEPA and William O'Neil's CANSLIM). \nAnalyze the following watchlist to provide a clear, objective, and actionable trading plan. \nBe conservative: do not force patterns if they are not clear. Focus on quality over quantity." },
+  { value: "swing", label: "Swing Trading (Default)", text: CONFIG.DEFAULT_SYSTEM_PROMPT },
   { value: "day", label: "Day Trading Focus", text: "Act as an aggressive day trading expert. Analyze the following watchlist for high-probability intraday setups. Focus on momentum, volume profile, VWAP bands, and catalyst-driven price action. Identify obvious support/resistance levels and key breakout levels for the upcoming session." },
   { value: "deep_view", label: "Single Stock Deep Analysis", text: "Act as a senior institutional technical analyst. Conduct a high-conviction deep dive on a single stock using provided metrics and technical context. \n\nOutput MUST follow this EXACT structure:\n\n### TREND\n[Primary bias & momentum state]\n\n### KEY LEVELS\n[S1/S2 | R1/R2 with brief context]\n\n### SETUP\n[Specific technical pattern or context]\n\n### TRIGGER\n[The exact 'if this, then that' entry condition]\n\n### VERDICT\n[BUY/WAIT/SELL] - [Brief summary of reasoning]" }
 ];
@@ -29,19 +28,17 @@ export async function getAiAnalysis(apiKey, model, weekData, paramDefinitions, s
     throw new Error("Invalid Google Gemini API Key format. Key is too short.");
   }
 
-  let customModel = model;
+  let customModel = model || CONFIG.DEFAULT_AI_MODEL;
   if (customModel) customModel = customModel.trim();
 
-  let customPrompt = selectedPromptText;
+  let customPrompt = selectedPromptText || CONFIG.DEFAULT_SYSTEM_PROMPT;
   if (customPrompt) customPrompt = customPrompt.trim();
 
   // 2. Generate prompt with the extracted stocks
   const prompt = generatePrompt(stocks, customPrompt, isCustom);
 
   try {
-    // Use custom model if set, otherwise default.
-    let modelToUse = customModel || DEFAULT_GEMINI_MODEL;
-    return await fetchGemini(apiKey, prompt, modelToUse, isCustom);
+    return await fetchGemini(apiKey, prompt, customModel, isCustom);
   } catch (error) {
     const errorMsg = error.message || "Unknown error";
     // Security: Ensure the error message doesn't contain the raw API key if it's logged
@@ -87,7 +84,7 @@ export async function getSingleStockAnalysis(apiKey, model, stock, timeframe) {
   `;
 
   try {
-    let modelToUse = model || DEFAULT_GEMINI_MODEL;
+    let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
     return await fetchGemini(apiKey, prompt, modelToUse, true); // Use isCustom=true to get raw text
   } catch (error) {
     const errorMsg = error.message || "Unknown error";
@@ -108,15 +105,15 @@ export async function testConnection(apiKey, model) {
   }
 
   const prompt = 'Test connection. Respond with valid JSON: { "status": "OK" }';
-  let modelToUse = model || DEFAULT_GEMINI_MODEL;
+  let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
 
   return await fetchGemini(apiKey, prompt, modelToUse);
 }
 
 async function fetchGemini(apiKey, prompt, model, isCustom = false) {
-  // Ensure model doesn't have 'models/' prefix if user typed it
+  // Ensure model has 'models/' prefix if user typed it or if it's missing
   const cleanModel = model.replace(/^models\//, "");
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent`;
+  const url = `${CONFIG.GEMINI_API_URL}${cleanModel}:generateContent`;
 
   const response = await fetch(url, {
     method: "POST",

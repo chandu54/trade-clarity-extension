@@ -25,9 +25,20 @@ export function getLocalDateString(date) {
 export function getSundayOfWeek(dateString) {
   const [y, m, d] = dateString.split("-").map(Number);
   const date = new Date(y, m - 1, d);
-  const day = date.getDay();
-  // Treat Sunday (0) as 7 so it maps to the previous week's Sunday anchor
-  const diff = date.getDate() - (day === 0 ? 7 : day);
-  const sunday = new Date(date.setDate(diff));
-  return getLocalDateString(sunday);
+  date.setHours(0, 0, 0, 0); // Normalize to midnight
+  
+  const day = date.getDay(); // 0 is Sunday, 1 is Monday...
+  const diff = day === 0 ? 7 : day; // If Sunday, go back 7 days. Otherwise go back to Sunday.
+  
+  date.setDate(date.getDate() - diff);
+  return getLocalDateString(date);
+}
+
+export function getActualCurrentSunday() {
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const day = now.getDay();
+  const diff = day === 0 ? 7 : day;
+  now.setDate(now.getDate() - diff);
+  return getLocalDateString(now);
 }

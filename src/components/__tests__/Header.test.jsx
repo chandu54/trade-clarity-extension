@@ -35,6 +35,7 @@ describe('Header', () => {
   it('renders app name and tagline', () => {
     renderWithContext(<Header {...props} />);
     expect(screen.getByText('TradeClarity')).toBeDefined();
+    expect(screen.getByText('market')).toBeDefined();
     expect(screen.getByText(/Your disciplined path/i)).toBeDefined();
   });
 

@@ -1,5 +1,6 @@
 import { mapAdrBucket, mapLiquidityBucket } from "./utils/metrics.js";
 import { getActualParamKeyAndDef } from "./utils/paramUtils.js";
+import { CONFIG } from "./constants/config.js";
 
 chrome.action.onClicked.addListener(() => {
   chrome.tabs.create({
@@ -9,8 +10,6 @@ chrome.action.onClicked.addListener(() => {
 
 let processingQueue = [];
 let isProcessing = false;
-const BATCH_SIZE = 5;
-const BATCH_DELAY_MS = 2000;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "OPEN_DASHBOARD") {
@@ -22,7 +21,6 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === "FETCH_STOCK_METRICS") {
-    // We now receive paramDefs to dynamically match numerical API data to the user's custom buckets/field types
     const {
       symbols,
       country,
@@ -46,12 +44,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       });
     });
 
-    // Start processing if not already running
     if (!isProcessing) {
       processQueue();
     }
 
-    // Send immediate response so the sender doesn't wait
     sendResponse({ status: "queued", count: symbols.length });
   }
   return true;
@@ -66,12 +62,11 @@ async function processQueue() {
   isProcessing = true;
 
   // Take the next batch
-  const batch = processingQueue.splice(0, BATCH_SIZE);
-  // Production: Remove noisy logs, keep them in dev only if needed.
+  const batch = processingQueue.splice(0, CONFIG.BATCH_SIZE);
 
   const results = await Promise.allSettled(
     batch.map((item) =>
-      fetchAndCalculateMetrics(
+      fetchWithRetryAndTimeout(
         item.symbol,
         item.country,
         item.paramDefs,
@@ -81,7 +76,6 @@ async function processQueue() {
     ),
   );
 
-  // Filter out successful results
   const successfulUpdates = [];
   batch.forEach((item, index) => {
     const result = results[index];
@@ -102,11 +96,22 @@ async function processQueue() {
     await updateStorageWithMetrics(successfulUpdates);
   }
 
-  // If there's more in the queue, wait and process the next batch
   if (processingQueue.length > 0) {
-    setTimeout(processQueue, BATCH_DELAY_MS);
+    setTimeout(processQueue, CONFIG.BATCH_DELAY_MS);
   } else {
     isProcessing = false;
+  }
+}
+
+async function fetchWithRetryAndTimeout(symbol, country, paramDefs, adrDays, liquidityDays, retries = 2) {
+  for (let i = 0; i <= retries; i++) {
+    try {
+      return await fetchAndCalculateMetrics(symbol, country, paramDefs, adrDays, liquidityDays);
+    } catch (err) {
+      if (i === retries) throw err;
+      // Exponential backoff or simple delay
+      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+    }
   }
 }
 
@@ -117,8 +122,10 @@ async function fetchAndCalculateMetrics(
   adrDays = 20,
   liquidityDays = 20,
 ) {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT_MS);
+
   try {
-    // Format symbol for Yahoo Finance if Indian
     let ticker = symbol;
     if (country === "IN") {
       ticker = `${symbol}.NS`;
@@ -130,13 +137,12 @@ async function fetchAndCalculateMetrics(
     if (maxDays > 60) range = "6mo";
     if (maxDays > 120) range = "1y";
 
-    const url = `https://query1.finance.yahoo.com/v8/finance/chart/${ticker}?range=${range}&interval=1d`;
+    const url = `${CONFIG.YAHOO_FINANCE_URL}${ticker}?range=${range}&interval=1d`;
 
-    const response = await fetch(url);
+    const response = await fetch(url, { signal: controller.signal });
+    clearTimeout(timeoutId);
+
     if (!response.ok) {
-      console.error(
-        `Yahoo Finance API error for ${ticker}: status ${response.status}`,
-      );
       throw new Error(`HTTP error! status: ${response.status}`);
     }
     const data = await response.json();

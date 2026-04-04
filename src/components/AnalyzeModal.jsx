@@ -1,4 +1,4 @@
-import { useState, useEffect, Fragment } from "react";
+import { useState, useEffect } from "react";
 import Modal from "./Modal";
 
 import { getAiAnalysis, PROMPT_TEMPLATES } from "../services/ai";

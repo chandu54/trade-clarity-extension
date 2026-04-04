@@ -70,7 +70,7 @@ function AppContent() {
       if (!latestWeek) {
         const todayStr = getLocalDateString(new Date());
         latestWeek = getSundayOfWeek(todayStr);
-        
+
         if (!finalData.weeks) finalData.weeks = {};
         if (!finalData.weeks[initialCountry]) finalData.weeks[initialCountry] = {};
         finalData.weeks[initialCountry][latestWeek] = { stocks: {} };
@@ -141,9 +141,9 @@ function AppContent() {
       }
     };
 
-    window.addEventListener('keydown', handleGlobalKeyDown);
-    return () => window.removeEventListener('keydown', handleGlobalKeyDown);
-  }, []);
+    window.addEventListener("keydown", handleGlobalKeyDown);
+    return () => window.removeEventListener("keydown", handleGlobalKeyDown);
+  }, [modals]);
 
   /* =========================
      HANDLERS

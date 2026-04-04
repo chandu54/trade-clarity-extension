@@ -87,7 +87,7 @@ const TradeClarityWidget = () => {
   const dragRef = useRef({ isDragging: false, startX: 0, startY: 0, startTop: 0, startRight: 0, hasMoved: false });
 
   // 2. Custom Resize State
-  const [size, setSize] = useState({ w: 300, h: 480 });
+  const [size, setSize] = useState({ w: 320, h: 480 });
   const isResizing = useRef(false);
 
   // --- DRAG LOGIC ---
@@ -192,7 +192,7 @@ const TradeClarityWidget = () => {
         });
       } catch (err) {
         console.error("Extension connection lost.", err);
-        alert("TradeClarity updated. Please refresh this TradingView page to reconnect.");
+        alert("TradeClarity.market updated. Please refresh this TradingView page to reconnect.");
       }
     }
   };
@@ -957,9 +957,12 @@ const TradeClarityWidget = () => {
 
           {/* Left: Branding & Symbol */}
           <div className="flex flex-col gap-1.5 min-w-0 pr-2">
-            <div className="flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-blue-500 shrink-0 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
-              <span className="font-bold tracking-tight shrink-0 text-white leading-none">TradeClarity</span>
+            <div className="flex items-center gap-1.5 overflow-hidden">
+              <div className="flex items-baseline gap-0 leading-none cursor-default select-none">
+                <span className="font-extrabold tracking-tight shrink-0 text-white text-[15px]">TradeClarity</span>
+                <span className="font-black shrink-0 text-[#00d1ff] mx-px text-[15px] shadow-[0_0_10px_rgba(0,209,255,0.3)] inline-block scale-110">.</span>
+                <span className="font-light shrink-0 text-white/90 text-[14px] tracking-[0.08em] inline-block translate-y-[0.5px]">market</span>
+              </div>
             </div>
             <span
               className="border px-1.5 py-0.5 rounded text-[11px] font-mono shadow-sm font-bold bg-slate-800 border-slate-600 text-blue-400 w-fit break-all"
@@ -985,7 +988,7 @@ const TradeClarityWidget = () => {
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 10v2a7 7 0 01-14 0v-2M12 18v4m-4 0h8M12 3a3 3 0 00-3 3v8a3 3 0 006 0V6a3 3 0 00-3-3z"></path></svg>
             </button>
             <div className="w-px h-3 mx-0.5 bg-slate-600"></div>
-            <button onClick={openDashboard} className="transition-colors p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-700/50" title="Open TradeClarity Dashboard">
+            <button onClick={openDashboard} className="transition-colors p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-700/50" title="Open TradeClarity.market Dashboard">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
             </button>
             <div className="w-px h-3 mx-0.5 bg-slate-600"></div>

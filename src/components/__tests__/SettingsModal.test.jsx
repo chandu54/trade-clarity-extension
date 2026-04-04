@@ -33,10 +33,10 @@ describe('SettingsModal', () => {
     localStorage.clear();
   });
 
-  it('renders correctly with saved settings', () => {
+  it('renders correctly with saved settings', async () => {
     render(<SettingsModal {...props} />);
     expect(screen.getByPlaceholderText(/Gemini API key/i).value).toBe('gemini-api-key-39-characters-long-xxxx');
-    expect(screen.getByDisplayValue(/Gemini 2.5 Flash/i)).toBeDefined();
+    expect(await screen.findByDisplayValue(/Gemini 2.5 Flash/i)).toBeDefined();
   });
 
   it('updates state when inputs change', () => {

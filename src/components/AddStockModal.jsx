@@ -130,10 +130,7 @@ export default function AddStockModal({ onAdd, onImport, onClose, existingStocks
               Enter comma-separated stock symbols
             </div>
             {error && (
-              <div 
-                className="error-message" 
-                style={{ color: "#d32f2f", fontWeight: "600", marginTop: "8px" }}
-              >
+              <div className="error-message form-error-msg">
                 {error}
               </div>
             )}
@@ -156,10 +153,7 @@ export default function AddStockModal({ onAdd, onImport, onClose, existingStocks
               Supports TradingView export format with sections (###SECTION) and symbols (EXCHANGE:SYMBOL).
             </div>
             {tvError && (
-              <div 
-                className="error-message" 
-                style={{ color: "#d32f2f", fontWeight: "600", marginTop: "8px" }}
-              >
+              <div className="error-message form-error-msg">
                 {tvError}
               </div>
             )}
@@ -167,13 +161,13 @@ export default function AddStockModal({ onAdd, onImport, onClose, existingStocks
         )}
 
         {watchlists.length > 0 && (
-          <div className="form-field" style={{ marginTop: "16px" }}>
+          <div className="form-field form-field-mt">
             <label>Add to Watchlists</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "8px" }}>
+            <div className="watchlist-checkbox-group">
               {watchlists.map((wl) => {
                 const isSelected = selectedWlIds.includes(wl.id);
                 return (
-                  <label key={wl.id} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px", cursor: "pointer" }}>
+                  <label key={wl.id} className="watchlist-checkbox-item">
                     <input
                       type="checkbox"
                       checked={isSelected}
@@ -190,7 +184,7 @@ export default function AddStockModal({ onAdd, onImport, onClose, existingStocks
           </div>
         )}
 
-        <div className="modal-actions" style={{ marginTop: "24px" }}>
+        <div className="modal-actions modal-actions-mt">
           <button className="outline" onClick={onClose}>
             Cancel
           </button>

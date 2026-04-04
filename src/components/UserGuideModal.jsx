@@ -57,13 +57,13 @@ export default function UserGuideModal({
       isOpen={isOpen}
       onClose={onClose}
       title="User Manual"
-      subtitle="Mastering your swing trading process with TradeClarity"
+      subtitle="Mastering your swing trading process with TradeClarity.market"
       className="modal-wide"
     >
       <div className="modal-body user-guide-body">
         <div className="guide-intro">
           <p>
-            <strong>Philosophy:</strong> TradeClarity is not just a list; it is
+            <strong>Philosophy:</strong> TradeClarity.market is not just a list; it is
             a <em>process enforcer</em>. It compels you to define your criteria
             first, then measure every stock against that standard, ensuring
             disciplined, data-driven decisions.
@@ -87,7 +87,7 @@ export default function UserGuideModal({
 
         <Section title="2. The Weekly Workflow" icon="📅">
           <p>
-            TradeClarity is built around a weekly routine. Each week acts as a
+            TradeClarity.market is built around a weekly routine. Each week acts as a
             fresh container for your watchlist.
           </p>
           <ul className="guide-list">
