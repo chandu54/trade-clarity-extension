@@ -4804,9 +4804,7 @@ input[type=checkbox]:active {
   opacity: 1;
 }
 
-/* =========================
-   PRINT / PDF EXPORT STYLES
-========================= */
+/* Print */
 @media print {
 
   /* Force background colors and images (gradients) to print */
@@ -6959,4 +6957,87 @@ input[type="date"].input-with-clear {
   opacity: 0.8 !important;
   width: 100% !important;
   box-sizing: border-box !important;
-}
+}
+
+/* ========================================================
+   PRINT STYLES FOR ANALYTICS DASHBOARD
+   Ensures that PDF reports include all data/legend items.
+   ======================================================== */
+@media print {
+  /* un-fix the overlay so it can span height/pages */
+  .analytics-overlay {
+    position: absolute !important;
+    background: white !important;
+    padding: 0 !important;
+    overflow: visible !important;
+    height: auto !important;
+    display: block !important;
+    backdrop-filter: none !important;
+    z-index: auto !important;
+  }
+
+  .analytics-modal {
+    position: relative !important;
+    max-height: none !important;
+    width: 100% !important;
+    box-shadow: none !important;
+    border: none !important;
+    overflow: visible !important;
+    display: block !important;
+    margin: 0 !important;
+    animation: none !important;
+  }
+
+  .analytics-content {
+    padding: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  /* Uncap the legend to show all sectors (fixes the 8-of-13 bug) */
+  .chart-legend {
+    max-height: none !important;
+    overflow: visible !important;
+    padding-right: 0 !important;
+  }
+
+  /* Optimize layout for paper PDF */
+  .charts-grid {
+    display: block !important; 
+    grid-template-columns: none !important;
+  }
+
+  .chart-card {
+    page-break-inside: avoid !important;
+    break-inside: avoid !important;
+    margin-bottom: 30px !important;
+    border: 1px solid #eee !important;
+    box-shadow: none !important;
+    transform: none !important;
+  }
+
+  /* Hide interactive UI from the actual PDF */
+  .analytics-header-actions,
+  .close-btn,
+  .settings-wrapper,
+  .expand-btn,
+  .nav-icon-btn,
+  .header,
+  .header-actions {
+    display: none !important;
+  }
+
+  /* Force color preservation in browsers */
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    color-adjust: exact !important;
+  }
+
+  /* Ensure body doesn't clip content */
+  body {
+    overflow: visible !important;
+    height: auto !important;
+  }
+}
+
