@@ -1,0 +1,163 @@
+
+> trading-checklist-ui@1.0.0 test
+> vitest run --config vite.config.js
+
+
+[1m[46m RUN [49m[22m [36mv3.2.4 [39m[90mD:/react-extension/trade-clarity-plugin[39m
+
+ [32m✓[39m src/components/__tests__/AnalyzeModal.test.jsx [2m([22m[2m5 tests[22m[2m)[22m[33m 304[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/AnalyticsDashboard.test.jsx [2m([22m[2m4 tests[22m[2m)[22m[33m 432[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/StockGrid.test.jsx [2m([22m[2m7 tests[22m[2m)[22m[33m 762[2mms[22m[39m
+[90mstderr[2m | src/components/__tests__/CategoryAnalysis.test.jsx[2m > [22m[2mCategory Intelligence Suite[2m > [22m[2mDeepViewAi (Intelligence logic)[2m > [22m[2mmaps stockData to stockMetrics correctly for the AI payload
+[22m[39mWarning: An update to DeepViewAi inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at DeepViewAi (D:\react-extension\trade-clarity-plugin\src\components\DeepViewAi.jsx:76:23)
+Warning: An update to DeepViewAi inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at DeepViewAi (D:\react-extension\trade-clarity-plugin\src\components\DeepViewAi.jsx:76:23)
+
+[90mstderr[2m | src/components/__tests__/CategoryAnalysis.test.jsx[2m > [22m[2mCategory Intelligence Suite[2m > [22m[2mDeepViewAi (Intelligence logic)[2m > [22m[2menforces "No Tables" instruction in the prompt
+[22m[39mWarning: An update to DeepViewAi inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at DeepViewAi (D:\react-extension\trade-clarity-plugin\src\components\DeepViewAi.jsx:76:23)
+Warning: An update to DeepViewAi inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at DeepViewAi (D:\react-extension\trade-clarity-plugin\src\components\DeepViewAi.jsx:76:23)
+
+[90mstderr[2m | src/components/__tests__/CategoryAnalysis.test.jsx[2m > [22m[2mCategory Intelligence Suite[2m > [22m[2mDeepViewAi (Intelligence logic)[2m > [22m[2mScenario: Leadership Identification - accurately passes a single dominant leader to the AI
+[22m[39mWarning: An update to DeepViewAi inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at DeepViewAi (D:\react-extension\trade-clarity-plugin\src\components\DeepViewAi.jsx:76:23)
+Warning: An update to DeepViewAi inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at DeepViewAi (D:\react-extension\trade-clarity-plugin\src\components\DeepViewAi.jsx:76:23)
+
+[90mstderr[2m | src/components/__tests__/CategoryAnalysis.test.jsx[2m > [22m[2mCategory Intelligence Suite[2m > [22m[2mDeepViewAi (Intelligence logic)[2m > [22m[2mScenario: Sector Trap - accurately passes a group-wide crash to the AI
+[22m[39mWarning: An update to DeepViewAi inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at DeepViewAi (D:\react-extension\trade-clarity-plugin\src\components\DeepViewAi.jsx:76:23)
+Warning: An update to DeepViewAi inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at DeepViewAi (D:\react-extension\trade-clarity-plugin\src\components\DeepViewAi.jsx:76:23)
+
+[90mstderr[2m | src/components/__tests__/CategoryAnalysis.test.jsx[2m > [22m[2mCategory Intelligence Suite[2m > [22m[2mDeepViewAi (Intelligence logic)[2m > [22m[2mScenario: Anomaly Detection - accurately passes a "Decoupled" stock to the AI
+[22m[39mWarning: An update to DeepViewAi inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at DeepViewAi (D:\react-extension\trade-clarity-plugin\src\components\DeepViewAi.jsx:76:23)
+Warning: An update to DeepViewAi inside a test was not wrapped in act(...).
+
+When testing, code that causes React state updates should be wrapped into act(...):
+
+act(() => {
+  /* fire events that update state */
+});
+/* assert on the output */
+
+This ensures that you're testing the behavior the user would see in the browser. Learn more at https://reactjs.org/link/wrap-tests-with-act
+    at DeepViewAi (D:\react-extension\trade-clarity-plugin\src\components\DeepViewAi.jsx:76:23)
+
+[90mstderr[2m | src/components/__tests__/CategoryAnalysis.test.jsx[2m > [22m[2mCategory Intelligence Suite[2m > [22m[2mDeepViewAi (Intelligence logic)[2m > [22m[2mScenario: API Failure - displays descriptive error when the service fails
+[22m[39mDeep View AI Error: Error: Network Timeout
+    at [90mD:\react-extension\trade-clarity-plugin\[39msrc\components\__tests__\CategoryAnalysis.test.jsx:213:43
+[90m    at processTicksAndRejections (node:internal/process/task_queues:105:5)[39m
+    at [90mfile:///D:/react-extension/trade-clarity-plugin/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:20
+
+ [32m✓[39m src/components/__tests__/CategoryAnalysis.test.jsx [2m([22m[2m11 tests[22m[2m)[22m[33m 596[2mms[22m[39m
+   [33m[2m✓[22m[39m Category Intelligence Suite[2m > [22mCategoryAnalysisView (UI & Logic)[2m > [22mcorrectly calculates breadth metrics (Advancers/Decliners) [33m 365[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/SettingsModal.test.jsx [2m([22m[2m5 tests[22m[2m)[22m[32m 237[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/ColumnConfigModal.test.jsx [2m([22m[2m4 tests[22m[2m)[22m[32m 269[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/FilterConfigModal.test.jsx [2m([22m[2m4 tests[22m[2m)[22m[32m 286[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/EditStockModal.test.jsx [2m([22m[2m6 tests[22m[2m)[22m[32m 212[2mms[22m[39m
+[90mstderr[2m | src/components/__tests__/DeepViewAi.test.jsx[2m > [22m[2mDeepViewAi[2m > [22m[2mrenders error message if AI analysis fails
+[22m[39mDeep View AI Error: Error: AI overlap error
+    at [90mD:\react-extension\trade-clarity-plugin\[39msrc\components\__tests__\DeepViewAi.test.jsx:51:47
+    at [90mfile:///D:/react-extension/trade-clarity-plugin/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:155:11
+    at [90mfile:///D:/react-extension/trade-clarity-plugin/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:752:26
+    at [90mfile:///D:/react-extension/trade-clarity-plugin/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1897:20
+    at new Promise (<anonymous>)
+    at runWithTimeout [90m(file:///D:/react-extension/trade-clarity-plugin/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1863:10[90m)[39m
+    at runTest [90m(file:///D:/react-extension/trade-clarity-plugin/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1574:12[90m)[39m
+    at runSuite [90m(file:///D:/react-extension/trade-clarity-plugin/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    at runSuite [90m(file:///D:/react-extension/trade-clarity-plugin/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1729:8[90m)[39m
+    at runFiles [90m(file:///D:/react-extension/trade-clarity-plugin/[39mnode_modules/[4m@vitest[24m/runner/dist/chunk-hooks.js:1787:3[90m)[39m
+
+ [32m✓[39m src/components/__tests__/DeepViewAi.test.jsx [2m([22m[2m4 tests[22m[2m)[22m[32m 121[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/AddStockModal.test.jsx [2m([22m[2m5 tests[22m[2m)[22m[32m 206[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/Header.test.jsx [2m([22m[2m7 tests[22m[2m)[22m[32m 275[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/Modal.test.jsx [2m([22m[2m5 tests[22m[2m)[22m[32m 215[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/GlobalTooltip.test.jsx [2m([22m[2m5 tests[22m[2m)[22m[32m 82[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/ConfirmContext.test.jsx [2m([22m[2m2 tests[22m[2m)[22m[32m 69[2mms[22m[39m
+ [32m✓[39m src/components/__tests__/ToastContext.test.jsx [2m([22m[2m3 tests[22m[2m)[22m[32m 70[2mms[22m[39m
+Terminate batch job (Y/N)? Terminate batch job (Y/N)? 

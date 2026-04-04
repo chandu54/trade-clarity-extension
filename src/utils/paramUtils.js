@@ -121,3 +121,34 @@ export function scrubParamDefinitions(currentData) {
 
   return changed ? { ...currentData, paramDefinitions: newParams } : currentData;
 }
+
+/**
+ * Dynamically resolves the actual parameter key from the definitions.
+ * It prioritizes country-specific keys (e.g. "us.adr") over generic ones.
+ * 
+ * @param {Object} defs - Current parameter definitions
+ * @param {string} defaultKey - The base key (e.g. 'adr')
+ * @param {string} labelName - The label for fallback mapping
+ * @param {string} countryCode - Current stock's country
+ */
+export function getActualParamKeyAndDef(defs, defaultKey, labelName, countryCode) {
+    const country = countryCode?.toLowerCase() || "";
+    
+    // 1. Try country-prefixed exact match (e.g. "us.adr")
+    const countryPrefixedKey = `${country}.${defaultKey}`;
+    if (defs?.[countryPrefixedKey]) return { key: countryPrefixedKey, def: defs[countryPrefixedKey] };
+
+    // 2. Try exact key match (e.g. "adr")
+    if (defs?.[defaultKey]) return { key: defaultKey, def: defs[defaultKey] };
+    
+    // 3. Search by label, favoring the correct country
+    let fallbackMatch = null;
+    for (const [k, v] of Object.entries(defs || {})) {
+        if (v.label?.toLowerCase() === labelName.toLowerCase()) {
+            const isRelevant = !v.countries || v.countries.length === 0 || v.countries.includes(countryCode);
+            if (isRelevant) return { key: k, def: v };
+            if (!fallbackMatch) fallbackMatch = { key: k, def: v }; 
+        }
+    }
+    return fallbackMatch || { key: defaultKey, def: null };
+}

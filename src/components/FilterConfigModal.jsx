@@ -63,7 +63,7 @@ export default function FilterConfigModal({ data, setData, onClose, isOpen, sele
           value={editingId}
           onChange={(e) => setEditingId(e.target.value)}
         >
-          <option value="all">Global Default (Base Settings)</option>
+          <option value="all">All Stocks</option>
           {watchlists.map(w => (
             <option key={w.id} value={w.id}>{w.name}</option>
           ))}

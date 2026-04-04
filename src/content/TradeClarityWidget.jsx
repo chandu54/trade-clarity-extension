@@ -716,15 +716,18 @@ const TradeClarityWidget = () => {
     }
 
     const availableSectors = appData?.uiConfig?.sectors || [];
-    for (const sector of availableSectors) {
-      const s = sector.toLowerCase();
+    for (const sectorObj of availableSectors) {
+      if (!sectorObj || !sectorObj.name) continue;
+      
+      const sectorName = sectorObj.name;
+      const s = sectorName.toLowerCase();
       // Handle slashes in Sector names (e.g. "Consumer Durables / Non Durables")
       const normalizedSector = s.replace(/\//g, ' and ').replace(/\s+/g, ' ').trim();
 
       // Specifically avoid 'it' matching spuriously as it is a common pronoun ("Set it to 5")
       if (s === 'it') {
         if (hasWord("sector it") || hasWord("it sector") || hasWord("information technology")) {
-          handleFieldChange('sector', sector);
+          handleFieldChange('sector', sectorName);
           break;
         }
         continue; // Only allow IT to map if distinctly referenced
@@ -753,7 +756,7 @@ const TradeClarityWidget = () => {
       }
 
       if (matchesSector) {
-        handleFieldChange('sector', sector);
+        handleFieldChange('sector', sectorName);
         break;
       }
     }
@@ -1039,14 +1042,24 @@ const TradeClarityWidget = () => {
               onChange={(e) => handleFieldChange('sector', e.target.value)}
             >
               <option value="">Select Sector...</option>
-              {(appData?.uiConfig?.sectors || []).map(sector => (
-                <option key={sector} value={sector}>{sector}</option>
-              ))}
+              {(appData?.uiConfig?.sectors || [])
+                .filter(s => !s.countries || s.countries.includes(region))
+                .map(sector => {
+                   const sName = typeof sector === 'string' ? sector : sector.name;
+                   return <option key={sName} value={sName}>{sName}</option>;
+                })
+              }
             </select>
           </div>
 
           {/* Dynamic Parameters */}
-          {appData?.paramDefinitions && Object.entries(appData.paramDefinitions).map(([key, def]) => {
+          {appData?.paramDefinitions && Object.entries(appData.paramDefinitions)
+            .filter(([key, def]) => {
+               if (!def) return false;
+               if (!def.countries || def.countries.length === 0) return true;
+               return def.countries.includes(region);
+            })
+            .map(([key, def]) => {
             if (!def) return null;
 
             if (def.type === 'checkbox') {
@@ -1189,7 +1202,6 @@ const TradeClarityWidget = () => {
         </div>
       </div>
 
-      {/* Pinned Footer & Resize Handle */}
       {/* Pinned Footer & Resize Handle */}
       <div className="relative p-2 border-t rounded-b-xl shrink-0 bg-slate-900 border-slate-700/50">
         <button

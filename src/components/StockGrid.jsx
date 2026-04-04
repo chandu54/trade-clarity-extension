@@ -1729,7 +1729,7 @@ export default function StockGrid({
                     {p.type === "number" && (
                       <div className="input-clear-wrapper type-number">
                         <input
-                          type="number"
+                          type="text"
                           className="grid-text-input input-with-clear"
                           value={stock.params[key] || ""}
                           disabled={isReadOnly}

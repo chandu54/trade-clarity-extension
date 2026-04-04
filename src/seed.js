@@ -140,7 +140,7 @@ export const DEFAULT_DATA = {
       { name: "Construction", countries: ["IN", "US"] },
       { name: "Communications", countries: ["IN", "US"] },
       { name: "Storage", countries: ["US"] },
-      { name: "AI Stocks", countries: ["US"] },
+      { name: "AI", countries: ["US"] },
       { name: "Data Center", countries: ["US"] },
     ],
     tags: ["IPO Base", "Large Base", "OTB", "Young IPO"],

@@ -4,7 +4,6 @@ import { testConnection, PROMPT_TEMPLATES } from '../services/ai';
 
 const KNOWN_MODELS = [
   { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash (Free Default)", isPremium: false },
-  { value: "gemini-1.5-pro", label: "Gemini 1.5 Pro (Premium)", isPremium: true },
 ];
 
 const SettingsModal = ({ isOpen, onClose, data, setData }) => {
