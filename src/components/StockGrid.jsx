@@ -834,7 +834,7 @@ export default function StockGrid({
 
       if (importTypeRef.current === "tv") {
         try {
-          const sectorList = data.uiConfig?.sectors || [];
+          const sectorList = sectors || [];
           const parsedStocks = parseTradingViewData(content, sectorList);
           setImportPendingStocks(parsedStocks);
         } catch (err) {
