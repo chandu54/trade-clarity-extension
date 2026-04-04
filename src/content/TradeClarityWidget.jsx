@@ -185,13 +185,11 @@ const TradeClarityWidget = () => {
       try {
         chrome.runtime.sendMessage({ action: 'OPEN_DASHBOARD' }, (response) => {
           if (chrome.runtime.lastError) {
-            console.warn("Background worker asleep or disconnected. Firing fallback...", chrome.runtime.lastError.message);
             const fallbackUrl = `chrome-extension://${chrome.runtime.id}/dashboard.html`;
             window.open(fallbackUrl, '_blank');
           }
         });
       } catch (err) {
-        console.error("Extension connection lost.", err);
         alert("TradeClarity.market updated. Please refresh this TradingView page to reconnect.");
       }
     }
@@ -354,7 +352,7 @@ const TradeClarityWidget = () => {
               }
             });
           } catch (e) {
-            console.error("Could not send hydration message:", e);
+            // Silent fallback for hydration
           }
         }
 

@@ -43,7 +43,6 @@ export async function getAiAnalysis(apiKey, model, weekData, paramDefinitions, s
     const errorMsg = error.message || "Unknown error";
     // Security: Ensure the error message doesn't contain the raw API key if it's logged
     const safeErrorMsg = errorMsg.replace(apiKey, "REDACTED");
-    console.error("AI Analysis Failed:", safeErrorMsg);
     throw new Error(safeErrorMsg);
   }
 }
@@ -89,7 +88,6 @@ export async function getSingleStockAnalysis(apiKey, model, stock, timeframe) {
   } catch (error) {
     const errorMsg = error.message || "Unknown error";
     const safeErrorMsg = errorMsg.replace(apiKey, "REDACTED");
-    console.error("Single Stock Analysis Failed:", safeErrorMsg);
     throw new Error(safeErrorMsg);
   }
 }
@@ -160,7 +158,6 @@ function parseResponse(text, isCustom = false) {
     const jsonString = jsonMatch[0];
     return JSON.parse(jsonString);
   } catch (e) {
-    console.warn("Raw AI response trace:", text); // Use warn instead of error for cleaner production logs
     throw new Error(
       "The AI model returned an invalid response format. Please try again or refine your prompt."
     );

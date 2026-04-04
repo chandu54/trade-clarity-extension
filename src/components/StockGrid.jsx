@@ -838,7 +838,6 @@ export default function StockGrid({
           const parsedStocks = parseTradingViewData(content, sectorList);
           setImportPendingStocks(parsedStocks);
         } catch (err) {
-          console.error(err);
           showToast(err.message || "Failed to parse text file", "error");
         }
         return;
@@ -870,7 +869,6 @@ export default function StockGrid({
           setImportPendingStocks(json);
         }
       } catch (err) {
-        console.error(err);
         showToast("Failed to parse JSON file", "error");
       }
     };

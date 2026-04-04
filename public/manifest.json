@@ -13,14 +13,19 @@
     "default_title": "Open TradeClarity.market",
     "default_icon": {
       "16": "app_logo.png",
+      "32": "app_logo.png",
       "48": "app_logo.png",
       "128": "app_logo.png"
     }
   },
   "icons": {
     "16": "app_logo.png",
+    "32": "app_logo.png",
     "48": "app_logo.png",
     "128": "app_logo.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'none';"
   },
   "background": {
     "service_worker": "background.js",

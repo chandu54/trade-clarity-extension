@@ -23,8 +23,7 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
 
   useEffect(() => {
     if (isOpen && data?.aiSettings) {
-      const storedIsPro = localStorage.getItem("tc_is_pro") === "true";
-      setIsPro(storedIsPro);
+      setIsPro(data.isPro || false);
 
       const {
         apiKey: savedKey,
@@ -74,8 +73,6 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
   }, [apiKey, model]);
 
   const handleSave = () => {
-    localStorage.setItem("tc_is_pro", isPro);
-
     // Handle dynamic custom prompts
     let textToSave = promptText.trim();
     const isPredefined = PROMPT_TEMPLATES.find(
@@ -106,6 +103,7 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
     // Mutate global data state directly
     setData((prev) => ({
       ...prev,
+      isPro: isPro,
       aiSettings: {
         ...prev.aiSettings,
         apiKey: apiKey,
@@ -417,7 +415,7 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
           <div className="api-portal-row">
             <div className="api-portal-brand">
               <img
-                src="https://www.gstatic.com/lamda/images/favicon_v1_150160cddff7f294ce30.svg"
+                src="gemini_logo.svg"
                 alt="Gemini"
                 width="18"
                 height="18"

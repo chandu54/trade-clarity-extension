@@ -1,21 +1,21 @@
-import { useState, useEffect } from "react";
+import { useEffect } from "react";
 
 /**
- * Custom hook for managing theme state with localStorage persistence
+ * Custom hook for managing theme state synchronized with the global data model
  */
-export function useTheme() {
-  const [theme, setTheme] = useState(
-    () => localStorage.getItem("theme") || "light",
-  );
+export function useTheme(currentTheme, onThemeChange) {
+  const theme = currentTheme || "light";
 
   useEffect(() => {
     document.documentElement.setAttribute("data-theme", theme);
-    localStorage.setItem("theme", theme);
   }, [theme]);
 
   const toggleTheme = () => {
-    setTheme((t) => (t === "light" ? "dark" : "light"));
+    const newTheme = theme === "light" ? "dark" : "light";
+    if (onThemeChange) {
+      onThemeChange(newTheme);
+    }
   };
 
-  return { theme, setTheme, toggleTheme };
+  return { theme, toggleTheme };
 }

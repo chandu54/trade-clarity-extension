@@ -35,7 +35,9 @@ function AppContent() {
   const [weekKey, setWeekKey] = useState(null);
   const [selectedWatchlistId, setSelectedWatchlistId] = useState("all");
 
-  const { theme, toggleTheme } = useTheme();
+  const { theme, toggleTheme } = useTheme(data?.theme, (newTheme) => {
+    setData(prev => ({ ...prev, theme: newTheme }));
+  });
   const modals = useModalState();
   const hasLoaded = useRef(false);
   const { confirm } = useConfirm();
@@ -433,6 +435,8 @@ function AppContent() {
           weekKey={weekKey}
           selectedWatchlistId={selectedWatchlistId}
           watchlists={data.watchlists || []}
+          analyticsLayout={data.analyticsLayout || {}}
+          onLayoutChange={(newLayout) => setData(prev => ({ ...prev, analyticsLayout: newLayout }))}
           onClose={() => modals.setShowAnalytics(false)}
           sectors={filteredSectors}
           availableTags={availableTags}

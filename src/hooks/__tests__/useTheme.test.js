@@ -1,50 +1,47 @@
-import { describe, it, vi, beforeEach } from 'vitest';
+import { describe, it, vi, beforeEach, expect } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
 import { useTheme } from '../useTheme';
 
 describe('useTheme', () => {
   beforeEach(() => {
-    localStorage.clear();
     vi.clearAllMocks();
   });
 
-  it('should initialize theme from localStorage or default to light', () => {
-    localStorage.setItem('theme', 'dark');
-    const { result } = renderHook(() => useTheme());
+  it('should reflect the provided theme', () => {
+    const { result } = renderHook(() => useTheme('dark'));
     expect(result.current.theme).toBe('dark');
 
-    localStorage.clear();
-    const { result: result2 } = renderHook(() => useTheme());
+    const { result: result2 } = renderHook(() => useTheme('light'));
     expect(result2.current.theme).toBe('light');
   });
 
-  it('should toggle theme correctly', () => {
+  it('should default to light if no theme is provided', () => {
     const { result } = renderHook(() => useTheme());
-    expect(result.current.theme).toBe('light');
-
-    act(() => {
-      result.current.toggleTheme();
-    });
-    expect(result.current.theme).toBe('dark');
-
-    act(() => {
-      result.current.toggleTheme();
-    });
     expect(result.current.theme).toBe('light');
   });
 
-  it('should update document attribute and localStorage on theme change', () => {
-    const setAttributeSpy = vi.spyOn(document.documentElement, 'setAttribute');
-    const { result } = renderHook(() => useTheme());
-
-    expect(setAttributeSpy).toHaveBeenCalledWith('data-theme', 'light');
-    expect(localStorage.getItem('theme')).toBe('light');
-
+  it('should call onThemeChange when toggling', () => {
+    const onThemeChange = vi.fn();
+    const { result } = renderHook(() => useTheme('light', onThemeChange));
+    
     act(() => {
-      result.current.setTheme('dark');
+      result.current.toggleTheme();
     });
+    
+    expect(onThemeChange).toHaveBeenCalledWith('dark');
+  });
 
+  it('should update document attribute when theme changes', () => {
+    const setAttributeSpy = vi.spyOn(document.documentElement, 'setAttribute');
+    
+    // Initial render with light
+    const { rerender } = renderHook(({ t }) => useTheme(t), {
+      initialProps: { t: 'light' }
+    });
+    expect(setAttributeSpy).toHaveBeenCalledWith('data-theme', 'light');
+
+    // Rerender with dark
+    rerender({ t: 'dark' });
     expect(setAttributeSpy).toHaveBeenCalledWith('data-theme', 'dark');
-    expect(localStorage.getItem('theme')).toBe('dark');
   });
 });

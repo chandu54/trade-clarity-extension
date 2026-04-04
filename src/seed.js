@@ -149,4 +149,7 @@ export const DEFAULT_DATA = {
     tradableFilterable: true,
     enableApiHydration: true,
   },
+  isPro: false,
+  theme: "dark",
+  analyticsLayout: {},
 };

@@ -575,158 +575,7 @@ const DateHeatmapChart = ({ data, onPointClick }) => {
   );
 };
 
-const StockListPopup = ({ popupData, onClose, onOpenGrid }) => {
-  const { data, event } = popupData;
-  const popupRef = useRef(null);
-  const [style, setStyle] = useState({ opacity: 0 });
-  const [copied, setCopied] = useState(false);
 
-  useEffect(() => {
-    if (popupRef.current && event) {
-      const popupRect = popupRef.current.getBoundingClientRect();
-      let left = event.clientX + 15;
-      let top = event.clientY + 15;
-
-      // Adjust if popup goes off-screen
-      if (left + popupRect.width > window.innerWidth - 20) {
-        left = event.clientX - popupRect.width - 15;
-      }
-      if (top + popupRect.height > window.innerHeight - 20) {
-        top = event.clientY - popupRect.height - 15;
-      }
-
-      setStyle({ left: `${left}px`, top: `${top}px`, opacity: 1 });
-    }
-  }, [popupData, event]);
-
-  const handleCopy = (e) => {
-    e.stopPropagation();
-    if (data && data.stocks) {
-      const textToCopy = data.stocks.join(", ");
-      navigator.clipboard.writeText(textToCopy).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      });
-    }
-  };
-
-  if (!popupData) return null;
-
-  // Position the popup. Adjust so it doesn't go off-screen.
-
-  return (
-    <div
-      className="stock-list-popup-overlay"
-      onClick={(e) => {
-        e.stopPropagation();
-        onClose();
-      }}
-    >
-      <div
-        ref={popupRef}
-        className="stock-list-popup"
-        style={style}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="stock-list-popup-header">
-          <h4>
-            {data.paramLabel ? `${data.paramLabel} - ${data.name}` : data.name}
-          </h4>
-          <span className="stock-list-popup-count">
-            {data.stocks.length} Stocks
-          </span>
-          <div className="stock-list-popup-actions-wrapper">
-            <div className="stock-list-popup-btn-pill">
-              <button
-                className="popup-copy-btn"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  onOpenGrid(popupData);
-                }}
-                title="Open Category Analysis"
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="2"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <rect x="3" y="3" width="7" height="7"></rect>
-                  <rect x="14" y="3" width="7" height="7"></rect>
-                  <rect x="14" y="14" width="7" height="7"></rect>
-                  <rect x="3" y="14" width="7" height="7"></rect>
-                </svg>
-              </button>
-              <div className="popup-btn-sep" />
-              <button
-                className="popup-copy-btn"
-                onClick={handleCopy}
-                title="Copy stock names"
-              >
-                {copied ? (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="#10b981"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="20 6 9 17 4 12"></polyline>
-                  </svg>
-                ) : (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <rect
-                      x="9"
-                      y="9"
-                      width="11"
-                      height="11"
-                      rx="2"
-                      ry="2"
-                    ></rect>
-                    <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-                  </svg>
-                )}
-              </button>
-            </div>
-            <div className="popup-header-divider" />
-            <button className="close-btn" onClick={onClose}>
-              ×
-            </button>
-          </div>
-        </div>
-        <div className="stock-list-popup-body">
-          {data.stocks.length > 0 ? (
-            data.stocks.map((stock, i) => (
-              <span key={i} className="stock-tag">
-                {stock}
-              </span>
-            ))
-          ) : (
-            <span className="chart-empty chart-empty-padded">
-              No stocks in this category.
-            </span>
-          )}
-        </div>
-      </div>
-    </div>
-  );
-};
 
 const ExpandedView = ({ param, onClose, onChartClick }) => {
   const renderChart = () => {
@@ -1044,6 +893,8 @@ const AnalyticsDashboard = ({
   weekKey,
   selectedWatchlistId,
   watchlists,
+  analyticsLayout,
+  onLayoutChange,
   onClose,
   sectors = [],
   availableTags = [],
@@ -1051,17 +902,17 @@ const AnalyticsDashboard = ({
   onUpdateStock = null,
 }) => {
   const [expandedParam, setExpandedParam] = useState(null);
-  const [stockListPopup, setStockListPopup] = useState(null);
   const [categoryAnalysisData, setCategoryAnalysisData] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef(null);
-  const [widgetConfig, setWidgetConfig] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
-    } catch {
-      return {};
+  const [widgetConfig, setWidgetConfig] = useState(analyticsLayout || {});
+
+  // Sync widgetConfig with the provided analyticsLayout prop
+  useEffect(() => {
+    if (analyticsLayout) {
+      setWidgetConfig(analyticsLayout);
     }
-  });
+  }, [analyticsLayout]);
 
   const trendData = useMemo(() => {
     if (!allWeeksData) return [];
@@ -1267,10 +1118,12 @@ const AnalyticsDashboard = ({
     return [...systemMetrics, ...paramMetrics];
   }, [stocks, parameters]);
 
-  // Persist config
+  // Persist config to central store
   useEffect(() => {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify(widgetConfig));
-  }, [widgetConfig]);
+    if (onLayoutChange && JSON.stringify(widgetConfig) !== JSON.stringify(analyticsLayout)) {
+      onLayoutChange(widgetConfig);
+    }
+  }, [widgetConfig, onLayoutChange, analyticsLayout]);
 
   // Handle Click Outside and Global Escape Key
   useEffect(() => {
@@ -1288,11 +1141,6 @@ const AnalyticsDashboard = ({
       if (event.key === "Escape") {
         if (showSettings) {
           setShowSettings(false);
-          event.stopPropagation();
-          return;
-        }
-        if (stockListPopup) {
-          setStockListPopup(null);
           event.stopPropagation();
           return;
         }
@@ -1314,7 +1162,7 @@ const AnalyticsDashboard = ({
       document.removeEventListener("mousedown", handleClickOutside);
       document.removeEventListener("keydown", handleKeyDown);
     };
-  }, [showSettings, stockListPopup, expandedParam, onClose]);
+  }, [showSettings, expandedParam, onClose]);
 
   // Merge data with config to determine order and visibility
   const displayItems = useMemo(() => {
@@ -1397,24 +1245,18 @@ const AnalyticsDashboard = ({
   const handleChartClick = (data, event, param = null) => {
     event.stopPropagation();
 
-    if (param && data.symbol) {
-      // It's a single point from DotPlot
-      const popupItem = {
-        name: `${data.symbol}: ${data.value}`,
-        stocks: [data.symbol],
-        paramLabel: param.label,
-      };
-      setStockListPopup({ data: popupItem, event });
-    } else {
-      // It's a group from pie/bar/heatmap
-      setStockListPopup({
-        data:
-          param && !data.paramLabel
-            ? { ...data, paramLabel: param.label }
-            : data,
-        event,
-      });
-    }
+    const resultData =
+      param && data.symbol
+        ? {
+            name: `${data.symbol}: ${data.value}`,
+            stocks: [data.symbol],
+            paramLabel: param.label,
+          }
+        : param && !data.paramLabel
+          ? { ...data, paramLabel: param.label }
+          : data;
+
+    setCategoryAnalysisData({ data: resultData, event });
   };
 
   const activeWatchlistName =
@@ -1589,16 +1431,6 @@ const AnalyticsDashboard = ({
           )}
         </div>
       </div>
-      {stockListPopup && (
-        <StockListPopup
-          popupData={stockListPopup}
-          onClose={() => setStockListPopup(null)}
-          onOpenGrid={(data) => {
-            setCategoryAnalysisData(data);
-            setStockListPopup(null);
-          }}
-        />
-      )}
       {categoryAnalysisData && (
         <CategoryAnalysisView
           popupData={categoryAnalysisData}

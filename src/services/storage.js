@@ -131,6 +131,60 @@ export async function loadData() {
     chrome.storage.local.remove([AI_KEY_STORE, AI_MODEL_STORE, "ai_prompt", CUSTOM_PROMPTS_STORE]);
   }
 
+  // --- NEW: Pro Status Migration ---
+  const PRO_KEY = "tc_is_pro";
+  const legacyPro = isChromeStorage()
+    ? (await new Promise(resolve => chrome.storage.local.get(PRO_KEY, resolve)))[PRO_KEY]
+    : localStorage.getItem(PRO_KEY);
+
+  if (legacyPro !== null) {
+    data.isPro = legacyPro === "true" || legacyPro === true;
+    needsSave = true;
+    if (isChromeStorage()) {
+      chrome.storage.local.remove(PRO_KEY);
+    } else {
+      localStorage.removeItem(PRO_KEY);
+    }
+  }
+
+  // --- NEW: Theme Migration ---
+  const THEME_KEY = "tc_theme";
+  const legacyTheme = isChromeStorage()
+    ? (await new Promise(resolve => chrome.storage.local.get(THEME_KEY, resolve)))[THEME_KEY]
+    : localStorage.getItem(THEME_KEY);
+
+  if (legacyTheme) {
+    data.theme = legacyTheme;
+    needsSave = true;
+    if (isChromeStorage()) {
+      chrome.storage.local.remove(THEME_KEY);
+    } else {
+      localStorage.removeItem(THEME_KEY);
+    }
+  }
+
+  // --- NEW: Analytics Layout Migration ---
+  const ANALYTICS_KEY = "tc_analytics_layout";
+  const legacyAnalytics = isChromeStorage()
+    ? (await new Promise(resolve => chrome.storage.local.get(ANALYTICS_KEY, resolve)))[ANALYTICS_KEY]
+    : localStorage.getItem(ANALYTICS_KEY);
+
+  if (legacyAnalytics) {
+    try {
+      data.analyticsLayout = typeof legacyAnalytics === "string" 
+        ? JSON.parse(legacyAnalytics) 
+        : legacyAnalytics;
+      needsSave = true;
+      if (isChromeStorage()) {
+        chrome.storage.local.remove(ANALYTICS_KEY);
+      } else {
+        localStorage.removeItem(ANALYTICS_KEY);
+      }
+    } catch {
+      // Ignore corrupted layout
+    }
+  }
+
   /* =========================
      MERGE DEFAULT PARAMS
   ========================= */
@@ -146,6 +200,9 @@ export async function loadData() {
   /* =========================
      ENSURE CURRENT WEEK
   ========================= */
+  /* =========================
+     ENSURE WEEK STRUCTURE
+  ========================= */
   if (data.weeks && !data.weeks.US && !data.weeks.IN) {
     const oldWeeks = data.weeks;
     data.weeks = { US: oldWeeks, IN: {} };
@@ -154,6 +211,15 @@ export async function loadData() {
 
   if (!data.weeks) {
     data.weeks = { US: {}, IN: {} };
+    needsSave = true;
+  }
+
+  if (!data.weeks.US) {
+    data.weeks.US = {};
+    needsSave = true;
+  }
+  if (!data.weeks.IN) {
+    data.weeks.IN = {};
     needsSave = true;
   }
 

@@ -154,9 +154,6 @@ async function fetchAndCalculateMetrics(
       !result.indicators.quote ||
       !result.indicators.quote[0]
     ) {
-      console.warn(
-        `No quote data found for ${ticker} (requested country: ${country})`,
-      );
       return null;
     }
 

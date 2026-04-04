@@ -79,7 +79,6 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
         candlesticks
       };
     } catch (error) {
-      console.warn(`Error fetching mapping for ${symbol}:`, error);
       return { symbol, error: error.message };
     }
   };
