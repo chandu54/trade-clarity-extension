@@ -44,7 +44,7 @@ TradeClarity.market is a powerful React-based application designed for swing tra
 - **Configurable UI**:
   - Manage Sectors.
   - Toggle Column Visibility.
-  - Set Editing Rules (e.g., Lock previous weeks, configure Auto-Fetch Lookback days).
+  - Set Editing Rules (e.g., Lock previous weeks, configure Auto-Fetch Lookback days to fetch ADR and Liquidity).
 
 ** Weekly Summary Info**:
 <img width="485" height="705" alt="image" src="https://github.com/user-attachments/assets/281214c2-63bf-48a9-aa14-95bf9d82dd7e" />
