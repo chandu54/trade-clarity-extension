@@ -1407,6 +1407,13 @@ const AnalyticsDashboard = ({
                 Weekly {activeWatchlistName} trend
               </h3>
               <SimpleTrendChart data={trendData} />
+              {/* PDF-Only: List of stocks for the first page summary */}
+              <div className="print-only-block trend-print-stocks mt-8 pt-4 border-t border-slate-200">
+                <PrintStockList 
+                  stocks={filteredStocks.map(s => s.symbol || s.ticker)} 
+                  label={`${activeWatchlistName} in Current Selection`} 
+                />
+              </div>
             </div>
           )}
 
@@ -1499,6 +1506,10 @@ const AnalyticsDashboard = ({
                 ))}
             </div>
           )}
+        </div>
+        {/* PDF-Only Footer: Copyright & Branding */}
+        <div className="print-only-block mt-12 py-8 text-center border-t border-slate-100 text-[11px] text-slate-400 font-medium font-sans">
+          © {new Date().getFullYear()} TradeClarity.market. All rights reserved.
         </div>
       </div>
       {categoryAnalysisData && (

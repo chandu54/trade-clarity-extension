@@ -330,6 +330,10 @@ function AppContent() {
         aiSettings={data.aiSettings}
       />
 
+      <footer className="py-6 text-center text-[11px] text-slate-500 opacity-60">
+        © {new Date().getFullYear()} TradeClarity.market. All rights reserved.
+      </footer>
+
       {modals.showManageParams && (
         <ManageParamsModal
           isOpen={modals.showManageParams}

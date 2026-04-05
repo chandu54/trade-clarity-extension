@@ -7104,5 +7104,18 @@ input[type="date"].input-with-clear {
     overflow: visible !important;
     height: auto !important;
   }
+
+  /* Focus List styling for the first page summary */
+  .trend-print-stocks .print-stock-values {
+    column-count: 3 !important;
+    display: block !important;
+    gap: 20px !important;
+  }
+  
+  .trend-print-stocks span {
+    display: inline-block !important;
+    width: 100% !important;
+    margin-bottom: 2px !important;
+  }
 }
 
