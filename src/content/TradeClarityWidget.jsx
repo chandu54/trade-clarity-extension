@@ -73,7 +73,7 @@ const TradeClarityWidget = () => {
     return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
   });
   const [settingsLoaded, setSettingsLoaded] = useState(false);
-  const [saveMessage, setSaveMessage] = useState(false);
+  const [saveStatus, setSaveStatus] = useState(null); // null, 'saved', 'closing'
   const [newTag, setNewTag] = useState('');
 
   // Voice Integration State
@@ -239,11 +239,15 @@ const TradeClarityWidget = () => {
     return () => observer.disconnect();
   }, []);
 
+  // Clear save status when symbol changes
+  useEffect(() => {
+    setSaveStatus(null);
+  }, [symbol]);
+
   // Load Data
   useEffect(() => {
     if (!symbol || !targetDate || targetDate.length !== 10) return;
     setLoading(true);
-    setSaveMessage(false);
 
     safeStorage.get('trading_app_data', (result) => {
       const data = result.trading_app_data;
@@ -311,7 +315,7 @@ const TradeClarityWidget = () => {
     });
   };
 
-  const handleSave = useCallback(() => {
+  const handleSave = useCallback((shouldClose = true) => {
     if (!symbol || !stockData) return;
     const weekKey = getWeekKey(targetDate);
 
@@ -357,8 +361,11 @@ const TradeClarityWidget = () => {
         }
 
         setAppData(newData);
-        setSaveMessage(true);
-        setTimeout(() => { setSaveMessage(false); setIsOpen(false); }, 1200);
+        setSaveStatus(shouldClose ? 'closing' : 'saved');
+        setTimeout(() => { 
+          setSaveStatus(null); 
+          if (shouldClose) setIsOpen(false); 
+        }, 1200);
       });
     });
   }, [symbol, stockData, region, targetDate]);
@@ -443,6 +450,15 @@ const TradeClarityWidget = () => {
       text = text.replace(regex, right);
     });
 
+    const isSaveAction = text.includes('save') || text.includes('update');
+    const isCloseAction = text.includes('close') || text.includes('exit');
+
+    if (isSaveAction) {
+      // If voice says "Save and Close" or just "Save"
+      handleSave(isCloseAction);
+      return;
+    }
+
     const matchPart = (part, str) => {
       const escaped = String(part).toLowerCase().replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
       // We use \b to represent a word boundary instead of just [^a-z0-9] so that hyphens (like "non-durables") don't break the match.
@@ -465,16 +481,6 @@ const TradeClarityWidget = () => {
       return false;
     };
 
-    // Handle 'Save' Combinations
-    // Examples: "save", "save the data", "save the changes", "save changes", "save setup", "save widget"
-    const isSaveCommand =
-      text === "save" ||
-      /^save (it|the data|data|changes|the changes|setup|the setup|widget|the widget)$/i.test(text);
-
-    if (isSaveCommand) {
-      handleSave();
-      return;
-    }
 
     if (hasWord("tradable")) {
       if (hasWord("not") || hasWord("untradable") || hasWord("false") || hasWord("no")) {
@@ -1203,23 +1209,43 @@ const TradeClarityWidget = () => {
         </div>
       </div>
 
-      {/* Pinned Footer & Resize Handle */}
       <div className="relative p-2 border-t rounded-b-xl shrink-0 bg-slate-900 border-slate-700/50">
-        <button
-          onClick={handleSave}
-          style={{ backgroundColor: saveMessage ? '#16A34A' : '' }}
-          className={`w-full font-bold py-2 rounded text-xs transition-all flex justify-center items-center gap-1.5 ${saveMessage
-              ? 'text-white shadow-[0_0_10px_rgba(22,163,74,0.4)]'
-              : 'bg-indigo-600 hover:bg-indigo-500 shadow-[0_0_10px_rgba(79,70,229,0.3)] text-white'
-            }`}
-        >
-          {saveMessage ? (
-            <>
-              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
-              Saved successfully!
-            </>
-          ) : 'Save Changes'}
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleSave(false)}
+            aria-label="Save current stock data"
+            title="Save changes and keep widget open"
+            style={saveStatus === 'saved' ? { backgroundColor: '#10b981' } : {}}
+            className={`flex-1 font-bold py-2 rounded text-[11px] transition-all flex justify-center items-center gap-1.5 ${saveStatus === 'saved'
+                ? 'text-white shadow-[0_0_10px_rgba(22,163,74,0.4)]'
+                : 'bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600'
+              }`}
+          >
+            {saveStatus === 'saved' ? (
+              <>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                Saved!
+              </>
+            ) : 'Save'}
+          </button>
+          <button
+            onClick={() => handleSave(true)}
+            aria-label="Save and close widget"
+            title="Save changes and close the widget"
+            style={saveStatus === 'closing' ? { backgroundColor: '#10b981' } : {}}
+            className={`flex-1 font-bold py-2 rounded text-[11px] transition-all flex justify-center items-center gap-1.5 ${saveStatus === 'closing'
+                ? 'text-white shadow-[0_0_10px_rgba(22,163,74,0.4)]'
+                : 'bg-indigo-600 hover:bg-indigo-500 shadow-[0_0_10px_rgba(79,70,229,0.3)] text-white'
+              }`}
+          >
+            {saveStatus === 'closing' ? (
+              <>
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M5 13l4 4L19 7"></path></svg>
+                Closing...
+              </>
+            ) : 'Save & Close'}
+          </button>
+        </div>
 
         {/* Custom Drag-to-Resize Handle */}
         <div

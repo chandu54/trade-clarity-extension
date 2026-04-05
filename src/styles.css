@@ -6959,11 +6959,28 @@ input[type="date"].input-with-clear {
   box-sizing: border-box !important;
 }
 
+.print-only-block,
+.print-only-inline,
+.print-stock-list {
+  display: none !important;
+}
+
 /* ========================================================
    PRINT STYLES FOR ANALYTICS DASHBOARD
    Ensures that PDF reports include all data/legend items.
    ======================================================== */
 @media print {
+  .print-stock-list {
+    display: block !important;
+  }
+  
+  .print-stock-label {
+    color: var(--muted) !important;
+  }
+  
+  .print-stock-values {
+    color: var(--text) !important;
+  }
   /* un-fix the overlay so it can span height/pages */
   .analytics-overlay {
     position: absolute !important;
@@ -6974,12 +6991,14 @@ input[type="date"].input-with-clear {
     display: block !important;
     backdrop-filter: none !important;
     z-index: auto !important;
+    color: #0f172a !important; /* Force dark text for readability */
   }
 
   .analytics-modal {
     position: relative !important;
     max-height: none !important;
     width: 100% !important;
+    background: white !important;
     box-shadow: none !important;
     border: none !important;
     overflow: visible !important;
@@ -6989,6 +7008,7 @@ input[type="date"].input-with-clear {
   }
 
   .analytics-content {
+    background: white !important;
     padding: 0 !important;
     overflow: visible !important;
     display: block !important;
@@ -7005,15 +7025,42 @@ input[type="date"].input-with-clear {
   .charts-grid {
     display: block !important; 
     grid-template-columns: none !important;
+    background: white !important;
   }
 
   .chart-card {
     page-break-inside: avoid !important;
     break-inside: avoid !important;
     margin-bottom: 30px !important;
+    background: white !important;
     border: 1px solid #eee !important;
     box-shadow: none !important;
     transform: none !important;
+    height: auto !important; /* Allow card to expand for stock lists */
+  }
+
+  .chart-body,
+  .bar-chart-container,
+  .pie-chart-container,
+  .dot-plot-container,
+  .heatmap-container,
+  .chart-container {
+    height: auto !important;
+    min-height: 0 !important;
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .bar-chart-grid {
+    height: 280px !important; /* Fixed coordinate system for percentage bars */
+    min-height: 280px !important;
+    display: flex !important;
+  }
+
+  .pie-chart-wrapper {
+    height: 200px !important;
+    width: 200px !important;
+    flex: 0 0 200px !important;
   }
 
   /* Hide interactive UI from the actual PDF */
@@ -7027,11 +7074,29 @@ input[type="date"].input-with-clear {
     display: none !important;
   }
 
+  /* Print-only utility display */
+  .print-only-block {
+    display: block !important;
+  }
+
+  .print-only-inline {
+    display: inline-block !important;
+  }
+
   /* Force color preservation in browsers */
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
     color-adjust: exact !important;
+  }
+
+  .bar {
+    opacity: 1 !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+    background-color: currentColor !important; /* Use color prop passed from React */
+    box-shadow: inset 0 0 0 1000px currentColor !important; /* Robust fill hack */
+    border: 1px solid rgba(0,0,0,0.05) !important;
   }
 
   /* Ensure body doesn't clip content */

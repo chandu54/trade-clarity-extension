@@ -56,6 +56,24 @@ const getTooltip = (item) => {
   return `${item.name}: ${item.value}\nStocks: ${stockList}${suffix}`;
 };
 
+const PrintStockList = ({ stocks, label }) => {
+  if (!stocks || stocks.length === 0) return null;
+  return (
+    <div className="print-stock-list mt-2 pt-2 border-t border-slate-200 border-dashed">
+      <div className="print-stock-label text-[10px] font-bold uppercase tracking-wider mb-1">
+        Stocks in {label}:
+      </div>
+      <div className="print-stock-values text-[11px] leading-relaxed flex flex-wrap gap-x-2">
+        {stocks.map((s, i) => (
+          <span key={s} className="font-mono font-semibold">
+            {s}{i < stocks.length - 1 ? "," : ""}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const SimplePieChart = ({ data, onSliceClick }) => {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   if (total === 0) return <div className="chart-empty">No data available</div>;
@@ -145,6 +163,15 @@ const SimplePieChart = ({ data, onSliceClick }) => {
           </div>
         ))}
       </div>
+      <div className="print-only-block mt-4 space-y-2">
+        {data.map((item) => (
+          <PrintStockList 
+            key={item.name} 
+            stocks={item.stocks} 
+            label={item.name} 
+          />
+        ))}
+      </div>
     </div>
   );
 };
@@ -176,7 +203,8 @@ const SimpleBarChart = ({ data, onBarClick }) => {
                     className="bar"
                     style={{
                       height: `${Math.max(height, 1)}%`,
-                      background: color,
+                      backgroundColor: color,
+                      color: color, // support for currentColor print hack
                     }}
                   />
                 </div>
@@ -187,6 +215,15 @@ const SimpleBarChart = ({ data, onBarClick }) => {
             );
           })}
         </div>
+      </div>
+      <div className="print-only-block mt-4 space-y-1">
+        {data.map((item) => (
+          <PrintStockList
+            key={item.name}
+            stocks={item.stocks}
+            label={item.name}
+          />
+        ))}
       </div>
     </div>
   );
@@ -330,6 +367,28 @@ const DotPlot = ({ data, onPointClick }) => {
             />
           );
         })}
+      </div>
+      <div className="print-only-block mt-4">
+        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+          Metric Values:
+        </div>
+        <div className="grid grid-cols-4 gap-x-4 gap-y-2">
+          {points.map((item, i) => (
+            <div
+              key={item.symbol || i}
+              className="text-[11px] flex justify-between border-b border-slate-100 pb-1"
+            >
+              <span className="font-bold">{item.symbol}</span>
+              <span className="font-mono text-slate-600">
+                {typeof item.value === "number"
+                  ? item.value.toLocaleString(undefined, {
+                      maximumFractionDigits: 1,
+                    })
+                  : item.value}
+              </span>
+            </div>
+          ))}
+        </div>
       </div>
     </div>
   );
@@ -570,6 +629,17 @@ const DateHeatmapChart = ({ data, onPointClick }) => {
             </div>
           ))}
         </div>
+      </div>
+      <div className="print-only-block mt-4 space-y-2">
+        {Object.values(countMap)
+          .sort((a, b) => b.name.localeCompare(a.name))
+          .map((item) => (
+            <PrintStockList
+              key={item.name}
+              stocks={item.items.map((i) => i.symbol)}
+              label={item.name}
+            />
+          ))}
       </div>
     </div>
   );
