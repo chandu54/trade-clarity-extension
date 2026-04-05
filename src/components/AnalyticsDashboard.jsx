@@ -60,8 +60,8 @@ const PrintStockList = ({ stocks, label }) => {
   if (!stocks || stocks.length === 0) return null;
   return (
     <div className="print-stock-list mt-2 pt-2 border-t border-slate-200 border-dashed">
-      <div className="print-stock-label text-[10px] font-bold uppercase tracking-wider mb-1">
-        Stocks in {label}:
+      <div className="print-stock-label text-[10px] font-bold mb-1">
+        Stocks:
       </div>
       <div className="print-stock-values text-[11px] leading-relaxed flex flex-wrap gap-x-2">
         {stocks.map((s, i) => (
@@ -79,66 +79,76 @@ const SimplePieChart = ({ data, onSliceClick }) => {
   if (total === 0) return <div className="chart-empty">No data available</div>;
 
   let currentAngle = 0;
-  const gradient = data
-    .map((item, index) => {
-      const percentage = item.value / total;
-      const angle = percentage * 360;
-      const start = currentAngle;
-      const end = currentAngle + angle;
-      currentAngle = end;
-      const color = COLORS[index % COLORS.length];
-      return `${color} ${start}deg ${end}deg`;
-    })
-    .join(", ");
-
-  const handlePieClick = (e) => {
-    if (!onSliceClick) return;
-
-    const rect = e.currentTarget.getBoundingClientRect();
-    // Calculate click position relative to the center of the chart
-    const x = e.clientX - rect.left - rect.width / 2;
-    const y = e.clientY - rect.top - rect.height / 2;
-
-    // Ignore clicks in the donut hole (70% width = 0.7 radius ratio)
-    const radius = Math.sqrt(x * x + y * y);
-    const maxRadius = rect.width / 2;
-    if (radius < maxRadius * 0.7) return;
-
-    // Calculate angle in degrees, normalized to 0-360, starting at 12 o'clock (CSS standard)
-    // Math.atan2 returns angle from x-axis (3 o'clock), so we adjust by 90 deg
-    let angle = Math.atan2(y, x) * (180 / Math.PI) + 90;
-    if (angle < 0) angle += 360;
-
-    // Find which data segment covers this angle
-    let currentAngle = 0;
-    for (const item of data) {
-      const percentage = item.value / total;
-      const sliceAngle = percentage * 360;
-
-      if (angle >= currentAngle && angle < currentAngle + sliceAngle) {
-        onSliceClick(item, e);
-        break;
-      }
-      currentAngle += sliceAngle;
-    }
-  };
+  const size = 200;
+  const radius = size / 2;
+  const innerRadius = radius * 0.7;
+  const center = radius;
 
   return (
     <div className="chart-container pie-chart-container">
       <div className="pie-chart-wrapper">
-        <div
-          className="pie-chart"
-          onClick={handlePieClick}
-          style={{
-            background: `conic-gradient(${gradient})`,
-            cursor: onSliceClick ? "pointer" : "default",
-          }}
-        >
-          <div className="pie-hole">
-            <div className="pie-total">
-              <span className="pie-total-value">{total}</span>
-              <span className="pie-total-label">Total</span>
-            </div>
+        <svg viewBox={`0 0 ${size} ${size}`} className="pie-svg">
+          {data.map((item, index) => {
+            const percentage = item.value / total;
+            if (percentage <= 0) return null;
+
+            const sliceAngle = percentage * 360;
+            const startAngle = currentAngle;
+            const endAngle = currentAngle + sliceAngle;
+            currentAngle = endAngle;
+
+            let d = "";
+            if (percentage >= 0.999) {
+              // Fix for 100% slices: arcs fail at 360 degrees, so we draw a full donut manually
+              d = `M ${center} ${center - radius} 
+                   A ${radius} ${radius} 0 1 1 ${center} ${center + radius} 
+                   A ${radius} ${radius} 0 1 1 ${center} ${center - radius} 
+                   M ${center} ${center - innerRadius} 
+                   A ${innerRadius} ${innerRadius} 0 1 0 ${center} ${center + innerRadius} 
+                   A ${innerRadius} ${innerRadius} 0 1 0 ${center} ${center - innerRadius} Z`;
+            } else {
+              // Standard donut sector path
+              const rad1 = ((startAngle - 90) * Math.PI) / 180;
+              const rad2 = ((endAngle - 90) * Math.PI) / 180;
+
+              const x1 = center + radius * Math.cos(rad1);
+              const y1 = center + radius * Math.sin(rad1);
+              const x2 = center + radius * Math.cos(rad2);
+              const y2 = center + radius * Math.sin(rad2);
+
+              const ix1 = center + innerRadius * Math.cos(rad1);
+              const iy1 = center + innerRadius * Math.sin(rad1);
+              const ix2 = center + innerRadius * Math.cos(rad2);
+              const iy2 = center + innerRadius * Math.sin(rad2);
+
+              const largeArc = sliceAngle > 180 ? 1 : 0;
+
+              d = [
+                `M ${ix1} ${iy1}`,
+                `L ${x1} ${y1}`,
+                `A ${radius} ${radius} 0 ${largeArc} 1 ${x2} ${y2}`,
+                `L ${ix2} ${iy2}`,
+                `A ${innerRadius} ${innerRadius} 0 ${largeArc} 0 ${ix1} ${iy1}`,
+                "Z",
+              ].join(" ");
+            }
+
+            return (
+              <path
+                key={item.name}
+                d={d}
+                fill={COLORS[index % COLORS.length]}
+                className="pie-slice"
+                onClick={(e) => onSliceClick && onSliceClick(item, e)}
+                title={getTooltip(item)}
+              />
+            );
+          })}
+        </svg>
+        <div className="pie-hole-overlay">
+          <div className="pie-total">
+            <span className="pie-total-value">{total}</span>
+            <span className="pie-total-label">Total</span>
           </div>
         </div>
       </div>
@@ -683,11 +693,16 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
               key={group.name}
               className="detail-group"
               onClick={(e) => onChartClick(group, e)}
-              title="Click to see stock list"
+              title="Click to see deep analysis"
             >
               <div className="detail-group-header">
                 <span className="detail-name">{group.name}</span>
-                <span className="detail-count">{group.value}</span>
+                <span className="detail-count">{group.value} stocks</span>
+              </div>
+              <div className="stock-tag-list">
+                {group.stocks && group.stocks.map((s) => (
+                  <span key={s} className="stock-tag">{s}</span>
+                ))}
               </div>
             </div>
           ))}
@@ -715,11 +730,16 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
               key={group.name}
               className="detail-group"
               onClick={(e) => onChartClick(group, e)}
-              title="Click to see stock list"
+              title="Click to see deep analysis"
             >
               <div className="detail-group-header">
                 <span className="detail-name">{group.name}</span>
-                <span className="detail-count">{group.value}</span>
+                <span className="detail-count">{group.value} stocks</span>
+              </div>
+              <div className="stock-tag-list">
+                {group.stocks && group.stocks.map((s) => (
+                  <span key={s} className="stock-tag">{s}</span>
+                ))}
               </div>
             </div>
           ))}
@@ -735,11 +755,16 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
             key={group.name}
             className="detail-group"
             onClick={(e) => onChartClick(group, e)}
-            title="Click to see stock list"
+            title="Click to see deep analysis"
           >
             <div className="detail-group-header">
               <span className="detail-name">{group.name}</span>
-              <span className="detail-count">{group.value}</span>
+              <span className="detail-count">{group.value} stocks</span>
+            </div>
+            <div className="stock-tag-list">
+              {group.stocks && group.stocks.map((s) => (
+                <span key={s} className="stock-tag">{s}</span>
+              ))}
             </div>
           </div>
         ))}

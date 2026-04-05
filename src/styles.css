@@ -3485,7 +3485,7 @@ input[type=checkbox]:active {
   box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2), 0 4px 6px -2px rgba(0, 0, 0, 0.1);
   pointer-events: none;
   transform: translateX(-50%);
-  white-space: normal;
+  white-space: pre-wrap;
   width: max-content;
   max-width: 280px;
   line-height: 1.5;
@@ -4378,7 +4378,23 @@ input[type=checkbox]:active {
 }
 
 .detail-group {
-  margin-bottom: 20px;
+  margin-bottom: 24px;
+  cursor: pointer;
+  padding: 10px;
+  border-radius: 8px;
+  transition: all 0.2s ease;
+  border: 1px solid transparent;
+}
+
+.detail-group:hover {
+  background: var(--table-header-bg);
+  border-color: var(--border);
+  transform: translateX(4px);
+}
+
+/* Ensure children don't override the cursor */
+.detail-group * {
+  cursor: pointer;
 }
 
 .detail-group-header {
@@ -6963,6 +6979,67 @@ input[type="date"].input-with-clear {
 .print-only-inline,
 .print-stock-list {
   display: none !important;
+}
+
+.pie-chart-wrapper {
+  position: relative;
+  width: 200px;
+  height: 200px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pie-svg {
+  width: 100%;
+  height: 100%;
+  transform: rotate(-90deg); /* Start at 12 o'clock */
+}
+
+.pie-slice {
+  cursor: pointer;
+  stroke: none;
+  transition: opacity 0.2s;
+}
+
+.pie-slice:hover {
+  opacity: 0.9;
+}
+
+.pie-hole-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.pie-total {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.pie-total-value {
+  font-size: 24px;
+  font-weight: 800;
+  color: var(--text);
+  line-height: 1;
+}
+
+.pie-total-label {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-top: 2px;
 }
 
 /* ========================================================
