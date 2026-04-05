@@ -3,7 +3,8 @@
 **Your disciplined path to smarter trades.**
 
 TradeClarity.market is a powerful React-based application designed for swing traders to manage weekly watchlists, analyze stock setups, and maintain trading discipline. It functions both as a standalone web application and a browser extension, allowing you to keep your trading data organized and accessible.
-<img width="956" height="454" alt="image" src="https://github.com/user-attachments/assets/8341508c-b4fd-44ba-ac4c-870ca5ccd65c" />
+<img width="958" height="456" alt="image" src="https://github.com/user-attachments/assets/9700b7d1-7573-4a5e-b1be-4edde64faa2b" />
+
 
 ## 🚀 Features
 
@@ -14,6 +15,7 @@ TradeClarity.market is a powerful React-based application designed for swing tra
 - **AI-Powered Analysis**: Integrated with **Google Gemini** and **OpenAI** to generate professional market summaries, identify top sectors, and highlight actionable setups based on your watchlist data.
 - **Category Analysis**: A premium modal-based drill-down view for any sector:
   - **Snapshot**: A high-performance "Bird's Eye" grid of mini-candlestick charts (1M, 3M, 1Y) for all stocks in the category.
+  -   <img width="811" height="415" alt="image" src="https://github.com/user-attachments/assets/ed52cae0-d43b-421e-939a-009ff6d1d33a" />
   - **Phenomena**: Deep AI-driven institutional research that identifies group themes, relative strength leaders, and specific entry triggers.
   - **Breadth Headers**: Instant visibility into category health with Advancer/Decliner counts and performance leaders.
 - <img width="368" height="377" alt="image" src="https://github.com/user-attachments/assets/b0c3af44-51ad-4fee-9b04-f23fbd0e3844" />
@@ -22,6 +24,9 @@ TradeClarity.market is a powerful React-based application designed for swing tra
   - **Trend Analysis**: Track the size of your stock universe over time.
   - **Customizable Layout**: Reorder widgets via drag-and-drop and toggle visibility to focus on what matters.
   - <img width="316" height="350" alt="image" src="https://github.com/user-attachments/assets/2e56e688-5ebf-4a11-a8f7-10bd1d5c0180" />
+  - <img width="783" height="437" alt="image" src="https://github.com/user-attachments/assets/fb6a58e8-e9bc-4232-85ef-276942dd18b5" />
+
+
 
 **Stock Management**:
 
