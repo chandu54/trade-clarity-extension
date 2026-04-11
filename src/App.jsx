@@ -15,6 +15,7 @@ import GlobalTooltip from "./components/GlobalTooltip";
 import SettingsModal from "./components/SettingsModal";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import UserGuideModal from "./components/UserGuideModal";
+import DataManagementModal from "./components/DataManagementModal";
 import { ToastProvider, useToast } from "./components/ToastContext";
 import { ConfirmProvider, useConfirm } from "./components/ConfirmContext";
 import "./styles.css";
@@ -420,7 +421,22 @@ function AppContent() {
           isOpen={modals.showSettings}
           data={data}
           setData={setData}
+          country={country}
+          weekKey={weekKey}
+          setWeekKey={setWeekKey}
           onClose={() => modals.setShowSettings(false)}
+        />
+      )}
+
+      {modals.showDataManagement && (
+        <DataManagementModal
+          isOpen={modals.showDataManagement}
+          data={data}
+          setData={setData}
+          country={country}
+          weekKey={weekKey}
+          setWeekKey={setWeekKey}
+          onClose={() => modals.setShowDataManagement(false)}
         />
       )}
 

@@ -1,56 +1,90 @@
-import { describe, it, vi } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
-import { ConfirmProvider, useConfirm } from '../ConfirmContext';
-import { useEffect } from 'react';
+import React from "react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
+import { describe, it, expect, vi } from "vitest";
+import { ConfirmProvider, useConfirm } from "../ConfirmContext";
 
-const TestComponent = ({ message, onResult }) => {
+const TestComponent = () => {
   const { confirm } = useConfirm();
-  
-  useEffect(() => {
-    if (message) {
-      confirm(message).then(onResult);
-    }
-  }, [message, confirm, onResult]);
+  const [result, setResult] = React.useState(null);
 
-  return <div>Test Component</div>;
+  return (
+    <div>
+      <button
+        onClick={async () => {
+          const res = await confirm("Are you sure?", "test confirm pattern");
+          setResult(res);
+        }}
+      >
+        Trigger Action
+      </button>
+
+      {result !== null && (
+        <span data-testid="result-span">{result ? "Confirmed" : "Denied"}</span>
+      )}
+    </div>
+  );
 };
 
-describe('ConfirmContext', () => {
-  it('should show confirmation modal and resolve progress', async () => {
-    const onResult = vi.fn();
+describe("ConfirmContext Strict Validation", () => {
+  it("renders the modal and enforces typed requiredText before confirming", async () => {
     render(
       <ConfirmProvider>
-        <TestComponent message="Are you sure?" onResult={onResult} />
+        <TestComponent />
       </ConfirmProvider>
     );
 
-    expect(screen.getByText('Are you sure?')).toBeDefined();
-    
-    fireEvent.click(screen.getByText('Confirm'));
-    
-    // Wait for promise resolution
-    await act(async () => {
-      await Promise.resolve();
-    });
+    // Initial state check
+    expect(screen.queryByText("Are you sure?")).not.toBeInTheDocument();
 
-    expect(onResult).toHaveBeenCalledWith(true);
-    expect(screen.queryByText('Are you sure?')).toBeNull();
+    // Trigger confirmation
+    fireEvent.click(screen.getByText("Trigger Action"));
+
+    // Modal renders
+    expect(screen.getByText("Are you sure?")).toBeInTheDocument();
+    
+    // Check for Danger Zone validation text
+    expect(screen.getByText("test confirm pattern")).toBeInTheDocument();
+
+    const confirmBtn = screen.getByRole("button", { name: "Confirm" });
+    const cancelBtn = screen.getByRole("button", { name: "Cancel" });
+    
+    // Confirm button is fully disabled initially
+    expect(confirmBtn).toBeDisabled();
+
+    // Type incorrect phrase
+    const input = screen.getByPlaceholderText("test confirm pattern");
+    fireEvent.change(input, { target: { value: "test confirm p" } });
+    
+    expect(confirmBtn).toBeDisabled();
+
+    // Type correct phrase exactly
+    fireEvent.change(input, { target: { value: "test confirm pattern" } });
+    
+    expect(confirmBtn).not.toBeDisabled();
+
+    // Click confirm
+    fireEvent.click(confirmBtn);
+
+    // Verify resolving context value correctly
+    await waitFor(() => {
+      expect(screen.getByTestId("result-span").textContent).toBe("Confirmed");
+    });
   });
 
-  it('should resolve false when Cancel is clicked', async () => {
-    const onResult = vi.fn();
+  it("resolves to false if cancelled", async () => {
     render(
       <ConfirmProvider>
-        <TestComponent message="Delete item?" onResult={onResult} />
+        <TestComponent />
       </ConfirmProvider>
     );
 
-    fireEvent.click(screen.getByText('Cancel'));
+    fireEvent.click(screen.getByText("Trigger Action"));
+    const cancelBtn = screen.getByRole("button", { name: "Cancel" });
     
-    await act(async () => {
-      await Promise.resolve();
-    });
+    fireEvent.click(cancelBtn);
 
-    expect(onResult).toHaveBeenCalledWith(false);
+    await waitFor(() => {
+      expect(screen.getByTestId("result-span").textContent).toBe("Denied");
+    });
   });
 });

@@ -37,6 +37,11 @@ const MENU_ITEMS = [
     title: "Set rules for editing data across weeks and lock previous entries",
     key: "rules",
   },
+  {
+    label: "Data Management",
+    title: "Delete active weeks and completely purge associated country data",
+    key: "data_management",
+  },
 ];
 
 const USFlag = () => (
@@ -133,7 +138,7 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, onManage
   };
 
   const handleClearAll = async () => {
-    if (await confirm("⚠️ All data will be permanently deleted. Continue?")) {
+    if (await confirm("⚠️ All data will be permanently deleted across all regions. Continue?", "delete all data")) {
       onClearAll();
     }
   };

@@ -30,6 +30,7 @@ export function useModalState() {
     showManageTags: activeModal === 'tags',
     showAnalyze: activeModal === 'analyze',
     showSettings: activeModal === 'settings',
+    showDataManagement: activeModal === 'data_management',
     showAnalytics: activeModal === 'analytics',
     showUserGuide: activeModal === 'guide',
     
@@ -43,6 +44,7 @@ export function useModalState() {
     setShowManageTags: (val) => val ? setActiveModal('tags') : setActiveModal(null),
     setShowAnalyze: (val) => val ? setActiveModal('analyze') : setActiveModal(null),
     setShowSettings: (val) => val ? setActiveModal('settings') : setActiveModal(null),
+    setShowDataManagement: (val) => val ? setActiveModal('data_management') : setActiveModal(null),
     setShowAnalytics: (val) => val ? setActiveModal('analytics') : setActiveModal(null),
     setShowUserGuide: (val) => val ? setActiveModal('guide') : setActiveModal(null),
   };

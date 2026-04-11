@@ -66,7 +66,7 @@ const PrintStockList = ({ stocks, label }) => {
       <div className="print-stock-values text-[11px] leading-relaxed flex flex-wrap gap-x-2">
         {stocks.map((s, i) => (
           <span key={s} className="font-mono font-semibold">
-            {s}{i < stocks.length - 1 ? "," : ""}
+            {s}
           </span>
         ))}
       </div>
@@ -74,7 +74,7 @@ const PrintStockList = ({ stocks, label }) => {
   );
 };
 
-const SimplePieChart = ({ data, onSliceClick }) => {
+const SimplePieChart = ({ data, onSliceClick, isExpanded }) => {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   if (total === 0) return <div className="chart-empty">No data available</div>;
 
@@ -173,20 +173,22 @@ const SimplePieChart = ({ data, onSliceClick }) => {
           </div>
         ))}
       </div>
-      <div className="print-only-block mt-4 space-y-2">
-        {data.map((item) => (
-          <PrintStockList 
-            key={item.name} 
-            stocks={item.stocks} 
-            label={item.name} 
-          />
-        ))}
-      </div>
+      {!isExpanded && (
+        <div className="print-only-block mt-4 space-y-2">
+          {data.map((item) => (
+            <PrintStockList 
+              key={item.name} 
+              stocks={item.stocks} 
+              label={item.name} 
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
 
-const SimpleBarChart = ({ data, onBarClick }) => {
+const SimpleBarChart = ({ data, onBarClick, isExpanded }) => {
   const max = Math.max(...data.map((d) => d.value));
   if (max === 0) return <div className="chart-empty">No data available</div>;
 
@@ -226,15 +228,17 @@ const SimpleBarChart = ({ data, onBarClick }) => {
           })}
         </div>
       </div>
-      <div className="print-only-block mt-4 space-y-1">
-        {data.map((item) => (
-          <PrintStockList
-            key={item.name}
-            stocks={item.stocks}
-            label={item.name}
-          />
-        ))}
-      </div>
+      {!isExpanded && (
+        <div className="print-only-block mt-4 space-y-1">
+          {data.map((item) => (
+            <PrintStockList
+              key={item.name}
+              stocks={item.stocks}
+              label={item.name}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -283,7 +287,7 @@ const createHistogramData = (data, label) => {
   return bins.filter((b) => b.value > 0);
 };
 
-const DotPlot = ({ data, onPointClick }) => {
+const DotPlot = ({ data, onPointClick, isExpanded }) => {
   const [hoveredDot, setHoveredDot] = useState(null); // Will store the index of the dot
   if (!data || data.length === 0)
     return <div className="chart-empty">No numeric data</div>;
@@ -378,33 +382,35 @@ const DotPlot = ({ data, onPointClick }) => {
           );
         })}
       </div>
-      <div className="print-only-block mt-4">
-        <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
-          Metric Values:
+      {!isExpanded && (
+        <div className="print-only-block mt-4">
+          <div className="text-[10px] font-bold text-slate-500 uppercase tracking-wider mb-2">
+            Metric Values:
+          </div>
+          <div className="grid grid-cols-4 gap-x-4 gap-y-2">
+            {points.map((item, i) => (
+              <div
+                key={item.symbol || i}
+                className="text-[11px] flex justify-between border-b border-slate-100 pb-1"
+              >
+                <span className="font-bold">{item.symbol}</span>
+                <span className="font-mono text-slate-600">
+                  {typeof item.value === "number"
+                    ? item.value.toLocaleString(undefined, {
+                        maximumFractionDigits: 1,
+                      })
+                    : item.value}
+                </span>
+              </div>
+            ))}
+          </div>
         </div>
-        <div className="grid grid-cols-4 gap-x-4 gap-y-2">
-          {points.map((item, i) => (
-            <div
-              key={item.symbol || i}
-              className="text-[11px] flex justify-between border-b border-slate-100 pb-1"
-            >
-              <span className="font-bold">{item.symbol}</span>
-              <span className="font-mono text-slate-600">
-                {typeof item.value === "number"
-                  ? item.value.toLocaleString(undefined, {
-                      maximumFractionDigits: 1,
-                    })
-                  : item.value}
-              </span>
-            </div>
-          ))}
-        </div>
-      </div>
+      )}
     </div>
   );
 };
 
-const DateHeatmapChart = ({ data, onPointClick }) => {
+const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
   const [selectedYear, setSelectedYear] = useState("All");
 
   if (!data || data.length === 0)
@@ -640,17 +646,19 @@ const DateHeatmapChart = ({ data, onPointClick }) => {
           ))}
         </div>
       </div>
-      <div className="print-only-block mt-4 space-y-2">
-        {Object.values(countMap)
-          .sort((a, b) => b.name.localeCompare(a.name))
-          .map((item) => (
-            <PrintStockList
-              key={item.name}
-              stocks={item.items.map((i) => i.symbol)}
-              label={item.name}
-            />
-          ))}
-      </div>
+      {!isExpanded && (
+        <div className="print-only-block mt-4 space-y-2">
+          {Object.values(countMap)
+            .sort((a, b) => b.name.localeCompare(a.name))
+            .map((item) => (
+              <PrintStockList
+                key={item.name}
+                stocks={item.items.map((i) => i.symbol)}
+                label={item.name}
+              />
+            ))}
+        </div>
+      )}
     </div>
   );
 };
@@ -665,19 +673,20 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
     switch (param.type) {
       case "numeric-distribution":
         const histData = createHistogramData(param.data, param.label);
-        return <SimpleBarChart data={histData} onBarClick={onChartClick} />;
+        return <SimpleBarChart data={histData} onBarClick={onChartClick} isExpanded={true} />;
       case "date-timeline":
         return (
           <DateHeatmapChart
             data={param.data}
             onPointClick={(point, event) => onChartClick(point, event, param)}
+            isExpanded={true}
           />
         );
       default:
         return param.chartType === "bar" ? (
-          <SimpleBarChart data={param.data} onBarClick={onChartClick} />
+          <SimpleBarChart data={param.data} onBarClick={onChartClick} isExpanded={true} />
         ) : (
-          <SimplePieChart data={param.data} onSliceClick={onChartClick} />
+          <SimplePieChart data={param.data} onSliceClick={onChartClick} isExpanded={true} />
         );
     }
   };
@@ -1373,18 +1382,18 @@ const AnalyticsDashboard = ({
           </div>
           <div className="analytics-header-actions">
             <button
-              className="icon-btn"
+              className="nav-icon-btn-v2"
               onClick={() => window.print()}
               title="Download Report"
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
-                width="20"
-                height="20"
+                width="16"
+                height="16"
                 viewBox="0 0 24 24"
                 fill="none"
                 stroke="currentColor"
-                strokeWidth="2"
+                strokeWidth="2.5"
                 strokeLinecap="round"
                 strokeLinejoin="round"
               >
@@ -1395,11 +1404,13 @@ const AnalyticsDashboard = ({
             </button>
             <div className="settings-wrapper" ref={settingsRef}>
               <button
-                className="icon-btn"
+                className="nav-icon-btn-v2"
                 onClick={() => setShowSettings(!showSettings)}
                 title="Configure Widgets"
               >
-                ⚙️
+                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
+                </svg>
               </button>
               {showSettings && (
                 <div className="settings-popover">
@@ -1419,8 +1430,11 @@ const AnalyticsDashboard = ({
                 </div>
               )}
             </div>
-            <button className="close-btn" onClick={onClose}>
-              ×
+            <button className="close-btn" onClick={onClose} title="Close">
+              <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                <line x1="18" y1="6" x2="6" y2="18"></line>
+                <line x1="6" y1="6" x2="18" y2="18"></line>
+              </svg>
             </button>
           </div>
         </div>

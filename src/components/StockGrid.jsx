@@ -1,11 +1,15 @@
 import { useMemo, useState, useEffect, useRef } from "react";
 import AddStockModal from "./AddStockModal";
+import MultiSelectDropdown from "./MultiSelectDropdown";
 import EditStockModal from "./EditStockModal";
 import ImportWatchlistModal from "./ImportWatchlistModal";
 import TrashIcon from "./icons/TrashIcon";
 import { useToast } from "./ToastContext";
 import { useConfirm } from "./ConfirmContext";
-import { doesParamPassCheck, isParamRelevantForCountry } from "../utils/paramUtils";
+import {
+  doesParamPassCheck,
+  isParamRelevantForCountry,
+} from "../utils/paramUtils";
 
 function getWeekRangeLabel(sundayDateStr) {
   if (!sundayDateStr) return "";
@@ -94,7 +98,7 @@ const ClearButton = ({ onClick, isSelect }) => (
     className="clear-filter-btn"
     onClick={onClick}
     style={{ right: isSelect ? "22px" : "6px" }}
-    title="Clear filter"
+    title="Clear"
   >
     <svg
       xmlns="http://www.w3.org/2000/svg"
@@ -184,7 +188,8 @@ export default function StockGrid({
   const week = data.weeks?.[country]?.[weekKey];
   const params = data.paramDefinitions;
   const { showToast } = useToast();
-  const { confirm } = useConfirm();  const [showManageParams, setShowManageParams] = useState(false);
+  const { confirm } = useConfirm();
+  const [showManageParams, setShowManageParams] = useState(false);
   const [showManageSectors, setShowManageSectors] = useState(false);
 
   const [importPendingStocks, setImportPendingStocks] = useState(null);
@@ -200,6 +205,10 @@ export default function StockGrid({
 
   const [editingStock, setEditingStock] = useState(null);
   const [showAddStock, setShowAddStock] = useState(false);
+  const [fetchProgress, setFetchProgress] = useState({
+    total: 0,
+    completed: 0,
+  });
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef(null);
 
@@ -236,14 +245,16 @@ export default function StockGrid({
     };
   }, []);
 
-
   useEffect(() => {
     const handleKeyDown = (e) => {
       const activeTag = document.activeElement?.tagName;
-      const isInputFocused = activeTag === 'INPUT' || activeTag === 'TEXTAREA' || activeTag === 'SELECT';
+      const isInputFocused =
+        activeTag === "INPUT" ||
+        activeTag === "TEXTAREA" ||
+        activeTag === "SELECT";
 
       // Alt + N -> Add Stock
-      if (e.altKey && e.key.toLowerCase() === 'n') {
+      if (e.altKey && e.key.toLowerCase() === "n") {
         if (!isInputFocused) {
           e.preventDefault();
           setShowAddStock(true);
@@ -251,7 +262,7 @@ export default function StockGrid({
       }
 
       // Ctrl + / (or Cmd + /) -> Focus Search Bar
-      if ((e.ctrlKey || e.metaKey) && e.key === '/') {
+      if ((e.ctrlKey || e.metaKey) && e.key === "/") {
         e.preventDefault();
         // Expand filters if they are collapsed so the search bar is actually visible
         if (!showFilters) setShowFilters(true);
@@ -259,14 +270,32 @@ export default function StockGrid({
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [showFilters]);
-
 
   useEffect(() => {
     setCurrentPage(1);
   }, [weekKey, pageSize, filters, sortBy, sortDir, searchQuery]);
+
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.runtime?.onMessage) return;
+
+    const msgListener = (req) => {
+      if (req.action === "FETCH_PROGRESS") {
+        setFetchProgress(req.payload);
+        if (req.payload.completed >= req.payload.total) {
+          setTimeout(() => {
+            setFetchProgress({ total: 0, completed: 0 });
+            showToast("Metrics updated successfully!", "success");
+          }, 1500);
+        }
+      }
+    };
+
+    chrome.runtime.onMessage.addListener(msgListener);
+    return () => chrome.runtime.onMessage.removeListener(msgListener);
+  }, [showToast]);
 
   /* =====================
      BASE DATASET
@@ -279,7 +308,9 @@ export default function StockGrid({
   const columnConfig = data.uiConfig?.columnVisibility || {};
   const showNotes = columnConfig["__notes__"] !== false;
 
-  const activeWatchlist = (data.watchlists || []).find(w => w.id === selectedWatchlistId);
+  const activeWatchlist = (data.watchlists || []).find(
+    (w) => w.id === selectedWatchlistId,
+  );
 
   const visibleParams = Object.entries(params).filter(([key, p]) => {
     if (!isParamRelevantForCountry(p, country)) return false;
@@ -319,13 +350,13 @@ export default function StockGrid({
   const sectors = useMemo(() => {
     const rawSectors = data.uiConfig?.sectors || [];
     return rawSectors
-      .filter(s => {
+      .filter((s) => {
         // Handle legacy string format or items with empty countries array
-        if (typeof s === 'string') return true;
+        if (typeof s === "string") return true;
         if (!s.countries || s.countries.length === 0) return true;
         return s.countries.includes(country);
       })
-      .map(s => typeof s === 'string' ? s : s.name)
+      .map((s) => (typeof s === "string" ? s : s.name))
       .sort((a, b) => a.localeCompare(b));
   }, [data.uiConfig?.sectors, country]);
 
@@ -351,7 +382,10 @@ export default function StockGrid({
     else if (ratio >= 0.4) statusClass = "average";
 
     return (
-      <div className={`checks-badge ${statusClass}`} title={`${passed} of ${total} checks passed`}>
+      <div
+        className={`checks-badge ${statusClass}`}
+        title={`${passed} of ${total} checks passed`}
+      >
         <span className="passed-count">{passed}</span>
         <span className="separator">/</span>
         <span className="total-count">{total}</span>
@@ -393,8 +427,10 @@ export default function StockGrid({
       /*SECTOR FILTER*/
       if (isSectorFilterable) {
         const sectorFilter = filters.__sector__;
-        if (sectorFilter && stock.sector !== sectorFilter) {
-          return false;
+        if (Array.isArray(sectorFilter) && sectorFilter.length > 0) {
+          if (!sectorFilter.includes(stock.sector)) return false;
+        } else if (typeof sectorFilter === "string" && sectorFilter !== "") {
+          if (stock.sector !== sectorFilter) return false;
         }
       }
       /* TRADABLE FILTER */
@@ -407,16 +443,22 @@ export default function StockGrid({
       /* TAG FILTER */
       if (isTagFilterable) {
         const tagFilter = filters.__tag__;
-        if (tagFilter && tagFilter !== "") {
-          if (!stock.tags || !stock.tags.includes(tagFilter)) {
+        if (Array.isArray(tagFilter) && tagFilter.length > 0) {
+          if (!stock.tags || !stock.tags.some((t) => tagFilter.includes(t)))
             return false;
-          }
+        } else if (typeof tagFilter === "string" && tagFilter !== "") {
+          if (!stock.tags || !stock.tags.includes(tagFilter)) return false;
         }
       }
       /*Param FILTER*/
       return filterableParams.every(([key, p]) => {
         const filterVal = filters[key];
-        if (filterVal === undefined || filterVal === "") return true;
+        if (
+          filterVal === undefined ||
+          filterVal === "" ||
+          (Array.isArray(filterVal) && filterVal.length === 0)
+        )
+          return true;
 
         const stockVal = stock.params?.[key];
 
@@ -425,6 +467,9 @@ export default function StockGrid({
         }
 
         if (p.type === "select") {
+          if (Array.isArray(filterVal)) {
+            return filterVal.includes(stockVal);
+          }
           return stockVal === filterVal;
         }
 
@@ -505,15 +550,12 @@ export default function StockGrid({
     });
   }, [filteredStocks, sortBy, sortDir]);
 
-
   const totalPages = Math.max(1, Math.ceil(sortedStocks.length / pageSize));
-
 
   const start = (currentPage - 1) * pageSize;
   const end = start + pageSize;
 
   const stocks = sortedStocks.slice(start, end);
-
 
   function toggleSort(col) {
     if (sortBy === col) {
@@ -523,7 +565,6 @@ export default function StockGrid({
       setSortDir("asc");
     }
   }
-
 
   function setFilter(key, value) {
     setFilters((f) => ({ ...f, [key]: value }));
@@ -537,10 +578,10 @@ export default function StockGrid({
   const activeFilters = useMemo(() => {
     return Object.entries(filters).filter(([key, value]) => {
       if (value === undefined || value === "") return false;
+      if (Array.isArray(value) && value.length === 0) return false;
       return true;
     });
   }, [filters]);
-
 
   const [colWidths, setColWidths] = useState({});
 
@@ -608,16 +649,21 @@ export default function StockGrid({
           newSymbolsAdded.push(symbol);
         } else if (selectedWlIds.length > 0) {
           const existing = newStocks[symbol];
-          const mergedWls = Array.from(new Set([...(existing.watchlists || []), ...selectedWlIds]));
+          const mergedWls = Array.from(
+            new Set([...(existing.watchlists || []), ...selectedWlIds]),
+          );
           newStocks[symbol] = {
             ...existing,
-            watchlists: mergedWls
+            watchlists: mergedWls,
           };
         }
       });
 
       // Trigger background API hydration immediately if enabled
-      if (newSymbolsAdded.length > 0 && prev.uiConfig?.enableApiHydration === true) {
+      if (
+        newSymbolsAdded.length > 0 &&
+        prev.uiConfig?.enableApiHydration === true
+      ) {
         if (chrome?.runtime?.sendMessage) {
           chrome.runtime.sendMessage({
             action: "FETCH_STOCK_METRICS",
@@ -627,8 +673,8 @@ export default function StockGrid({
               weekKey,
               paramDefs: prev.paramDefinitions,
               adrDays: prev.uiConfig?.adrDays || 20,
-              liquidityDays: prev.uiConfig?.liquidityDays || 20
-            }
+              liquidityDays: prev.uiConfig?.liquidityDays || 20,
+            },
           });
           sentBackgroundMessage = true;
         }
@@ -648,7 +694,7 @@ export default function StockGrid({
         },
       };
     });
-    showToast(`Added ${symbols.length} stock(s) to watchlist${sentBackgroundMessage ? '. Fetching metrics in background...' : ''}`, "success");
+    showToast(`Added ${symbols.length} stock(s) to watchlist`, "success");
   }
 
   function handleUpdateStock(updatedStock) {
@@ -713,10 +759,32 @@ export default function StockGrid({
     const isActive = sortBy === col;
     return (
       <span className={`sort-indicator-v3 ${isActive ? "active" : ""}`}>
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`sort-up ${isActive && sortDir === "asc" ? "on" : ""}`}>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`sort-up ${isActive && sortDir === "asc" ? "on" : ""}`}
+        >
           <path d="m18 15-6-6-6 6" />
         </svg>
-        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`sort-down ${isActive && sortDir === "desc" ? "on" : ""}`}>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className={`sort-down ${isActive && sortDir === "desc" ? "on" : ""}`}
+        >
           <path d="m6 9 6 6 6-6" />
         </svg>
       </span>
@@ -923,14 +991,22 @@ export default function StockGrid({
             ...s,
             params: { ...(existing?.params || {}), ...(s.params || {}) },
             tags: s.tags || existing?.tags || [],
-            watchlists: Array.from(new Set([...(existing?.watchlists || []), ...(s.watchlists || [])])),
+            watchlists: Array.from(
+              new Set([
+                ...(existing?.watchlists || []),
+                ...(s.watchlists || []),
+              ]),
+            ),
           };
           count++;
         }
       });
 
       // Trigger background API hydration immediately if enabled
-      if (newSymbolsAdded.length > 0 && prev.uiConfig?.enableApiHydration === true) {
+      if (
+        newSymbolsAdded.length > 0 &&
+        prev.uiConfig?.enableApiHydration === true
+      ) {
         if (chrome?.runtime?.sendMessage) {
           chrome.runtime.sendMessage({
             action: "FETCH_STOCK_METRICS",
@@ -940,15 +1016,15 @@ export default function StockGrid({
               weekKey,
               paramDefs: prev.paramDefinitions,
               adrDays: prev.uiConfig?.adrDays || 20,
-              liquidityDays: prev.uiConfig?.liquidityDays || 20
-            }
+              liquidityDays: prev.uiConfig?.liquidityDays || 20,
+            },
           });
           sentBackgroundMessage = true;
         }
       }
 
       if (count > 0) {
-        showToast(`Imported ${count} stocks successfully.${sentBackgroundMessage ? ' Fetching metrics in background...' : ''}`, "success");
+        showToast(`Imported ${count} stocks successfully.`, "success");
       }
 
       return {
@@ -976,66 +1052,118 @@ export default function StockGrid({
       {(filterableParams.length > 0 ||
         isSectorFilterable ||
         (availableTags.length > 0 && isTagFilterable)) && (
-          <div className={`filter-bar ${!showFilters ? "collapsed" : ""}`}>
-            <div className="filter-top-row">
-              <div className="filter-top-left">
-                <div className="filter-toggle-group" onClick={() => setShowFilters(!showFilters)}>
-                  <span className="filter-icon">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                    </svg>
-                  </span>
-                  <span className="filter-label">Filters</span>
-                  {activeFilters.length > 0 && (
-                    <span className="active-filter-badge">{activeFilters.length}</span>
-                  )}
-                  <span className={`filter-chevron ${showFilters ? "open" : ""}`}>
-                    <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  </span>
-                </div>
-
-                {activeFilters.length > 0 && (
-                  <button
-                    className="reset-filters-btn-v2"
-                    onClick={(e) => { e.stopPropagation(); setFilters({}); }}
-                    title="Clear all active filters"
+        <div className={`filter-bar ${!showFilters ? "collapsed" : ""}`}>
+          <div className="filter-top-row">
+            <div className="filter-top-left">
+              <div
+                className="filter-toggle-group"
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                <span className="filter-icon">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="16"
+                    height="16"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
                   >
-                    Reset Filters
-                  </button>
-                )}
-
-                <div className="search-box-v2">
-                  <span className="search-icon-v2">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <circle cx="11" cy="11" r="8" /><line x1="21" y1="21" x2="16.65" y2="16.65" />
-                    </svg>
+                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+                  </svg>
+                </span>
+                <span className="filter-label">Filters</span>
+                {activeFilters.length > 0 && (
+                  <span className="active-filter-badge">
+                    {activeFilters.length}
                   </span>
-                  <input
-                    ref={searchInputRef}
-                    type="text"
-                    placeholder="Search symbols..."
-                    aria-label="Search symbols"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                  />
-                  {searchQuery && (
-                    <button
-                      className="search-clear-btn"
-                      onClick={() => setSearchQuery("")}
-                      title="Clear search"
-                    >
-                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <line x1="18" y1="6" x2="6" y2="18" /><line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  )}
-                </div>
+                )}
+                <span className={`filter-chevron ${showFilters ? "open" : ""}`}>
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="12"
+                    height="12"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="3"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </span>
               </div>
 
-              <div className="active-filters-summary">
-                {!showFilters && activeFilters.length > 0 && activeFilters.map(([key, value]) => {
+              {activeFilters.length > 0 && (
+                <button
+                  className="reset-filters-btn-v2"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setFilters({});
+                  }}
+                  title="Clear all active filters"
+                >
+                  Reset Filters
+                </button>
+              )}
+
+              <div className="search-box-v2">
+                <span className="search-icon-v2">
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2.5"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  >
+                    <circle cx="11" cy="11" r="8" />
+                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                  </svg>
+                </span>
+                <input
+                  ref={searchInputRef}
+                  type="text"
+                  placeholder="Search symbols..."
+                  aria-label="Search symbols"
+                  value={searchQuery}
+                  onChange={(e) => setSearchQuery(e.target.value)}
+                />
+                {searchQuery && (
+                  <button
+                    className="search-clear-btn"
+                    onClick={() => setSearchQuery("")}
+                    title="Clear search"
+                  >
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="3"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <line x1="18" y1="6" x2="6" y2="18" />
+                      <line x1="6" y1="6" x2="18" y2="18" />
+                    </svg>
+                  </button>
+                )}
+              </div>
+            </div>
+
+            <div className="active-filters-summary">
+              {!showFilters &&
+                activeFilters.length > 0 &&
+                activeFilters.map(([key, value]) => {
                   let label = key;
                   if (key === "__sector__") label = "Sector";
                   else if (key === "__tag__") label = "Tag";
@@ -1043,7 +1171,14 @@ export default function StockGrid({
                   else label = params[key]?.label || key;
 
                   let displayValue = value;
-                  if (typeof value === "boolean") displayValue = value ? "Yes" : "No";
+                  if (typeof value === "boolean")
+                    displayValue = value ? "Yes" : "No";
+                  else if (Array.isArray(value)) {
+                    displayValue =
+                      value.length > 2
+                        ? `${value.length} Selected`
+                        : value.join(", ");
+                  }
 
                   return (
                     <span key={key} className="summary-pill">
@@ -1051,201 +1186,226 @@ export default function StockGrid({
                     </span>
                   );
                 })}
-              </div>
-
-              <div className="filter-actions">
-                <button className="toggle-filters-btn" onClick={() => setShowFilters(!showFilters)}>
-                  {showFilters ? "Collapse" : "Show All Filters"}
-                </button>
-              </div>
             </div>
 
-            {showFilters && (
-              <div className="filter-items">
-                {isSectorFilterable && (
-                  <div className="filter-item">
-                    <label htmlFor="sector-filter">Sector</label>
-                    <div className="filter-input-wrapper">
-                      <select
-                        id="sector-filter"
-                        className="select-control filter-select-control"
-                        value={filters.__sector__ || ""}
-                        onChange={(e) => setFilter("__sector__", e.target.value)}
-                      >
-                        <option value="">All</option>
-                        {sectors.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                      {filters.__sector__ && filters.__sector__ !== "" && (
+            <div className="filter-actions">
+              <button
+                className="toggle-filters-btn"
+                onClick={() => setShowFilters(!showFilters)}
+              >
+                {showFilters ? "Collapse" : "Show All Filters"}
+              </button>
+            </div>
+          </div>
+
+          {showFilters && (
+            <div className="filter-items">
+              {isSectorFilterable && (
+                <div className="filter-item">
+                  <label htmlFor="sector-filter">Sector</label>
+                  <div className="filter-input-wrapper">
+                    <MultiSelectDropdown
+                      id="sector-filter"
+                      options={sectors}
+                      value={
+                        Array.isArray(filters.__sector__)
+                          ? filters.__sector__
+                          : filters.__sector__
+                            ? [filters.__sector__]
+                            : []
+                      }
+                      onChange={(val) => setFilter("__sector__", val)}
+                      placeholder="All"
+                    />
+                    {filters.__sector__ &&
+                      (Array.isArray(filters.__sector__)
+                        ? filters.__sector__.length > 0
+                        : filters.__sector__ !== "") && (
                         <ClearButton
-                          onClick={() => setFilter("__sector__", "")}
+                          onClick={() => setFilter("__sector__", [])}
                           isSelect
                         />
                       )}
-                    </div>
                   </div>
-                )}
+                </div>
+              )}
 
-                {(availableTags || []).length > 0 && isTagFilterable && (
-                  <div className="filter-item">
-                    <label htmlFor="tag-filter">Tag</label>
-                    <div className="filter-input-wrapper">
-                      <select
-                        id="tag-filter"
-                        className="select-control filter-select-control"
-                        value={filters.__tag__ || ""}
-                        onChange={(e) => setFilter("__tag__", e.target.value)}
-                      >
-                        <option value="">All</option>
-                        {availableTags.map((t) => (
-                          <option key={t} value={t}>
-                            {t}
-                          </option>
-                        ))}
-                      </select>
-                      {filters.__tag__ && filters.__tag__ !== "" && (
+              {(availableTags || []).length > 0 && isTagFilterable && (
+                <div className="filter-item">
+                  <label htmlFor="tag-filter">Tag</label>
+                  <div className="filter-input-wrapper">
+                    <MultiSelectDropdown
+                      id="tag-filter"
+                      options={availableTags}
+                      value={
+                        Array.isArray(filters.__tag__)
+                          ? filters.__tag__
+                          : filters.__tag__
+                            ? [filters.__tag__]
+                            : []
+                      }
+                      onChange={(val) => setFilter("__tag__", val)}
+                      placeholder="All"
+                    />
+                    {filters.__tag__ &&
+                      (Array.isArray(filters.__tag__)
+                        ? filters.__tag__.length > 0
+                        : filters.__tag__ !== "") && (
                         <ClearButton
-                          onClick={() => setFilter("__tag__", "")}
+                          onClick={() => setFilter("__tag__", [])}
                           isSelect
                         />
                       )}
-                    </div>
                   </div>
-                )}
+                </div>
+              )}
 
-                {filterableParams.map(([key, p]) => (
-                  <div key={key} className="filter-item">
-                    <label htmlFor={`filter-param-${key}`}>
-                      {p.label}
-                      {(p.type === "number" || p.type === "date") && (
-                        <span
-                          className="info-help-icon"
-                          title="Supports operators: > < >= <= = and ranges (e.g. 10-20)"
+              {filterableParams.map(([key, p]) => (
+                <div key={key} className="filter-item">
+                  <label htmlFor={`filter-param-${key}`}>
+                    {p.label}
+                    {(p.type === "number" || p.type === "date") && (
+                      <span
+                        className="info-help-icon"
+                        title="Supports operators: > < >= <= = and ranges (e.g. 10-20)"
+                      >
+                        ℹ️
+                      </span>
+                    )}
+                  </label>
+                  <div className="filter-input-wrapper">
+                    {p.type === "checkbox" && (
+                      <>
+                        <select
+                          id={`filter-param-${key}`}
+                          className="select-control filter-select-control"
+                          value={filters[key] ?? ""}
+                          onChange={(e) =>
+                            setFilter(
+                              key,
+                              e.target.value === ""
+                                ? ""
+                                : e.target.value === "true",
+                            )
+                          }
                         >
-                          ℹ️
-                        </span>
-                      )}
-                    </label>
-                    <div className="filter-input-wrapper">
-                      {p.type === "checkbox" && (
-                        <>
-                          <select
-                            id={`filter-param-${key}`}
-                            className="select-control filter-select-control"
-                            value={filters[key] ?? ""}
-                            onChange={(e) =>
-                              setFilter(
-                                key,
-                                e.target.value === ""
-                                  ? ""
-                                  : e.target.value === "true",
-                              )
-                            }
-                          >
-                            <option value="">All</option>
-                            <option value="true">Yes</option>
-                            <option value="false">No</option>
-                          </select>
-                          {filters[key] !== undefined && filters[key] !== "" && (
-                            <ClearButton
-                              onClick={() => setFilter(key, "")}
-                              isSelect
-                            />
-                          )}
-                        </>
-                      )}
-
-                      {p.type === "select" && (
-                        <>
-                          <select
-                            id={`filter-param-${key}`}
-                            className="select-control filter-select-control"
-                            value={filters[key] || ""}
-                            onChange={(e) => setFilter(key, e.target.value)}
-                          >
-                            <option value="">All</option>
-                            {p.options?.map((o) => (
-                              <option key={o}>{o}</option>
-                            ))}
-                          </select>
-                          {filters[key] !== undefined && filters[key] !== "" && (
-                            <ClearButton
-                              onClick={() => setFilter(key, "")}
-                              isSelect
-                            />
-                          )}
-                        </>
-                      )}
-
-                      {(p.type === "text" ||
-                        p.type === "number" ||
-                        p.type === "date") && (
-                          <>
-                            <input
-                              id={`filter-param-${key}`}
-                              type="text"
-                              className="filter-input"
-                              value={filters[key] || ""}
-                              onChange={(e) => setFilter(key, e.target.value)}
-                              placeholder={
-                                p.type === "date"
-                                  ? "YYYY-MM-DD or >..."
-                                  : p.type === "number"
-                                    ? "e.g. >10 or 10-20"
-                                    : ""
-                              }
-                              style={{ width: "100%", paddingRight: "24px" }}
-                            />
-                            {filters[key] !== undefined && filters[key] !== "" && (
-                              <ClearButton onClick={() => setFilter(key, "")} />
-                            )}
-                          </>
-                        )}
-                    </div>
-                  </div>
-                ))}
-
-                {isTradableFilterable && (
-                  <div className="filter-item">
-                    <label>Tradable</label>
-                    <div style={{ position: "relative", width: "100%" }}>
-                      <select
-                        className="select-control"
-                        value={filters.__tradable__ ?? ""}
-                        onChange={(e) =>
-                          setFilter(
-                            "__tradable__",
-                            e.target.value === "" ? "" : e.target.value === "true",
-                          )
-                        }
-                        style={{ width: "100%", paddingRight: "24px" }}
-                      >
-                        <option value="">All</option>
-                        <option value="true">Yes</option>
-                        <option value="false">No</option>
-                      </select>
-                      {filters.__tradable__ !== undefined &&
-                        filters.__tradable__ !== "" && (
+                          <option value="">All</option>
+                          <option value="true">Yes</option>
+                          <option value="false">No</option>
+                        </select>
+                        {filters[key] !== undefined && filters[key] !== "" && (
                           <ClearButton
-                            onClick={() => setFilter("__tradable__", "")}
+                            onClick={() => setFilter(key, "")}
                             isSelect
                           />
                         )}
-                    </div>
+                      </>
+                    )}
+
+                    {p.type === "select" && (
+                      <>
+                        <MultiSelectDropdown
+                          id={`filter-param-${key}`}
+                          options={p.options || []}
+                          value={
+                            Array.isArray(filters[key])
+                              ? filters[key]
+                              : filters[key]
+                                ? [filters[key]]
+                                : []
+                          }
+                          onChange={(val) => setFilter(key, val)}
+                          placeholder="All"
+                        />
+                        {filters[key] !== undefined &&
+                          (Array.isArray(filters[key])
+                            ? filters[key].length > 0
+                            : filters[key] !== "") && (
+                            <ClearButton
+                              onClick={() => setFilter(key, [])}
+                              isSelect
+                            />
+                          )}
+                      </>
+                    )}
+
+                    {(p.type === "text" ||
+                      p.type === "number" ||
+                      p.type === "date") && (
+                      <>
+                        <input
+                          id={`filter-param-${key}`}
+                          type="text"
+                          className="filter-input"
+                          value={filters[key] || ""}
+                          onChange={(e) => setFilter(key, e.target.value)}
+                          placeholder={
+                            p.type === "date"
+                              ? "YYYY-MM-DD or >..."
+                              : p.type === "number"
+                                ? "e.g. >10 or 10-20"
+                                : ""
+                          }
+                          style={{ width: "100%", paddingRight: "24px" }}
+                        />
+                        {filters[key] !== undefined && filters[key] !== "" && (
+                          <ClearButton onClick={() => setFilter(key, "")} />
+                        )}
+                      </>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
-          </div>
-        )}
+                </div>
+              ))}
+
+              {isTradableFilterable && (
+                <div className="filter-item">
+                  <label>Tradable</label>
+                  <div style={{ position: "relative", width: "100%" }}>
+                    <select
+                      className="select-control"
+                      value={filters.__tradable__ ?? ""}
+                      onChange={(e) =>
+                        setFilter(
+                          "__tradable__",
+                          e.target.value === ""
+                            ? ""
+                            : e.target.value === "true",
+                        )
+                      }
+                      style={{ width: "100%", paddingRight: "24px" }}
+                    >
+                      <option value="">All</option>
+                      <option value="true">Yes</option>
+                      <option value="false">No</option>
+                    </select>
+                    {filters.__tradable__ !== undefined &&
+                      filters.__tradable__ !== "" && (
+                        <ClearButton
+                          onClick={() => setFilter("__tradable__", "")}
+                          isSelect
+                        />
+                      )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="grid-header">
         <div className="command-left">
-          {/* Spacer or left-aligned content if needed in future */}
         </div>
+
+        {fetchProgress.total > 0 && (
+          <div className={`sync-activity-badge ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
+            <div className="status-dot" />
+            <span>Fetching metrics in background..</span>
+            <span className="percent">
+              {Math.round((fetchProgress.completed / fetchProgress.total) * 100)}%
+            </span>
+          </div>
+        )}
 
         <div className="command-right">
           <div className="dropdown-action-group" ref={exportMenuRef}>
@@ -1253,19 +1413,41 @@ export default function StockGrid({
               className="action-pill"
               onClick={() => setExportMenuOpen(!exportMenuOpen)}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" style={{ width: "14px", height: "14px" }}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                style={{ width: "14px", height: "14px" }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5m-13.5-9L12 3m0 0 4.5 4.5M12 3v13.5"
+                />
               </svg>
               <span>Export</span>
             </button>
             {exportMenuOpen && (
               <ul className="action-dropdown shadow">
                 <li onClick={() => handleExport("csv", "all")}>CSV / All</li>
-                <li onClick={() => handleExport("csv", "filtered")}>CSV / Filtered</li>
+                <li onClick={() => handleExport("csv", "filtered")}>
+                  CSV / Filtered
+                </li>
                 <li onClick={() => handleExport("json", "all")}>JSON / All</li>
-                <li onClick={() => handleExport("json", "filtered")}>JSON / Filtered</li>
+                <li onClick={() => handleExport("json", "filtered")}>
+                  JSON / Filtered
+                </li>
                 <li className="divider" />
-                <li onClick={() => { setExportMenuOpen(false); onExportAll(); }}>JSON / Backup</li>
+                <li
+                  onClick={() => {
+                    setExportMenuOpen(false);
+                    onExportAll();
+                  }}
+                >
+                  JSON / Backup
+                </li>
               </ul>
             )}
           </div>
@@ -1275,23 +1457,47 @@ export default function StockGrid({
               className="action-pill"
               onClick={() => setImportMenuOpen(!importMenuOpen)}
             >
-              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth={2} stroke="currentColor" style={{ width: "14px", height: "14px" }}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M12 3v13.5m0 0-4.5-4.5M12 16.5l4.5-4.5" />
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth={2}
+                stroke="currentColor"
+                style={{ width: "14px", height: "14px" }}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M12 3v13.5m0 0-4.5-4.5M12 16.5l4.5-4.5"
+                />
               </svg>
               <span>Import</span>
             </button>
             {importMenuOpen && (
               <ul className="action-dropdown shadow">
-                <li onClick={() => triggerImport("stocks")}>JSON / Current Week</li>
+                <li onClick={() => triggerImport("stocks")}>
+                  JSON / Current Week
+                </li>
                 <li onClick={() => triggerImport("tv")}>TXT / TradingView</li>
                 <li className="divider" />
-                <li onClick={() => triggerImport("backup")}>JSON / Full Backup</li>
+                <li onClick={() => triggerImport("backup")}>
+                  JSON / Full Backup
+                </li>
               </ul>
             )}
-            <input ref={fileInputRef} type="file" accept=".json" onChange={handleFileChange} hidden />
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept=".json"
+              onChange={handleFileChange}
+              hidden
+            />
           </div>
 
-          <button className="add-stock-cta" onClick={() => setShowAddStock(true)}>
+          <button
+            className="add-stock-cta"
+            onClick={() => setShowAddStock(true)}
+          >
             <span className="cta-icon">＋</span>
             Add
           </button>
@@ -1351,7 +1557,15 @@ export default function StockGrid({
         />
       )}
 
-      <div className="grid-scroll">
+      <div className="grid-scroll" style={{ position: "relative" }}>
+        {fetchProgress.total > 0 && (
+          <div className={`grid-sync-progress ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
+            <div 
+              className="grid-sync-progress-bar" 
+              style={{ "--progress-width": `${(fetchProgress.completed / fetchProgress.total) * 100}%` }}
+            />
+          </div>
+        )}
         <table className="grid-table">
           <thead>
             <tr>
@@ -1361,9 +1575,9 @@ export default function StockGrid({
                 style={
                   colWidths["symbol"]
                     ? {
-                      width: `${colWidths["symbol"]}px`,
-                      minWidth: `${colWidths["symbol"]}px`,
-                    }
+                        width: `${colWidths["symbol"]}px`,
+                        minWidth: `${colWidths["symbol"]}px`,
+                      }
                     : {}
                 }
               >
@@ -1373,7 +1587,9 @@ export default function StockGrid({
                     className="copy-stocks-btn"
                     onClick={(e) => {
                       e.stopPropagation();
-                      const symbols = sortedStocks.map((s) => s.symbol).join(", ");
+                      const symbols = sortedStocks
+                        .map((s) => s.symbol)
+                        .join(", ");
                       navigator.clipboard.writeText(symbols).then(() => {
                         setCopiedStocks(true);
                         setTimeout(() => setCopiedStocks(false), 2000);
@@ -1381,13 +1597,24 @@ export default function StockGrid({
                     }}
                     title="Copy all visible stock symbols"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="square">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2"
+                      strokeLinecap="square"
+                    >
                       <rect x="9" y="9" width="10" height="10" />
                       <path d="M5 15V5h10" />
                     </svg>
                   </button>
                   {copiedStocks && (
-                    <span className="copy-inline-toast">Copied {sortedStocks.length} stocks!</span>
+                    <span className="copy-inline-toast">
+                      Copied {sortedStocks.length} stocks!
+                    </span>
                   )}
                 </div>
                 <div
@@ -1402,9 +1629,9 @@ export default function StockGrid({
                 style={
                   colWidths["sector"]
                     ? {
-                      width: `${colWidths["sector"]}px`,
-                      minWidth: `${colWidths["sector"]}px`,
-                    }
+                        width: `${colWidths["sector"]}px`,
+                        minWidth: `${colWidths["sector"]}px`,
+                      }
                     : {}
                 }
               >
@@ -1417,7 +1644,11 @@ export default function StockGrid({
                 />
               </th>
               {visibleParams.map(([key, p]) => {
-                const isSortable = p.type === "number" || p.type === "date" || p.type === "select" || p.type === "checkbox";
+                const isSortable =
+                  p.type === "number" ||
+                  p.type === "date" ||
+                  p.type === "select" ||
+                  p.type === "checkbox";
                 return (
                   <th
                     key={key}
@@ -1426,11 +1657,11 @@ export default function StockGrid({
                     style={{
                       ...(colWidths[key]
                         ? {
-                          width: `${colWidths[key]}px`,
-                          minWidth: `${colWidths[key]}px`,
-                        }
+                            width: `${colWidths[key]}px`,
+                            minWidth: `${colWidths[key]}px`,
+                          }
                         : {}),
-                      cursor: isSortable ? "pointer" : "default"
+                      cursor: isSortable ? "pointer" : "default",
                     }}
                   >
                     {p.label}
@@ -1451,9 +1682,9 @@ export default function StockGrid({
                 style={
                   colWidths["__checks__"]
                     ? {
-                      width: `${colWidths["__checks__"]}px`,
-                      minWidth: `${colWidths["__checks__"]}px`,
-                    }
+                        width: `${colWidths["__checks__"]}px`,
+                        minWidth: `${colWidths["__checks__"]}px`,
+                      }
                     : {}
                 }
               >
@@ -1471,9 +1702,9 @@ export default function StockGrid({
                 style={
                   colWidths["tradable"]
                     ? {
-                      width: `${colWidths["tradable"]}px`,
-                      minWidth: `${colWidths["tradable"]}px`,
-                    }
+                        width: `${colWidths["tradable"]}px`,
+                        minWidth: `${colWidths["tradable"]}px`,
+                      }
                     : {}
                 }
               >
@@ -1491,9 +1722,9 @@ export default function StockGrid({
                   style={
                     colWidths["__notes__"]
                       ? {
-                        width: `${colWidths["__notes__"]}px`,
-                        minWidth: `${colWidths["__notes__"]}px`,
-                      }
+                          width: `${colWidths["__notes__"]}px`,
+                          minWidth: `${colWidths["__notes__"]}px`,
+                        }
                       : {}
                   }
                 >
@@ -1522,7 +1753,11 @@ export default function StockGrid({
                   <div className="stock-cell-content">
                     <div className="stock-header-row">
                       <span
-                        className={!isReadOnly ? "stock-name stock-symbol-link" : "stock-name"}
+                        className={
+                          !isReadOnly
+                            ? "stock-name stock-symbol-link"
+                            : "stock-name"
+                        }
                         onClick={(e) => {
                           if (!isReadOnly) {
                             e.stopPropagation();
@@ -1758,9 +1993,7 @@ export default function StockGrid({
                   </td>
                 ))}
 
-                <td className="checks-cell">
-                  {renderChecksBadge(stock)}
-                </td>
+                <td className="checks-cell">{renderChecksBadge(stock)}</td>
 
                 <td>
                   <input

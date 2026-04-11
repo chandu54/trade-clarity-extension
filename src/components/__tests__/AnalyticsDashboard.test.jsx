@@ -90,7 +90,7 @@ describe('AnalyticsDashboard', () => {
 
   it('calls onClose when the close button is clicked', () => {
     renderWithContext(<AnalyticsDashboard {...props} />);
-    const closeBtn = screen.getByText('×');
+    const closeBtn = screen.getByTitle('Close');
     fireEvent.click(closeBtn);
     expect(props.onClose).toHaveBeenCalled();
   });

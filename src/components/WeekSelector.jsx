@@ -1,24 +1,6 @@
 import WeekSummary from "./WeekSummary";
 import { useEffect, useState, useRef } from "react";
-import { getLocalDateString, getSundayOfWeek } from "../utils/weekHelpers";
-
-function getWeekRangeLabel(sundayDateStr) {
-  const [y, m, d] = sundayDateStr.split("-").map(Number);
-  const sunday = new Date(y, m - 1, d);
-  const monday = new Date(sunday);
-  monday.setDate(sunday.getDate() + 1);
-  const friday = new Date(sunday);
-  friday.setDate(sunday.getDate() + 5);
-
-  const formatDate = (date) => {
-    const d = String(date.getDate()).padStart(2, "0");
-    const m = String(date.getMonth() + 1).padStart(2, "0");
-    const y = date.getFullYear();
-    return `${d}-${m}-${y}`;
-  };
-
-  return `${formatDate(monday)} to ${formatDate(friday)}`;
-}
+import { getLocalDateString, getSundayOfWeek, getWeekRangeLabel } from "../utils/weekHelpers";
 
 export default function WeekSelector({
   data,

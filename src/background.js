@@ -10,6 +10,8 @@ chrome.action.onClicked.addListener(() => {
 
 let processingQueue = [];
 let isProcessing = false;
+let totalJobs = 0;
+let completedJobs = 0;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "OPEN_DASHBOARD") {
@@ -43,6 +45,8 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         liquidityDays,
       });
     });
+
+    totalJobs += symbols.length;
 
     if (!isProcessing) {
       processQueue();
@@ -96,10 +100,20 @@ async function processQueue() {
     await updateStorageWithMetrics(successfulUpdates);
   }
 
+  completedJobs += batch.length;
+  // Fire-and-forget message, catch error if no tab is listening
+  chrome.runtime.sendMessage({
+    action: "FETCH_PROGRESS",
+    payload: { total: totalJobs, completed: completedJobs }
+  }).catch(() => {});
+
   if (processingQueue.length > 0) {
     setTimeout(processQueue, CONFIG.BATCH_DELAY_MS);
   } else {
     isProcessing = false;
+    // reset trackers so next batch starts clean
+    totalJobs = 0;
+    completedJobs = 0;
   }
 }
 

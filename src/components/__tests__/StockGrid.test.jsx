@@ -98,11 +98,11 @@ describe('StockGrid', () => {
     fireEvent.click(filterToggle);
 
     const sectorSelect = screen.getByLabelText('Sector');
+    fireEvent.click(sectorSelect); // Open dropdown
     
     // 'Tech' is IN/US, 'Finance' is IN only. So Finance should be missing in US.
-    const options = Array.from(sectorSelect.options).map(o => o.text);
-    expect(options).toContain('Tech');
-    expect(options).not.toContain('Finance');
+    expect(screen.getByText('Tech', { selector: '.multi-select-label' })).toBeDefined();
+    expect(screen.queryByText('Finance', { selector: '.multi-select-label' })).toBeNull();
   });
 
   it('calculates diagnostics using only relevant check parameters', () => {

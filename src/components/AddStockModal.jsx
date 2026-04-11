@@ -120,7 +120,7 @@ export default function AddStockModal({ onAdd, onImport, onClose, existingStocks
               placeholder="e.g. AAPL, MSFT, TCS, INFY"
               value={value}
               onChange={(e) => {
-                setValue(e.target.value);
+                setValue(e.target.value.toUpperCase());
                 setError("");
               }}
               onKeyDown={(e) => e.key === "Enter" && handleAdd()}
