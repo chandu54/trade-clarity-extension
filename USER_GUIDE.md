@@ -96,6 +96,7 @@ Once your stocks are in the grid, it's time to process them.
   - Use the **Filters** bar (top of grid) to show only specific Sectors or Tags.
   - Filter by your custom parameters (e.g., Show only stocks where "Trend" is "Up").
 - **Mark as Tradable**: When a stock meets all your criteria, check the **Tradable** box. This is your final "Shortlist."
+- **Live Syncing**: When you add new symbols or switch weeks, TradeClarity automatically fetches metrics like ADR and Liquidity in the background. A progress bar will appear in the grid header during this process.
 
 ---
 
@@ -112,6 +113,7 @@ Click the **Bar Chart Icon** next to the "Analyze" button to open the dashboard.
   - **Reorder**: Drag and drop widgets to arrange them by importance.
   - **Visibility**: Use the **Settings (⚙️)** inside the dashboard to hide less relevant metrics.
 - **Trend**: View the "Stock Universe Trend" to see if your watchlist size is expanding (bullish) or contracting (bearish) over time.
+- **Download Report**: Click the **Download (Arrow Down)** icon in the dashboard header to generate a professional PDF report. This opens your browser's print dialog—select **"Save as PDF"** to keep or share your analysis.
 
 ### 🔍 Category Analysis (Deep Dive)
 
@@ -169,6 +171,17 @@ Hover over the **"i" icon** next to the week dropdown.
 - To import your picks into a trading platform (like TradingView or a broker):
   1.  Filter your grid (e.g., show only "Tradable" stocks).
   2.  Click **Export > CSV / Filtered Stocks**.
+
+### 🗑️ Data Purging (Maintenance)
+
+As your database grows over many months, you may want to clean up old data to keep the app performing optimally.
+
+- **Location**: **Settings (⚙️) > Data Management**.
+- **Purge Specific Weeks**: Select multiple historical weeks from the list to permanently delete them from the local database.
+- **Safety Lock**: 
+    - You cannot delete the **Current Active Week**.
+    - For bulk deletions, you must type a confirmation string (e.g., `delete US data`) to finalize the action.
+- **Full Reset**: Use the **Reset All** button in the main header for a complete factory reset (Irreversible).
 
 ---
 

@@ -241,6 +241,9 @@ export default function UserGuideModal({
               Mark stocks as "Tradable" to add them to your final execution
               list.
             </li>
+            <li>
+              <strong>Live Syncing:</strong> When adding stocks or switching weeks, the app automatically fetches ADR and Liquidity in the background. A progress bar in the header tracks this status.
+            </li>
           </ul>
         </Section>
 
@@ -289,7 +292,7 @@ export default function UserGuideModal({
             </li>
             <li>
               <strong>Analytics (Chart Icon):</strong> Visualize distributions
-              of Sectors, Tags, and Parameters to spot concentration risks.
+              of Sectors, Tags, and Parameters to spot concentration risks. Use the <strong>Download</strong> button to save a professional PDF report.
             </li>
             <li>
               <strong>AI Analysis (✨):</strong> Sends anonymized data to Google
@@ -381,14 +384,16 @@ export default function UserGuideModal({
             </li>
           </ul>
 
-          <h5 className="guide-subsection-title">⚠️ Reset Data</h5>
+          <h5 className="guide-subsection-title">⚠️ Maintenance & Reset</h5>
           <ul className="guide-list">
+            <li>
+              <strong>Purge Old Weeks:</strong> Navigate to <em>Settings {"→"} Data Management</em> to permanently delete historical weeks and clean up storage. (Safe Lock: Type confirmation text to delete).
+            </li>
             <li>
               <strong>Clear Week:</strong> Empties the current week only.
             </li>
             <li>
-              <strong>Clear All Data:</strong> Permanently deletes everything.
-              Irreversible.
+              <strong>Clear All Data:</strong> Permanently deletes everything across all regions.
             </li>
           </ul>
         </Section>
