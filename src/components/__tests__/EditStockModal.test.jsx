@@ -122,8 +122,8 @@ describe('EditStockModal', () => {
     const yahooLink = screen.getByTitle(/View on Yahoo Finance/i);
     
     expect(tvLink.getAttribute('href')).toContain('tradingview.com');
-    // US stock (AAPL) should have NASDAQ prefix
-    expect(tvLink.getAttribute('href')).toContain('NASDAQ:AAPL');
+    // US stock (AAPL) should be linkable directly
+    expect(tvLink.getAttribute('href')).toContain('symbol=AAPL');
     expect(yahooLink.getAttribute('href')).toContain('finance.yahoo.com/quote/AAPL');
   });
 

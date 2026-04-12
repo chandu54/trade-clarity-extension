@@ -37,8 +37,10 @@ export default function MiniCandlestickChart({
 
   const handleOpenTradingView = (e) => {
     e.stopPropagation();
-    const exchange = country === 'IN' ? 'NSE' : 'NASDAQ';
-    window.open(`https://www.tradingview.com/chart/?symbol=${exchange}:${symbol}`, '_blank');
+    const url = country === 'IN' 
+      ? `https://www.tradingview.com/chart/?symbol=NSE:${symbol}` 
+      : `https://www.tradingview.com/chart/?symbol=${symbol}`;
+    window.open(url, '_blank');
   };
 
   useEffect(() => {

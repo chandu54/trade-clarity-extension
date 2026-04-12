@@ -457,7 +457,7 @@ export default function EditStockModal({
                 
                 <div className="header-utility-icons-premium">
                   <a
-                    href={country === 'IN' ? `https://www.tradingview.com/chart/?symbol=NSE:${formData.symbol}` : `https://www.tradingview.com/chart/?symbol=NASDAQ:${formData.symbol}`}
+                    href={country === 'IN' ? `https://www.tradingview.com/chart/?symbol=NSE:${formData.symbol}` : `https://www.tradingview.com/chart/?symbol=${formData.symbol}`}
                     target="_blank"
                     rel="noopener noreferrer"
                     className="header-icon-action-btn"
