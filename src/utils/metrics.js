@@ -94,7 +94,36 @@ export function mapLiquidityBucket(liquidityValue, liqDef, country) {
          else if (targetNumVal <= 1999) return "1500Cr+";
          else return "2000Cr+";
      } else {
-         return `${targetNumVal.toFixed(2)}M`;
-     }
+      return `${targetNumVal.toFixed(2)}M`;
+    }
   }
+}
+
+export function calculateSMA(closes, period) {
+  if (!closes || closes.length < period) return null;
+  const slice = closes.slice(-period);
+  const sum = slice.reduce((acc, val) => acc + (val || 0), 0);
+  return sum / period;
+}
+
+export function mapMovingAverageBucket(closes, currentPrice) {
+  if (!closes || closes.length === 0 || currentPrice == null) return "";
+
+  const ma5 = calculateSMA(closes, 5);
+  const ma10 = calculateSMA(closes, 10);
+  const ma21 = calculateSMA(closes, 21);
+  const ma50 = calculateSMA(closes, 50);
+  const ma200 = calculateSMA(closes, 200);
+
+  const above = [];
+  if (ma5 !== null && currentPrice > ma5) above.push("5");
+  if (ma10 !== null && currentPrice > ma10) above.push("10");
+  if (ma21 !== null && currentPrice > ma21) above.push("21");
+  if (ma50 !== null && currentPrice > ma50) above.push("50");
+  if (ma200 !== null && currentPrice > ma200) above.push("200");
+
+  if (above.length === 0) return "Below All MAs";
+  if (above.length === 5) return "Above 5, 10, 21, 50, 200";
+  
+  return `Above ${above.join(", ")}`;
 }

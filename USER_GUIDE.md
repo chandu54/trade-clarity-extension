@@ -97,6 +97,10 @@ Once your stocks are in the grid, it's time to process them.
   - Filter by your custom parameters (e.g., Show only stocks where "Trend" is "Up").
 - **Mark as Tradable**: When a stock meets all your criteria, check the **Tradable** box. This is your final "Shortlist."
 - **Live Syncing**: When you add new symbols or switch weeks, TradeClarity automatically fetches metrics like ADR and Liquidity in the background. A progress bar will appear in the grid header during this process.
+- **Data Freshness**: Check the **"Last synced"** timestamp in the top-left of the grid header. It shows the exact time your technical data was last refreshed from the market.
+- **Institutional Technicals (New)**: Both the grid and edit modal now feature a centralized **Moving Average Ribbon**.
+  - **Color-Coded Trend**: Green/Emerald badges indicate price is **ABOVE** that MA level; Red/Rose badges indicate price is **BELOW**.
+  - **Quick Scan**: Instantly see if a stock is in a "Full Trend" (all 5 badges green) or showing weakness.
 
 ---
 
@@ -212,14 +216,17 @@ The TradeClarity Widget allows you to manage your weekly watchlist directly from
 
 - Navigate to any chart on TradingView.
 - The **TradeClarity** widget will appear automatically as a floating panel.
+- **High-Density Header**: The widget uses a 3-row "Cockpit" layout to maximize your research space:
+  - **Row 1**: Branding and Window Controls (Mic, Dashboard Link, Close).
+  - **Row 2**: Region Selector (US/IN) and Date/Week Picker.
+  - **Row 3**: Active Symbol and **Integrated Technical Ribbon** (MA Status).
 - **Symbol Detection**: The widget automatically updates to match the ticker symbol of the chart you are viewing.
+- **Trend at a Glance**: Check the 5 technical badges next to the symbol to verify the trend without leaving your chart.
 
 ### 2. Interface Controls
 
 - **Minimize/Maximize**: Click the header bar (where the logo and symbol are) to toggle the widget open or closed.
 - **Move**: Click and drag the header to reposition the widget anywhere on your screen. The position is saved for your session.
-- **Region**: Use the dropdown in the header to switch between market regions (e.g., `IN` for India, `US` for USA).
-- **Date**: The date picker defaults to the current week. Change this if you are planning for a future week or reviewing a past one.
 
 ### 3. Managing a Setup
 

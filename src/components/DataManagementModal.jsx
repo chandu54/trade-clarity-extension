@@ -118,7 +118,12 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
                           </svg>
                         )}
                       </div>
-                      <span className="data-week-label">Week: {getWeekRangeLabel(wk)}</span>
+                      <div className="data-week-labels">
+                        <span className="data-week-label">Week: {getWeekRangeLabel(wk)}</span>
+                        <span className="data-week-sync-info">
+                          Last Synced: {data.weeks?.[country]?.[wk]?.lastSyncDate || "Never"}
+                        </span>
+                      </div>
                     </div>
 
                     {isCurrent && (

@@ -3,7 +3,9 @@ import { CONFIG } from "./config";
 export const EMPTY_DATA = {
   weeks: {},
   paramDefinitions: {},
-  uiConfig: {},
+  uiConfig: {
+    autoRefreshMetrics: true
+  },
   aiSettings: {
     apiKey: "",
     model: CONFIG.DEFAULT_AI_MODEL,

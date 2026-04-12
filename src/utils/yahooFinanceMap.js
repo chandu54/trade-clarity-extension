@@ -36,28 +36,31 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
 
       const meta = result.meta || {};
       const quote = result.indicators?.quote?.[0] || {};
+      const adjIndicators = result.indicators?.adjclose?.[0]?.adjclose || [];
       const timestamps = result.timestamp || [];
       const closes = quote.close || [];
       const opens = quote.open || [];
       const highs = quote.high || [];
       const lows = quote.low || [];
 
-      // Build candlesticks
-      const candlesticks = [];
+      // Build candlesticks with strict validation and optional adjusted close support
+      let rawBars = [];
       for (let i = 0; i < timestamps.length; i++) {
-        if (closes[i] !== null && opens[i] !== null && highs[i] !== null && lows[i] !== null) {
-          // lightweight-charts needs time in seconds or string (YYYY-MM-DD for daily)
-          candlesticks.push({
+        const closePrice = (adjIndicators[i] !== null && adjIndicators[i] !== undefined) ? adjIndicators[i] : closes[i];
+        
+        if (timestamps[i] != null && closePrice != null && opens[i] != null && highs[i] != null && lows[i] != null) {
+          rawBars.push({
             time: timestamps[i],
             open: opens[i],
             high: highs[i],
             low: lows[i],
-            close: closes[i]
+            close: closePrice
           });
         }
       }
 
-      const currentPrice = meta.regularMarketPrice;
+      const candlesticks = rawBars.sort((a, b) => a.time - b.time);
+      const currentPrice = meta.regularMarketPrice || (candlesticks.length > 0 ? candlesticks[candlesticks.length - 1].close : 0);
       const prevClose = meta.chartPreviousClose || meta.previousClose || (candlesticks.length > 1 ? candlesticks[candlesticks.length - 2].close : currentPrice);
       const isAdvancing = currentPrice >= prevClose;
       const dailyChange = currentPrice - prevClose;

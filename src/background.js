@@ -1,4 +1,4 @@
-import { mapAdrBucket, mapLiquidityBucket } from "./utils/metrics.js";
+import { mapAdrBucket, mapLiquidityBucket, mapMovingAverageBucket } from "./utils/metrics.js";
 import { getActualParamKeyAndDef } from "./utils/paramUtils.js";
 import { CONFIG } from "./constants/config.js";
 
@@ -145,7 +145,7 @@ async function fetchAndCalculateMetrics(
       ticker = `${symbol}.NS`;
     }
 
-    const maxDays = Math.max(adrDays, liquidityDays);
+    const maxDays = Math.max(adrDays, liquidityDays, 250);
     let range = "1mo";
     if (maxDays > 20) range = "3mo";
     if (maxDays > 60) range = "6mo";
@@ -172,30 +172,38 @@ async function fetchAndCalculateMetrics(
     }
 
     const quotes = result.indicators.quote[0];
+    const adjCloses = result.indicators.adjclose?.[0]?.adjclose || [];
+    const timestamps = result.timestamp || [];
     const highs = quotes.high || [];
     const lows = quotes.low || [];
     const closes = quotes.close || [];
     const volumes = quotes.volume || [];
 
-    // Filter out nulls/undefined from Yahoo API missing days
-    const validDays = [];
-    for (let i = 0; i < closes.length; i++) {
-      if (
-        highs[i] != null &&
-        lows[i] != null &&
-        closes[i] != null &&
-        volumes[i] != null
-      ) {
-        validDays.push({
-          high: highs[i],
-          low: lows[i],
-          close: closes[i],
-          volume: volumes[i],
-        });
-      }
+    // Filter and build historical bars with timestamps for sorting
+    let rawBars = [];
+    for (let i = 0; i < timestamps.length; i++) {
+        const closeVal = adjCloses[i] !== undefined && adjCloses[i] !== null ? adjCloses[i] : closes[i];
+        if (
+            timestamps[i] != null &&
+            highs[i] != null &&
+            lows[i] != null &&
+            closeVal != null &&
+            volumes[i] != null
+        ) {
+            rawBars.push({
+                timestamp: timestamps[i],
+                high: highs[i],
+                low: lows[i],
+                close: closeVal, // Use adjusted close for SMA/Calculations
+                volume: volumes[i],
+            });
+        }
     }
 
-    if (validDays.length === 0) return null;
+    if (rawBars.length === 0) return null;
+
+    // Strict chronological sort: Oldest -> Newest
+    const validDays = rawBars.sort((a, b) => a.timestamp - b.timestamp);
 
     let totalAdR = 0;
     let totalVolume = 0;
@@ -236,11 +244,17 @@ async function fetchAndCalculateMetrics(
     // --- LIQUIDITY MAPPING ---
     formattedLiquidity = mapLiquidityBucket(liquidityValue, liqDef, country);
 
+    // --- MOVING AVERAGES MAPPING ---
+    const maMatch = getActualParamKeyAndDef(paramDefs, "movingAverages", "Moving Averages", country);
+    const maBucket = mapMovingAverageBucket(validDays.map(d => d.close), lastClosePrice);
+
     return {
       adr: formattedAdr,
       liquidity: formattedLiquidity,
+      movingAverages: maBucket,
       adrKey: adrMatch.key,
       liquidityKey: liqMatch.key,
+      movingAveragesKey: maMatch.key,
     };
   } catch (error) {
     throw error;
@@ -266,16 +280,22 @@ async function updateStorageWithMetrics(updates) {
 
           const adrKey = metrics.adrKey || "adr";
           const liqKey = metrics.liquidityKey || "liquidity";
+          const maKey = metrics.movingAveragesKey || "movingAverages";
 
           // Only update if changed
           if (
             stock.params[adrKey] !== metrics.adr ||
-            stock.params[liqKey] !== metrics.liquidity
+            stock.params[liqKey] !== metrics.liquidity ||
+            stock.params[maKey] !== metrics.movingAverages
           ) {
             stock.params[adrKey] = metrics.adr;
             stock.params[liqKey] = metrics.liquidity;
+            stock.params[maKey] = metrics.movingAverages;
             dataChanged = true;
           }
+
+          // Update the week-level timestamp whenever we process a successful sync
+          weekData.lastUpdatedTime = Date.now();
         }
       });
 

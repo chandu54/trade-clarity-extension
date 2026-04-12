@@ -18,13 +18,27 @@ function getWeekKey(dateStr) {
   return `${sunday.getFullYear()}-${String(sunday.getMonth() + 1).padStart(2, "0")}-${String(sunday.getDate()).padStart(2, "0")}`;
 }
 
+import MovingAverageRibbon from "../components/MovingAverageRibbon";
+
 // --- ENVIRONMENT HELPERS ---
 const isExtension = typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.id;
 
+const isContextValid = () => {
+  try {
+    return !!(chrome.runtime && chrome.runtime.id);
+  } catch (e) {
+    return false;
+  }
+};
+
 const safeStorage = {
   get: (keys, callback) => {
-    if (isExtension) {
-      chrome.storage.local.get(keys, callback);
+    if (isExtension && isContextValid()) {
+      try {
+        chrome.storage.local.get(keys, callback);
+      } catch (e) {
+        console.warn("TradeClarity: Storage context lost. Refresh recommended.");
+      }
     } else {
       // Web Fallback: localStorage
       const result = {};
@@ -39,15 +53,19 @@ const safeStorage = {
     }
   },
   set: (items, callback) => {
-    if (isExtension) {
-      chrome.storage.local.set(items, () => {
-        if (chrome.runtime.lastError) {
-          console.error("Storage Error:", chrome.runtime.lastError.message);
-          if (callback) callback(chrome.runtime.lastError);
-        } else {
-          if (callback) callback(null);
-        }
-      });
+    if (isExtension && isContextValid()) {
+      try {
+        chrome.storage.local.set(items, () => {
+          if (chrome.runtime.lastError) {
+            console.error("Storage Error:", chrome.runtime.lastError.message);
+            if (callback) callback(chrome.runtime.lastError);
+          } else {
+            if (callback) callback(null);
+          }
+        });
+      } catch (e) {
+        console.warn("TradeClarity: Storage context lost. Refresh recommended.");
+      }
     } else {
       // Web Fallback: localStorage
       try {
@@ -204,11 +222,31 @@ const TradeClarityWidget = () => {
 
   // Settings & Storage Listeners
   useEffect(() => {
-    if (!isExtension) return; // Skip chrome listeners in web mode
+    if (!isExtension) return; 
+    
     const handleStorageChange = (changes, area) => {
-      if (area === 'local' && changes.trading_app_data) setAppData(changes.trading_app_data.newValue);
+      try {
+        if (isContextValid() && area === 'local' && changes.trading_app_data) {
+          setAppData(changes.trading_app_data.newValue);
+        }
+      } catch (e) {
+        // Context likely invalidated
+      }
     };
-    chrome.storage.onChanged.addListener(handleStorageChange); return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+
+    try {
+      if (isContextValid()) {
+        chrome.storage.onChanged.addListener(handleStorageChange);
+      }
+    } catch (e) {}
+
+    return () => {
+      try {
+        if (isContextValid()) {
+          chrome.storage.onChanged.removeListener(handleStorageChange);
+        }
+      } catch (e) {}
+    };
   }, []);
 
   useEffect(() => {
@@ -342,7 +380,7 @@ const TradeClarityWidget = () => {
         }
         
         // Auto-fetch metrics if enabled
-        if (newData.uiConfig?.enableApiHydration === true && isExtension) {
+        if (newData.uiConfig?.enableApiHydration === true && isExtension && isContextValid()) {
           try {
             chrome.runtime.sendMessage({
               action: "FETCH_STOCK_METRICS",
@@ -956,74 +994,67 @@ const TradeClarityWidget = () => {
         onMouseDown={handleMouseDown}
         onClick={toggleWidget}
       >
-        {/* Top Row: Title + Window Controls (Proper Flexbox Layout) */}
-        <div className="flex items-start justify-between mb-2">
-
-          {/* Left: Branding & Symbol */}
-          <div className="flex flex-col gap-1.5 min-w-0 pr-2">
-            <div className="flex items-center gap-1.5 overflow-hidden">
-              <div className="flex items-baseline gap-0 leading-none cursor-default select-none">
-                <span className="font-extrabold tracking-tight shrink-0 text-white text-[15px]">TradeClarity</span>
-                <span className="font-black shrink-0 text-[#00d1ff] mx-px text-[15px] shadow-[0_0_10px_rgba(0,209,255,0.3)] inline-block scale-110">.</span>
-                <span className="font-light shrink-0 text-white/90 text-[14px] tracking-[0.08em] inline-block translate-y-[0.5px]">market</span>
-              </div>
-            </div>
-            <span
-              className="border px-1.5 py-0.5 rounded text-[11px] font-mono shadow-sm font-bold bg-slate-800 border-slate-600 text-blue-400 w-fit break-all"
-              title={symbol}
-            >
-              {symbol}
-            </span>
+        {/* Row 1: App Identity + Global Toolset */}
+        <div className="flex items-center justify-between gap-1 mb-1">
+          <div className="flex items-baseline gap-0 cursor-default select-none shrink-0 pr-1">
+            <span className="font-extrabold tracking-tight text-white text-[14px]">TradeClarity</span>
+            <span className="font-black text-[#00d1ff] mx-px text-[14px]">.</span>
+            <span className="font-light text-white/90 text-[13px] tracking-tight">market</span>
           </div>
 
-          {/* Right: Window Controls & Mic */}
           <div
-            className="flex items-center gap-0.5 rounded-lg px-1 py-0.5 border shrink-0 bg-slate-800/50 border-slate-600/50"
+            className="flex items-center gap-0.5 rounded-lg px-0.5 py-0.5 border shrink-0 bg-slate-800/50 border-slate-600/50 scale-90 origin-right"
             onMouseDown={(e) => e.stopPropagation()}
           >
-            <button
-              onClick={toggleListening}
-              className={`transition-colors p-1 rounded ${isListening
-                  ? 'text-red-500 bg-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.4)] animate-[pulse_1.5s_ease-in-out_infinite]'
-                  : 'text-slate-400 hover:text-blue-400 hover:bg-slate-700/50'
-                }`}
-              title="Voice Commands (Ctrl+Shift+S)"
-            >
+            <button onClick={toggleListening} className={`transition-colors p-1 rounded ${isListening ? 'text-red-500 bg-red-500/20 shadow-[0_0_10px_rgba(239,68,68,0.4)] animate-[pulse_1.5s_ease-in-out_infinite]' : 'text-slate-400 hover:text-blue-400 hover:bg-slate-700/50'}`} title="Voice Commands (Ctrl+Shift+S)">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M19 10v2a7 7 0 01-14 0v-2M12 18v4m-4 0h8M12 3a3 3 0 00-3 3v8a3 3 0 006 0V6a3 3 0 00-3-3z"></path></svg>
             </button>
-            <div className="w-px h-3 mx-0.5 bg-slate-600"></div>
-            <button onClick={openDashboard} className="transition-colors p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-700/50" title="Open TradeClarity.market Dashboard">
+            <button onClick={openDashboard} className="transition-colors p-1 rounded text-slate-400 hover:text-blue-400 hover:bg-slate-700/50" title="Open Dashboard">
               <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"></path></svg>
             </button>
-            <div className="w-px h-3 mx-0.5 bg-slate-600"></div>
             <button onClick={(e) => { e.stopPropagation(); setIsOpen(false); }} className="transition-colors p-1 rounded text-slate-400 hover:text-red-400 hover:bg-slate-700/50" title="Minimize">
               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-4 h-4"><path d="M6.28 5.22a.75.75 0 00-1.06 1.06L8.94 10l-3.72 3.72a.75.75 0 101.06 1.06L10 11.06l3.72 3.72a.75.75 0 101.06-1.06L11.06 10l3.72-3.72a.75.75 0 00-1.06-1.06L10 8.94 6.28 5.22z" /></svg>
             </button>
           </div>
         </div>
 
-        {/* Controls Row */}
-        <div
-          className="flex items-center gap-2"
-          onMouseDown={(e) => { e.stopPropagation(); }}
-          onClick={(e) => { e.stopPropagation(); }}
-        >
-          <select
-            value={region}
-            onChange={(e) => setRegion(e.target.value)}
-            className="w-[65px] text-xs border rounded pl-2 pr-6 py-1 focus:border-blue-500 outline-none shadow-sm transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500 appearance-none"
+        {/* Row 2: Config Row (Region + Date) */}
+        <div className="flex items-center gap-1.5 mb-1.5">
+          <div 
+             className="flex-1 flex items-center gap-1 justify-between overflow-hidden"
+             onMouseDown={(e) => e.stopPropagation()}
+             onClick={(e) => e.stopPropagation()}
           >
-            <option value="US">US</option>
-            <option value="IN">IN</option>
-          </select>
-          <input
-            type="date"
-            value={targetDate}
-            onChange={(e) => setTargetDate(e.target.value)}
-            className="flex-1 min-w-0 text-xs border rounded px-2 py-1 focus:border-blue-500 outline-none shadow-sm transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
-            style={{ colorScheme: "dark" }}
-          />
+            <select
+              value={region}
+              onChange={(e) => setRegion(e.target.value)}
+              className="w-[50px] text-[10px] border rounded pl-1 pr-3 py-1 focus:border-blue-500 outline-none transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 appearance-none shrink-0"
+            >
+              <option value="US">US</option>
+              <option value="IN">IN</option>
+            </select>
+            <input
+              type="date"
+              value={targetDate}
+              onChange={(e) => setTargetDate(e.target.value)}
+              className="flex-1 text-[10px] border rounded px-1.5 py-1 focus:border-blue-500 outline-none transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200"
+              style={{ colorScheme: "dark" }}
+            />
+          </div>
         </div>
+
+        {/* Row 3: Asset Status Cluster (Symbol + Ribbon) */}
+        <div className="flex items-center gap-2">
+          <span className="border px-1.5 py-0.5 rounded text-[11px] font-mono shadow-sm font-bold bg-slate-800 border-slate-600 text-blue-400 whitespace-nowrap shrink-0">
+            {symbol}
+          </span>
+          {stockData?.params?.movingAverages && (
+            <div className="scale-90 origin-left">
+              <MovingAverageRibbon value={stockData.params.movingAverages} variant="compact" showLabel={true} />
+            </div>
+          )}
+        </div>
+      </div>
 
         {/* Live Transcript / Listening Indicator */}
         {(isListening || liveTranscript) && (
@@ -1034,7 +1065,6 @@ const TradeClarityWidget = () => {
             </span>
           </div>
         )}
-      </div>
 
       {/* Scrollable Body */}
       <div className="p-3 overflow-y-auto flex-1 themed-scroll">
@@ -1061,6 +1091,7 @@ const TradeClarityWidget = () => {
 
           {/* Dynamic Parameters */}
           {appData?.paramDefinitions && Object.entries(appData.paramDefinitions)
+            .filter(([key]) => key !== 'movingAverages')
             .filter(([key, def]) => {
                if (!def) return false;
                if (!def.countries || def.countries.length === 0) return true;

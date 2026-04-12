@@ -5,6 +5,8 @@ import { fetchStockData } from "../utils/yahooFinanceMap";
 import { getSingleStockAnalysis } from "../services/ai";
 import { isParamRelevantForCountry } from "../utils/paramUtils";
 
+import MovingAverageRibbon from "./MovingAverageRibbon";
+
 export default function EditStockModal({
   isOpen,
   onClose,
@@ -293,7 +295,7 @@ export default function EditStockModal({
           </label>
         </div>
 
-        {sortedParams.map(([key, def]) => (
+        {sortedParams.filter(([key]) => key !== 'movingAverages').map(([key, def]) => (
           <div key={key} className="property-row-item">
             <label>{def.label}</label>
             {def.type === "checkbox" ? (
@@ -437,12 +439,22 @@ export default function EditStockModal({
                 <div className="terminal-header-title-wrapper">
                   <h1 className="symbol-header-hero">{formData.symbol}</h1>
                   {typeof weekInfo === 'string' && weekInfo.trim() !== '' && (
-                    <span className="header-week-info-badge">{weekInfo}</span>
+                    <span className="header-week-info-badge ml-3">{weekInfo}</span>
                   )}
                 </div>
-                <p className="modal-subtitle-hero">{formData.longName}</p>
+                <div className="flex items-center gap-3">
+                  <p className="modal-subtitle-hero">{formData.longName}</p>
+                  {formData.params?.movingAverages && (
+                    <div className="self-center">
+                      <MovingAverageRibbon value={formData.params.movingAverages} variant="compact" />
+                    </div>
+                  )}
+                </div>
               </div>
+
+
               <div className="terminal-header-actions-wrapper">
+                
                 <div className="header-utility-icons-premium">
                   <a
                     href={country === 'IN' ? `https://www.tradingview.com/chart/?symbol=NSE:${formData.symbol}` : `https://www.tradingview.com/chart/?symbol=NASDAQ:${formData.symbol}`}

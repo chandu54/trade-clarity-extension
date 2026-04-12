@@ -29,6 +29,7 @@ export const DEFAULT_DATA = {
       filterable: true,
       isCheck: true,
       idealValues: ["Stage 2"],
+      order: 70,
     },
 
     rs: {
@@ -38,6 +39,7 @@ export const DEFAULT_DATA = {
       filterable: true,
       isCheck: true,
       idealValues: ["Strong"],
+      order: 40,
     },
 
     symmetry: {
@@ -46,12 +48,25 @@ export const DEFAULT_DATA = {
       options: ["Yes", "No", "Not Applicable"],
       filterable: true,
       isCheck: false,
+      order: 60,
     },
-    fractals: {
-      label: "Fractals",
-      type: "checkbox",
+    movingAverages: {
+      label: "Moving Averages",
+      type: "select",
+      options: [
+        "Above 5",
+        "Above 5, 10",
+        "Above 5, 10, 21",
+        "Above 5, 10, 21, 50",
+        "Above 5, 10, 21, 50, 200",
+        "Above 50, 200",
+        "Above 21, 50, 200",
+        "Below All MAs",
+      ],
       filterable: true,
-      isCheck: false,
+      isCheck: true,
+      idealValues: ["Above 5, 10, 21, 50, 200", "Above 21, 50, 200"],
+      order: 10,
     },
 
     attitude: {
@@ -61,6 +76,7 @@ export const DEFAULT_DATA = {
       filterable: true,
       isCheck: true,
       idealValues: ["Good", "Excellent"],
+      order: 50,
     },
 
     "in.liquidity": {
@@ -88,6 +104,7 @@ export const DEFAULT_DATA = {
         "1500Cr+",
         "2000Cr+",
       ],
+      order: 20,
     },
     "us.liquidity": {
       label: "Liquidity",
@@ -95,6 +112,7 @@ export const DEFAULT_DATA = {
       countries: ["US"],
       filterable: true,
       isCheck: false,
+      order: 20,
     },
     "in.adr": {
       label: "ADR",
@@ -102,12 +120,14 @@ export const DEFAULT_DATA = {
       options: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
       countries: ["IN"],
       filterable: true,
+      order: 30,
     },
     "us.adr": {
       label: "ADR",
       type: "number",
       countries: ["US"],
       filterable: true,
+      order: 30,
     },
   },
 

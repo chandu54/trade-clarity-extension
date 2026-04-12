@@ -95,6 +95,28 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
         </div>
       )}
 
+      <div className="param-row" style={{ marginTop: "16px" }}>
+        <div>
+          <strong>Auto-Refresh Metrics Daily</strong>
+          <div className="muted small">
+            Automatically update ADR, Liquidity, and Moving Averages once per day when the dashboard is opened.
+          </div>
+        </div>
+
+        <label className="switch">
+          <input
+            type="checkbox"
+            checked={data.uiConfig?.autoRefreshMetrics !== false}
+            onChange={(e) => {
+              if (!data.uiConfig) data.uiConfig = {};
+              data.uiConfig.autoRefreshMetrics = e.target.checked;
+              setData({ ...data });
+            }}
+          />
+          <span className="slider" />
+        </label>
+      </div>
+
       <div className="modal-footer">
         <button className="btn-outline" onClick={onClose}>
           Close

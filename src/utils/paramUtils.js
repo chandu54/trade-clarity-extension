@@ -1,3 +1,4 @@
+import { DEFAULT_DATA } from "../seed";
 
 export function isParamRelevantForCountry(paramDef, country) {
   if (!paramDef || !paramDef.countries || paramDef.countries.length === 0) return true;
@@ -86,6 +87,7 @@ export function getStockCheckSummary(stock, paramDefinitions, country) {
 /**
  * Data scrubbing utility to fix orphaned or incorrectly scoped parameter definitions.
  * It also retires legacy global parameters (liquidity, adr) that have been superseded by country-specific versions.
+ * NEW: It synchronizes the 'order' property from DEFAULT_DATA to ensure UI column sequence updates.
  */
 export function scrubParamDefinitions(currentData) {
   if (!currentData || !currentData.paramDefinitions) return currentData;
@@ -93,11 +95,23 @@ export function scrubParamDefinitions(currentData) {
   let changed = false;
   const newParams = { ...currentData.paramDefinitions };
 
+  // Syncing logic: Propagate 'order' from code defaults to storage
+  const defaultParams = DEFAULT_DATA.paramDefinitions || {};
+
   Object.keys(newParams).forEach(key => {
     const p = newParams[key];
     const isMissingCountries = !p.countries || p.countries.length === 0;
 
-    // 1. Auto-scope known country-specific prefixes if they are currently "Global"
+    // A. Sync Order and essential properties from seed.js if they changed
+    if (defaultParams[key]) {
+      const defOrder = defaultParams[key].order;
+      if (defOrder !== undefined && p.order !== defOrder) {
+        p.order = defOrder;
+        changed = true;
+      }
+    }
+
+    // B. Auto-scope known country-specific prefixes if they are currently "Global"
     if (isMissingCountries) {
       if (key.startsWith('in.')) {
         p.countries = ['IN'];
@@ -108,7 +122,7 @@ export function scrubParamDefinitions(currentData) {
       }
     }
 
-    // 2. Retire legacy redundant parameters (Deep Fix for duplicates)
+    // C. Retire legacy redundant parameters (Deep Fix for duplicates)
     const isLegacyKey = ['liquidity', 'adr'].includes(key);
     if (isLegacyKey && isMissingCountries) {
       // Hide if market-specific modern keys exist

@@ -10,6 +10,9 @@ import {
   doesParamPassCheck,
   isParamRelevantForCountry,
 } from "../utils/paramUtils";
+import { getLocalDateString } from "../utils/weekHelpers";
+
+import MovingAverageRibbon from "./MovingAverageRibbon";
 
 function getWeekRangeLabel(sundayDateStr) {
   if (!sundayDateStr) return "";
@@ -218,6 +221,61 @@ export default function StockGrid({
   const importTypeRef = useRef("stocks"); // 'stocks', 'backup', or 'tv'
   const [copiedStocks, setCopiedStocks] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+
+  // --- AUTOMATED DAILY REFRESH ---
+  useEffect(() => {
+    if (!data || !weekKey || !data.weeks?.[country]?.[weekKey]) return;
+
+    const todayStr = getLocalDateString(new Date());
+    const weekData = data.weeks[country][weekKey];
+    
+    // Check setting and date
+    const autoRefreshEnabled = data.uiConfig?.autoRefreshMetrics !== false;
+    const isSyncedToday = weekData.lastSyncDate === todayStr;
+
+    if (autoRefreshEnabled && !isSyncedToday && !isReadOnly) {
+      console.log(`[AutoSync] New day detected (${todayStr}). Triggering refresh for ${country} watchlist...`);
+      triggerFullSync();
+      
+      // Update week-level lastSyncDate
+      setData(prev => {
+        const newData = { ...prev };
+        if (newData.weeks?.[country]?.[weekKey]) {
+          newData.weeks[country][weekKey].lastSyncDate = todayStr;
+        }
+        return newData;
+      });
+    }
+  }, [weekKey, country, data?.weeks?.[country]?.[weekKey]?.lastSyncDate, data.uiConfig?.autoRefreshMetrics, isReadOnly]);
+
+  const triggerFullSync = () => {
+    const symbols = Object.keys(week?.stocks || {});
+    if (symbols.length === 0) return;
+
+    if (chrome?.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({
+        action: "FETCH_STOCK_METRICS",
+        payload: {
+          symbols: symbols,
+          country,
+          weekKey,
+          paramDefs: data.paramDefinitions,
+          adrDays: data.uiConfig?.adrDays || 20,
+          liquidityDays: data.uiConfig?.liquidityDays || 20,
+        },
+      });
+
+      // Update local timestamp immediately to show activity
+      setData(prev => {
+        const newData = { ...prev };
+        if (newData.weeks?.[country]?.[weekKey]) {
+          newData.weeks[country][weekKey].lastUpdatedTime = Date.now();
+        }
+        return newData;
+      });
+    }
+  };
+
   const searchInputRef = useRef(null);
 
   useEffect(() => {
@@ -312,13 +370,15 @@ export default function StockGrid({
     (w) => w.id === selectedWatchlistId,
   );
 
-  const visibleParams = Object.entries(params).filter(([key, p]) => {
-    if (!isParamRelevantForCountry(p, country)) return false;
-    if (selectedWatchlistId !== "all" && activeWatchlist) {
-      return (activeWatchlist.visibleParams || []).includes(key);
-    }
-    return columnConfig[key] !== false;
-  });
+  const visibleParams = Object.entries(params)
+    .filter(([key, p]) => {
+      if (!isParamRelevantForCountry(p, country)) return false;
+      if (selectedWatchlistId !== "all" && activeWatchlist) {
+        return (activeWatchlist.visibleParams || []).includes(key);
+      }
+      return columnConfig[key] !== false;
+    })
+    .sort((a, b) => (a[1].order ?? 999) - (b[1].order ?? 999));
 
   const colCount =
     1 + // Stock
@@ -333,13 +393,15 @@ export default function StockGrid({
      FILTERABLE PARAMS
   ===================== */
   const filterableParams = useMemo(() => {
-    return Object.entries(params).filter(([key, p]) => {
-      if (!isParamRelevantForCountry(p, country)) return false;
-      if (selectedWatchlistId !== "all" && activeWatchlist) {
-        return (activeWatchlist.visibleFilters || []).includes(key);
-      }
-      return p.filterable;
-    });
+    return Object.entries(params)
+      .filter(([key, p]) => {
+        if (!isParamRelevantForCountry(p, country)) return false;
+        if (selectedWatchlistId !== "all" && activeWatchlist) {
+          return (activeWatchlist.visibleFilters || []).includes(key);
+        }
+        return p.filterable;
+      })
+      .sort((a, b) => (a[1].order ?? 999) - (b[1].order ?? 999));
   }, [params, selectedWatchlistId, activeWatchlist, country]);
 
   const isSectorFilterable = data.uiConfig?.sectorFilterable === true;
@@ -712,6 +774,7 @@ export default function StockGrid({
             [weekKey]: {
               ...prevWeek,
               stocks: newStocks,
+              lastUpdatedTime: Date.now(),
             },
           },
         },
@@ -1395,6 +1458,18 @@ export default function StockGrid({
 
       <div className="grid-header">
         <div className="command-left">
+          {(week?.lastUpdatedTime || week?.lastSyncDate) && (
+            <div className="last-updated-note flex items-center gap-1.5 text-[11px] text-slate-400 font-medium py-1">
+              <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+              </svg>
+              <span>
+                <strong className="text-slate-300 font-bold">Last synced:</strong> {week.lastUpdatedTime 
+                  ? new Date(week.lastUpdatedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                  : (week.lastSyncDate ? week.lastSyncDate.split('-').reverse().join('-') : '')}
+              </span>
+            </div>
+          )}
         </div>
 
         {fetchProgress.total > 0 && (
@@ -1873,120 +1948,126 @@ export default function StockGrid({
 
                 {visibleParams.map(([key, p]) => (
                   <td key={key}>
-                    {p.type === "checkbox" && (
-                      <input
-                        type="checkbox"
-                        className="grid-checkbox compact"
-                        checked={!!stock.params[key]}
-                        disabled={isReadOnly}
-                        onChange={(e) => {
-                          if (isReadOnly) return;
-                          stock.params[key] = e.target.checked;
-                          setData({ ...data });
-                        }}
-                      />
-                    )}
-
-                    {p.type === "select" && (
-                      <div className="input-clear-wrapper type-select">
-                        <select
-                          className="select-control input-with-clear"
-                          value={stock.params[key] || ""}
-                          disabled={isReadOnly}
-                          onChange={(e) => {
-                            if (isReadOnly) return;
-                            stock.params[key] = e.target.value;
-                            setData({ ...data });
-                          }}
-                        >
-                          <option value=""></option>
-                          {p.options?.map((o) => (
-                            <option key={o}>{o}</option>
-                          ))}
-                        </select>
-                        {!isReadOnly && stock.params[key] && (
-                          <ClearButton
-                            onClick={() => {
-                              stock.params[key] = "";
-                              setData({ ...data });
-                            }}
-                            isSelect
-                          />
-                        )}
-                      </div>
-                    )}
-
-                    {p.type === "number" && (
-                      <div className="input-clear-wrapper type-number">
-                        <input
-                          type="text"
-                          className="grid-text-input input-with-clear"
-                          value={stock.params[key] || ""}
-                          disabled={isReadOnly}
-                          onChange={(e) => {
-                            if (isReadOnly) return;
-                            stock.params[key] = e.target.value;
-                            setData({ ...data });
-                          }}
-                        />
-                        {!isReadOnly && stock.params[key] && (
-                          <ClearButton
-                            onClick={() => {
-                              stock.params[key] = "";
+                    {key === "movingAverages" && stock.params[key] ? (
+                      <MovingAverageRibbon value={stock.params[key]} />
+                    ) : (
+                      <div className="param-standard-renderer">
+                        {p.type === "checkbox" && (
+                          <input
+                            type="checkbox"
+                            className="grid-checkbox compact"
+                            checked={!!stock.params[key]}
+                            disabled={isReadOnly}
+                            onChange={(e) => {
+                              if (isReadOnly) return;
+                              stock.params[key] = e.target.checked;
                               setData({ ...data });
                             }}
                           />
                         )}
-                      </div>
-                    )}
 
-                    {p.type === "date" && (
-                      <div className="input-clear-wrapper type-date">
-                        <input
-                          key={stock.params[key] || "empty-date"}
-                          type="date"
-                          className="grid-text-input input-with-clear"
-                          defaultValue={stock.params[key] || ""}
-                          disabled={isReadOnly}
-                          onBlur={(e) => {
-                            if (isReadOnly) return;
-                            if (stock.params[key] !== e.target.value) {
-                              stock.params[key] = e.target.value;
-                              setData({ ...data });
-                            }
-                          }}
-                        />
-                        {!isReadOnly && stock.params[key] && (
-                          <ClearButton
-                            onClick={() => {
-                              stock.params[key] = "";
-                              setData({ ...data });
-                            }}
-                            isSelect
-                          />
+                        {p.type === "select" && (
+                          <div className="input-clear-wrapper type-select">
+                            <select
+                              className="select-control input-with-clear"
+                              value={stock.params[key] || ""}
+                              disabled={isReadOnly}
+                              onChange={(e) => {
+                                if (isReadOnly) return;
+                                stock.params[key] = e.target.value;
+                                setData({ ...data });
+                              }}
+                            >
+                              <option value=""></option>
+                              {p.options?.map((o) => (
+                                <option key={o}>{o}</option>
+                              ))}
+                            </select>
+                            {!isReadOnly && stock.params[key] && (
+                              <ClearButton
+                                onClick={() => {
+                                  stock.params[key] = "";
+                                  setData({ ...data });
+                                }}
+                                isSelect
+                              />
+                            )}
+                          </div>
                         )}
-                      </div>
-                    )}
 
-                    {p.type === "text" && (
-                      <div className="input-clear-wrapper">
-                        <input
-                          className="grid-text-input input-with-clear"
-                          value={stock.params[key] || ""}
-                          disabled={isReadOnly}
-                          onChange={(e) => {
-                            if (isReadOnly) return;
-                            stock.params[key] = e.target.value;
-                            setData({ ...data });
-                          }}
-                        />
-                        {!isReadOnly && stock.params[key] && (
-                          <ClearButton
-                            onClick={() => {
-                              stock.params[key] = "";
-                              setData({ ...data });
-                            }}
-                          />
+                        {p.type === "number" && (
+                          <div className="input-clear-wrapper type-number">
+                            <input
+                              type="text"
+                              className="grid-text-input input-with-clear"
+                              value={stock.params[key] || ""}
+                              disabled={isReadOnly}
+                              onChange={(e) => {
+                                if (isReadOnly) return;
+                                stock.params[key] = e.target.value;
+                                setData({ ...data });
+                              }}
+                            />
+                            {!isReadOnly && stock.params[key] && (
+                              <ClearButton
+                                onClick={() => {
+                                  stock.params[key] = "";
+                                  setData({ ...data });
+                                }}
+                              />
+                            )}
+                          </div>
+                        )}
+
+                        {p.type === "date" && (
+                          <div className="input-clear-wrapper type-date">
+                            <input
+                              key={stock.params[key] || "empty-date"}
+                              type="date"
+                              className="grid-text-input input-with-clear"
+                              defaultValue={stock.params[key] || ""}
+                              disabled={isReadOnly}
+                              onBlur={(e) => {
+                                if (isReadOnly) return;
+                                if (stock.params[key] !== e.target.value) {
+                                  stock.params[key] = e.target.value;
+                                  setData({ ...data });
+                                }
+                              }}
+                            />
+                            {!isReadOnly && stock.params[key] && (
+                              <ClearButton
+                                onClick={() => {
+                                  stock.params[key] = "";
+                                  setData({ ...data });
+                                }}
+                                isSelect
+                              />
+                            )}
+                          </div>
+                        )}
+
+                        {p.type === "text" && (
+                          <div className="input-clear-wrapper">
+                            <input
+                              className="grid-text-input input-with-clear"
+                              value={stock.params[key] || ""}
+                              disabled={isReadOnly}
+                              onChange={(e) => {
+                                if (isReadOnly) return;
+                                stock.params[key] = e.target.value;
+                                setData({ ...data });
+                              }}
+                            />
+                            {!isReadOnly && stock.params[key] && (
+                              <ClearButton
+                                onClick={() => {
+                                  stock.params[key] = "";
+                                  setData({ ...data });
+                                }}
+                              />
+                            )}
+                          </div>
                         )}
                       </div>
                     )}

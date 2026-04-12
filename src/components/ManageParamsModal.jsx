@@ -53,6 +53,11 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
 
     setError("");
 
+    const currentOrders = Object.values(data.paramDefinitions)
+      .map(p => p.order || 0)
+      .filter(o => o < 999); // Ignore temporal high-value defaults
+    const nextOrder = Math.max(0, ...currentOrders) + 10;
+
     data.paramDefinitions[paramKey] = {
       label,
       type,
@@ -61,6 +66,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
       isCheck,
       idealValues: isCheck && !['checkbox'].includes(type) ? idealValues.split(",").map(v => v.trim()) : [],
       countries,
+      order: nextOrder,
     };
 
     setData({ ...data });
