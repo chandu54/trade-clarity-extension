@@ -4271,6 +4271,7 @@ input[type=checkbox]:active {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(350px, 1fr));
   gap: 24px;
+  grid-auto-flow: dense;
 }
 
 .chart-card {
@@ -4286,6 +4287,9 @@ input[type=checkbox]:active {
 @media (min-width: 800px) {
   .chart-card.span-2 {
     grid-column: span 2;
+  }
+  .chart-card.span-3 {
+    grid-column: span 3;
   }
 }
 
@@ -4946,14 +4950,13 @@ input[type=checkbox]:active {
   padding: 10px 0;
   width: 100%;
   min-height: 120px;
-  align-items: center;
-  /* helps center its contents */
 }
 
 .heatmap-wrapper {
   display: inline-flex;
   flex-direction: column;
   margin: 0 auto;
+  min-width: max-content;
 }
 
 .heatmap-months {
@@ -5123,6 +5126,62 @@ input[type=checkbox]:active {
     margin-bottom: 20px;
   }
 
+  /* Handle Expanded View for Print (Stack vertically) */
+  .expanded-view {
+    display: block !important;
+    overflow: visible !important;
+  }
+
+  .expanded-header {
+    break-after: avoid;
+    page-break-after: avoid;
+    margin-bottom: 20px !important;
+    padding-bottom: 10px !important;
+    border-bottom: 2px solid var(--primary) !important;
+  }
+
+  .expanded-content {
+    display: block !important;
+    overflow: visible !important;
+    height: auto !important;
+  }
+
+  .expanded-chart-section {
+    width: 100% !important;
+    height: auto !important;
+    min-height: 0 !important;
+    padding: 0 !important;
+    margin-bottom: 40px;
+    background: transparent !important;
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  .expanded-details-section {
+    width: 100% !important;
+    overflow: visible !important;
+    height: auto !important;
+    padding: 0 !important;
+  }
+
+  /* Hide interactive controls in the report */
+  .analytics-header button,
+  .settings-wrapper,
+  .expand-btn,
+  .chart-card-actions,
+  .heatmap-container select,
+  .expanded-header button {
+    display: none !important;
+  }
+
+  /* Simplified detail groups for print */
+  .detail-group {
+    break-inside: avoid;
+    border: 1px solid #eee !important;
+    background: #fdfdfd !important;
+    transform: none !important;
+  }
+
   /* Force light theme variables for printing */
   :root,
   [data-theme=dark] {
@@ -5140,7 +5199,7 @@ input[type=checkbox]:active {
     font-weight: 600 !important;
   }
 
-  /* Print Footer / Watermark */
+  /* Show Print Footer / Watermark */
   .print-footer {
     display: block !important;
     position: fixed;
@@ -7812,6 +7871,36 @@ input[type="date"].input-with-clear {
   color: #fff;
 }
 
+/* --- RIBBON VARIANTS & LABELS --- */
+.ma-ribbon-v2.compact-ribbon {
+  gap: 3px;
+  padding: 0;
+}
+
+.ma-badge-v2.compact-badge {
+  width: 22px;
+  height: 16px;
+  font-size: 9px;
+  border-width: 1.2px;
+}
+
+.ma-label-full {
+  text-transform: uppercase;
+  font-size: 9px;
+  font-weight: 800;
+  color: var(--muted);
+  letter-spacing: 0.1em;
+  margin-right: 4px;
+}
+
+.ma-label-compact {
+  font-size: 8px;
+  font-weight: 900;
+  color: var(--muted);
+  opacity: 0.7;
+  margin-right: 2px;
+}
+
 
 .ma-ribbon-v2.is-editable {
   cursor: pointer;
@@ -7854,3 +7943,64 @@ input[type="date"].input-with-clear {
 [data-theme=dark] .data-week-sync-info {
   color: #94a3b8;
 }
+
+
+
+/* --- FORCE SYNC BUTTON --- */
+.force-sync-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  border-radius: 6px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  background: rgba(255, 255, 255, 0.05);
+  color: #94a3b8;
+  cursor: pointer;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  padding: 0;
+  margin-left: 4px;
+}
+
+.force-sync-btn:hover:not(:disabled) {
+  background: rgba(59, 130, 246, 0.15);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #3b82f6;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.force-sync-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.force-sync-btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.force-sync-btn.is-syncing svg {
+  animation: spin-sync 1.5s linear infinite;
+  color: #10b981;
+}
+
+@keyframes spin-sync {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+[data-theme="light"] .force-sync-btn {
+  background: #f1f5f9;
+  border-color: #e2e8f0;
+  color: #64748b;
+}
+
+[data-theme="light"] .force-sync-btn:hover:not(:disabled) {
+  background: #eff6ff;
+  border-color: #bfdbfe;
+  color: #2563eb;
+}
+
+
+

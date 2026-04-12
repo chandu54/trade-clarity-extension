@@ -14,8 +14,8 @@ describe('MovingAverageRibbon', () => {
     
     mas.forEach(ma => {
       const badge = screen.getByText(ma);
-      // Centralized component uses emerald-500/10... style for 'above'
-      expect(badge.className).toContain('text-emerald-400');
+      // Verify semantic 'above' class is applied
+      expect(badge.className).toContain('above');
     });
   });
 
@@ -26,9 +26,9 @@ describe('MovingAverageRibbon', () => {
     const ma21 = screen.getByText('21');
     const ma50 = screen.getByText('50');
 
-    expect(ma5.className).toContain('text-emerald-400');
-    expect(ma21.className).toContain('text-emerald-400');
-    expect(ma50.className).toContain('text-red-100'); // Our default 'below' color
+    expect(ma5.className).toContain('above');
+    expect(ma21.className).toContain('above');
+    expect(ma50.className).toContain('below');
   });
 
   it('should handle "compact" variant for the widget', () => {
@@ -37,9 +37,10 @@ describe('MovingAverageRibbon', () => {
     const ma200 = screen.getByText('200');
     const ma50 = screen.getByText('50');
 
-    // Compact variant uses bg-emerald-500/20... for 'above'
-    expect(ma200.className).toContain('bg-emerald-500/20');
-    expect(ma50.className).toContain('bg-rose-500/20');
+    // Verify both semantic status and variant class
+    expect(ma200.className).toContain('above');
+    expect(ma200.className).toContain('compact-badge');
+    expect(ma50.className).toContain('below');
   });
 
   it('should show the "MA" label when showLabel is true', () => {
@@ -55,6 +56,6 @@ describe('MovingAverageRibbon', () => {
   it('should be case insensitive', () => {
     render(<MovingAverageRibbon value="ABOVE ALL" />);
     const ma5 = screen.getByText('5');
-    expect(ma5.className).toContain('text-emerald-400');
+    expect(ma5.className).toContain('above');
   });
 });

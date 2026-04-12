@@ -62,6 +62,18 @@ describe('paramUtils', () => {
       it('fails if date is before ideal date', () => {
         expect(doesParamPassCheck('2022-12-01', paramDef)).toBe(false);
       });
+
+      it('handles institutional formats like DD-MM-YYYY', () => {
+        const dmyDef = { type: 'date', isCheck: true, idealValues: ['>01-01-2023'] };
+        expect(doesParamPassCheck('01-06-2023', dmyDef)).toBe(true);
+        expect(doesParamPassCheck('01-06-2022', dmyDef)).toBe(false);
+      });
+
+      it('handles date ranges correctly', () => {
+        const rangeDef = { type: 'date', isCheck: true, idealValues: ['01-01-2023 - 31-12-2023'] };
+        expect(doesParamPassCheck('15-06-2023', rangeDef)).toBe(true);
+        expect(doesParamPassCheck('15-06-2024', rangeDef)).toBe(false);
+      });
     });
 
     describe('checkbox type', () => {

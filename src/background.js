@@ -151,17 +151,23 @@ async function fetchAndCalculateMetrics(
     if (maxDays > 60) range = "6mo";
     if (maxDays > 120) range = "1y";
 
+    // Fetch Data (Consolidating everything into the v8/chart API which is currently WORKING and bypasses 401s)
     const url = `${CONFIG.YAHOO_FINANCE_URL}${ticker}?range=${range}&interval=1d`;
+    const response = await fetch(url, { 
+       signal: controller.signal,
+       headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+      }
+    });
 
-    const response = await fetch(url, { signal: controller.signal });
     clearTimeout(timeoutId);
 
     if (!response.ok) {
-      throw new Error(`HTTP error! status: ${response.status}`);
+      throw new Error(`Data fetch error! status: ${response.status}`);
     }
     const data = await response.json();
-
     const result = data.chart?.result?.[0];
+
     if (
       !result ||
       !result.indicators ||

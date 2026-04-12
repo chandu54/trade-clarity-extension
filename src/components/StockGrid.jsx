@@ -12,7 +12,9 @@ import {
 } from "../utils/paramUtils";
 import { getLocalDateString } from "../utils/weekHelpers";
 
+import { parseInstitutionalDate } from "../utils/dateUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
+
 
 function getWeekRangeLabel(sundayDateStr) {
   if (!sundayDateStr) return "";
@@ -139,6 +141,12 @@ function checkCondition(value, filter, type) {
             return numVal >= min && numVal <= max;
           }
         } else if (type === "date") {
+          const dVal = parseInstitutionalDate(value);
+          const dMin = parseInstitutionalDate(minStr);
+          const dMax = parseInstitutionalDate(maxStr);
+          if (dVal && dMin && dMax) {
+            return dVal >= dMin && dVal <= dMax;
+          }
           return value >= minStr && value <= maxStr;
         }
       }
@@ -162,11 +170,15 @@ function checkCondition(value, filter, type) {
         if (op === "<") return numStock < numTarget;
         if (op === "==" || op === "=") return numStock === numTarget;
       } else if (type === "date") {
-        if (op === ">=") return value >= targetVal;
-        if (op === "<=") return value <= targetVal;
-        if (op === ">") return value > targetVal;
-        if (op === "<") return value < targetVal;
-        if (op === "==" || op === "=") return value === targetVal;
+        const dVal = parseInstitutionalDate(value);
+        const dTarget = parseInstitutionalDate(targetVal);
+        if (!dVal || !dTarget) return false;
+
+        if (op === ">=") return dVal >= dTarget;
+        if (op === "<=") return dVal <= dTarget;
+        if (op === ">") return dVal > dTarget;
+        if (op === "<") return dVal < dTarget;
+        if (op === "==" || op === "=") return dVal.getTime() === dTarget.getTime();
       }
     }
   }
@@ -366,6 +378,7 @@ export default function StockGrid({
   const columnConfig = data.uiConfig?.columnVisibility || {};
   const showNotes = columnConfig["__notes__"] !== false;
 
+
   const activeWatchlist = (data.watchlists || []).find(
     (w) => w.id === selectedWatchlistId,
   );
@@ -524,6 +537,32 @@ export default function StockGrid({
 
         const stockVal = stock.params?.[key];
 
+        // --- SMART MOVING AVERAGE FILTERING ---
+        if (key === "movingAverages" && stockVal && filterVal) {
+          const parseMAs = (str) => {
+            if (!str || typeof str !== 'string') return [];
+            if (str.toLowerCase().includes("below all")) return ["below"];
+            return str.match(/\d+/g) || [];
+          };
+
+          const doSmartMatch = (sVal, fVal) => {
+            const sCheck = parseMAs(sVal);
+            const fCheck = parseMAs(fVal);
+
+            if (fCheck.includes("below")) {
+              return sCheck.includes("below");
+            }
+            
+            // If filter selection has "Above 5", check if stock's "Above 5, 10..." contains "5"
+            return fCheck.every(ma => sCheck.includes(ma));
+          };
+
+          if (Array.isArray(filterVal)) {
+            return filterVal.some(fv => doSmartMatch(stockVal, fv));
+          }
+          return doSmartMatch(stockVal, filterVal);
+        }
+
         if (p.type === "checkbox") {
           return Boolean(stockVal) === filterVal;
         }
@@ -574,6 +613,7 @@ export default function StockGrid({
       if (sortBy === "__checks__") {
         aVal = getChecksCount(a);
         bVal = getChecksCount(b);
+
       } else {
         aVal = a[sortBy] ?? a.params?.[sortBy];
         bVal = b[sortBy] ?? b.params?.[sortBy];
@@ -604,6 +644,15 @@ export default function StockGrid({
         return sortDir === "asc"
           ? Number(aVal) - Number(bVal)
           : Number(bVal) - Number(aVal);
+      }
+
+      if (paramDef?.type === "date") {
+        const dA = parseInstitutionalDate(aVal);
+        const dB = parseInstitutionalDate(bVal);
+        if (!dA && !dB) return 0;
+        if (!dA) return 1;
+        if (!dB) return -1;
+        return sortDir === "asc" ? dA - dB : dB - dA;
       }
 
       return sortDir === "asc"
@@ -1459,15 +1508,40 @@ export default function StockGrid({
       <div className="grid-header">
         <div className="command-left">
           {(week?.lastUpdatedTime || week?.lastSyncDate) && (
-            <div className="last-updated-note flex items-center gap-1.5 text-[11px] text-slate-400 font-medium py-1">
-              <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
-              </svg>
-              <span>
-                <strong className="text-slate-300 font-bold">Last synced:</strong> {week.lastUpdatedTime 
-                  ? new Date(week.lastUpdatedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
-                  : (week.lastSyncDate ? week.lastSyncDate.split('-').reverse().join('-') : '')}
-              </span>
+            <div className="last-updated-note flex items-center gap-2 text-[11px] text-slate-400 font-medium py-1">
+              <div className="flex items-center gap-1.5">
+                <svg className="w-4 h-4 opacity-80" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z" />
+                </svg>
+                <span>
+                  <strong className="text-slate-300 font-bold">Last synced:</strong> {week.lastUpdatedTime 
+                    ? new Date(week.lastUpdatedTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) 
+                    : (week.lastSyncDate ? week.lastSyncDate.split('-').reverse().join('-') : 'Never')}
+                </span>
+              </div>
+              
+              {!isReadOnly && (
+                <button 
+                  className={`force-sync-btn ${fetchProgress.total > 0 ? 'is-syncing' : ''}`}
+                  onClick={triggerFullSync}
+                  title="Force refresh all stock metrics"
+                  disabled={fetchProgress.total > 0}
+                >
+                  <svg 
+                    xmlns="http://www.w3.org/2000/svg" 
+                    width="14" 
+                    height="14" 
+                    viewBox="0 0 24 24" 
+                    fill="none" 
+                    stroke="currentColor" 
+                    strokeWidth="2.5" 
+                    strokeLinecap="round" 
+                    strokeLinejoin="round"
+                  >
+                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.3" />
+                  </svg>
+                </button>
+              )}
             </div>
           )}
         </div>
@@ -1751,6 +1825,7 @@ export default function StockGrid({
                 );
               })}
 
+
               <th
                 className="resizable-th"
                 onClick={() => toggleSort("__checks__")}
@@ -1843,6 +1918,7 @@ export default function StockGrid({
                       >
                         {stock.symbol}
                       </span>
+
                       {!isReadOnly && showTags && (
                         <div className="add-tag-wrapper">
                           <button
@@ -2073,6 +2149,7 @@ export default function StockGrid({
                     )}
                   </td>
                 ))}
+
 
                 <td className="checks-cell">{renderChecksBadge(stock)}</td>
 

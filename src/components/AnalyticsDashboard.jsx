@@ -11,6 +11,7 @@ const COLORS = [
   "#06b6d4", // Cyan
   "#84cc16", // Lime
 ];
+import { parseInstitutionalDate } from "../utils/dateUtils";
 
 const BarChartIcon = () => (
   <svg
@@ -294,15 +295,41 @@ const DotPlot = ({ data, onPointClick, isExpanded }) => {
 
   const { points, ticks } = useMemo(() => {
     const values = data.map((d) => d.value);
-    const minVal = Math.min(...values);
-    const maxVal = Math.max(...values);
+    const minValRaw = Math.min(...values);
+    const maxValRaw = Math.max(...values);
+    const rawRange = maxValRaw - minValRaw;
+
+    // "Nice numbers" algorithm for clean axes
+    const calculateNiceScale = (min, max) => {
+      const range = max - min || 1;
+      const exponent = Math.floor(Math.log10(range));
+      const fraction = range / Math.pow(10, exponent);
+      let niceStep;
+
+      if (fraction < 1.5) niceStep = 1;
+      else if (fraction < 3) niceStep = 2;
+      else if (fraction < 7) niceStep = 5;
+      else niceStep = 10;
+
+      const step = niceStep * Math.pow(10, exponent - 1) * 2.5; // Targeting ~4-5 ticks
+      const niceMin = Math.floor(min / step) * step;
+      const niceMax = Math.ceil(max / step) * step;
+
+      return { niceMin, niceMax, step };
+    };
+
+    const { niceMin: minVal, niceMax: maxVal } = calculateNiceScale(
+      minValRaw,
+      maxValRaw,
+    );
     const range = maxVal - minVal || 1;
 
     // Generate 5 evenly spaced ticks for the Y-axis
     const ticks = [];
     for (let i = 0; i <= 4; i++) {
+      const val = minVal + (maxVal - minVal) * (i / 4);
       ticks.push({
-        value: minVal + range * (i / 4),
+        value: val,
         percent: (i / 4) * 100,
       });
     }
@@ -421,9 +448,8 @@ const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
   const allYears = new Set();
 
   data.forEach((item) => {
-    // Attempt to standardize date string (YYYY-MM-DD)
-    const d = new Date(item.value);
-    if (isNaN(d.getTime())) return;
+    const d = parseInstitutionalDate(item.value);
+    if (!d) return;
 
     // Track valid Years present
     const yStr = String(d.getFullYear()).padStart(4, "0");
@@ -442,12 +468,7 @@ const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
   const isMultiYear = validYears.length > 1;
 
   // If "All" is selected but we have multiple years, just default to the most recent year to prevent huge empty grids.
-  const activeYear =
-    selectedYear === "All"
-      ? isMultiYear
-        ? validYears[0]
-        : "All"
-      : selectedYear;
+  const activeYear = selectedYear;
 
   // Filter map to active year
   const countMap = {};
@@ -521,28 +542,31 @@ const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
   const getColor = (count) => {
     // Empty slot
     if (count === 0) return "rgba(100, 116, 139, 0.15)";
-    if (maxCount === 1) return "#10b981"; // Fixed color if max is 1
+    if (maxCount === 1) return "#10b981"; // Medium green for single-stock peaks
 
     const ratio = count / maxCount;
-    // Dark to bright green scaling
-    if (ratio <= 0.25) return "#064e3b"; // Emerald 900
-    if (ratio <= 0.5) return "#059669"; // Emerald 600
-    if (ratio <= 0.75) return "#10b981"; // Emerald 500
-    return "#34d399"; // Emerald 400 (Thickest)
+    // Standard contribution intensity (Light -> Dark Emerald)
+    if (ratio <= 0.25) return "#6ee7b7"; // Emerald 300 (Light)
+    if (ratio <= 0.5) return "#10b981";  // Emerald 500 (Medium)
+    if (ratio <= 0.75) return "#059669"; // Emerald 600 (Dark)
+    return "#064e3b"; // Emerald 900 (Deepest)
   };
 
   // Identify months for labels
   const monthLabels = [];
-  let lastMonth = -1;
+  let lastMonthKey = "";
   columns.forEach((col, xIndex) => {
     const d = parseLocal(col[0].date);
-    if (d.getMonth() !== lastMonth && xIndex > 0) {
+    const mKey = `${d.getFullYear()}-${d.getMonth()}`;
+    if (mKey !== lastMonthKey) {
+      // Include Year if it's Jan or if it's the first label and we have multi-year data
+      const showYear = d.getMonth() === 0 || (xIndex === 0 && isMultiYear);
       monthLabels.push({
-        name: d.toLocaleString("default", { month: "short" }),
+        name: d.toLocaleString("default", { month: "short" }) + (showYear ? ` '${String(d.getFullYear()).slice(2)}` : ""),
         x: xIndex,
       });
     }
-    lastMonth = d.getMonth();
+    lastMonthKey = mKey;
   });
 
   return (
@@ -720,8 +744,8 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
     } else if (param.type === "date-timeline") {
       const countMap = {};
       param.data.forEach((item) => {
-        const d = new Date(item.value);
-        if (isNaN(d.getTime())) return;
+        const d = parseInstitutionalDate(item.value);
+        if (!d) return;
         const dateStr = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
         if (!countMap[dateStr])
           countMap[dateStr] = { name: dateStr, value: 0, stocks: [] };
@@ -733,25 +757,50 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
       );
 
       return (
-        <div className="detail-list-container themed-scroll flex-1 overflow-y-auto">
-          {sortedDates.map((group) => (
-            <div
-              key={group.name}
-              className="detail-group"
-              onClick={(e) => onChartClick(group, e)}
-              title="Click to see deep analysis"
-            >
-              <div className="detail-group-header">
-                <span className="detail-name">{group.name}</span>
-                <span className="detail-count">{group.value} stocks</span>
+        <div className="detail-list-container themed-scroll flex-1 overflow-y-auto pr-2">
+          {sortedDates.map((group) => {
+            // Format YYYY-MM-DD back to DD-MM-YYYY for display
+            const [y, m, d] = group.name.split("-");
+            const displayDate = `${d}-${m}-${y}`;
+            const isPeak = group.value > 2;
+
+            return (
+              <div
+                key={group.name}
+                className={`detail-group ${isPeak ? "cluster-peak" : ""}`}
+                onClick={(e) => onChartClick(group, e)}
+                title="Click to see stocks on this date"
+                style={{ padding: '12px', marginBottom: '12px' }}
+              >
+                <div className="detail-group-header" style={{ alignItems: 'center' }}>
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[13px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
+                      {displayDate}
+                    </span>
+                    {isPeak && (
+                      <span className="text-[9px] font-extrabold uppercase bg-amber-100 text-amber-600 px-1.5 py-0.5 rounded border border-amber-200">
+                        Peak Cluster
+                      </span>
+                    )}
+                  </div>
+                  <span className="detail-count text-slate-500 font-bold text-[12px]">
+                    {group.value} Symbols
+                  </span>
+                </div>
+                <div className="stock-tag-list mt-3">
+                  {group.stocks &&
+                    group.stocks.map((s) => (
+                      <span
+                        key={s}
+                        className="stock-tag font-mono font-bold bg-white border border-slate-200 text-primary px-2 py-1 rounded shadow-sm hover:border-primary transition-colors"
+                      >
+                        {s}
+                      </span>
+                    ))}
+                </div>
               </div>
-              <div className="stock-tag-list">
-                {group.stocks && group.stocks.map((s) => (
-                  <span key={s} className="stock-tag">{s}</span>
-                ))}
-              </div>
-            </div>
-          ))}
+            );
+          })}
         </div>
       );
     }
@@ -1141,23 +1190,30 @@ const AnalyticsDashboard = ({
             symbol: s.symbol || s.ticker || "Unknown",
             value: s.params?.[param.id],
           }))
-          .sort((a, b) => new Date(a.value) - new Date(b.value));
+          .sort((a, b) => {
+            const dA = parseInstitutionalDate(a.value);
+            const dB = parseInstitutionalDate(b.value);
+            if (!dA || !dB) return 0;
+            return dA - dB;
+          });
 
         let span = 1; // Default span
         if (rawData.length > 0) {
           const validDates = rawData
-            .map((d) => new Date(d.value).getTime())
-            .filter((t) => !isNaN(t));
+            .map((d) => parseInstitutionalDate(d.value))
+            .filter((d) => d && !isNaN(d.getTime()))
+            .map((d) => d.getTime());
+
           if (validDates.length > 0) {
             const diffDays =
               (Math.max(...validDates) - Math.min(...validDates)) /
               (1000 * 60 * 60 * 24);
 
-            if (diffDays > 180) {
-              // > 6 months, take full row
+            if (diffDays > 150) {
+              // > 5 months, take large space
               span = 3;
-            } else if (diffDays > 90) {
-              // 3-6 months, take 2 columns
+            } else if (diffDays > 45) {
+              // 1.5 - 5 months, take 2 columns
               span = 2;
             }
           }

@@ -1,3 +1,4 @@
+import { parseInstitutionalDate } from "./dateUtils";
 import { DEFAULT_DATA } from "../seed";
 
 export function isParamRelevantForCountry(paramDef, country) {
@@ -46,15 +47,42 @@ export function doesParamPassCheck(value, paramDef) {
 
   if (type === "date") {
     if (!value) return false;
+    const dVal = parseInstitutionalDate(value);
+    if (!dVal) return false;
     if (idealValues.length === 0) return false;
 
     return idealValues.some((ideal) => {
       const cond = String(ideal).trim();
-      if (cond.startsWith(">=")) return value >= cond.slice(2).trim();
-      if (cond.startsWith("<=")) return value <= cond.slice(2).trim();
-      if (cond.startsWith(">")) return value > cond.slice(1).trim();
-      if (cond.startsWith("<")) return value < cond.slice(1).trim();
-      return value === cond;
+      
+      // Range check (using ' - ' or ' to ' to avoid conflict with date hyphens)
+      const rangeParts = cond.split(/\s+(?:-|to)\s+/);
+      if (rangeParts.length === 2) {
+          const dMin = parseInstitutionalDate(rangeParts[0].trim());
+          const dMax = parseInstitutionalDate(rangeParts[1].trim());
+          if (dMin && dMax) {
+              return dVal >= dMin && dVal <= dMax;
+          }
+      }
+
+      if (cond.startsWith(">=")) {
+        const dTarget = parseInstitutionalDate(cond.slice(2).trim());
+        return dTarget ? dVal >= dTarget : false;
+      }
+      if (cond.startsWith("<=")) {
+        const dTarget = parseInstitutionalDate(cond.slice(2).trim());
+        return dTarget ? dVal <= dTarget : false;
+      }
+      if (cond.startsWith(">")) {
+        const dTarget = parseInstitutionalDate(cond.slice(1).trim());
+        return dTarget ? dVal > dTarget : false;
+      }
+      if (cond.startsWith("<")) {
+        const dTarget = parseInstitutionalDate(cond.slice(1).trim());
+        return dTarget ? dVal < dTarget : false;
+      }
+
+      const dTarget = parseInstitutionalDate(cond);
+      return dTarget ? dVal.getTime() === dTarget.getTime() : false;
     });
   }
 
