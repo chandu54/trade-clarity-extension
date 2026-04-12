@@ -1107,7 +1107,7 @@ const TradeClarityWidget = () => {
                 <div key={key} className="flex items-center gap-2 py-1">
                   <label className="text-[11px] font-bold w-1/3 truncate text-slate-400" title={def.label}>{def.label}</label>
                   <input
-                    type={def.type}
+                    type={def.type === 'date' ? 'date' : 'text'}
                     className="flex-1 border rounded px-1.5 py-1 outline-none text-[11px] shadow-sm focus:border-blue-500 transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
                     style={def.type === 'date' ? { colorScheme: "dark" } : {}}
                     value={stockData?.params?.[key] || ''}
