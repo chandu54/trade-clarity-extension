@@ -129,7 +129,7 @@ export default function UserGuideModal({
               </div>
             </li>
             <li>
-              <strong>Auto-Fetch Metrics:</strong> If enabled in Editing Rules, adding new stocks will automatically fetch and calculate their ADR and Liquidity in the background.
+              <strong>Auto-Fetch Metrics:</strong> If enabled in Rules, adding new stocks will automatically fetch and calculate their ADR and Liquidity in the background.
             </li>
           </ul>
         </Section>
@@ -330,11 +330,11 @@ export default function UserGuideModal({
         </Section>
 
         <Section
-          title="12. Editing Rules"
+          title="12. Rules"
           icon="🛡️"
           actionLabel="Configure Rules →"
           actionKey="rules"
-          location="Settings > Editing Rules"
+          location="Settings > Rules"
         >
           <p>
             Enforce discipline by locking your history to prevent accidental
@@ -432,7 +432,7 @@ export default function UserGuideModal({
         <Section title="15. Keyboard Shortcuts" icon="⌨️">
           <ul className="guide-list">
             <li><strong>Alt + N:</strong> Add New Stock</li>
-            <li><strong>Ctrl + /</strong> (or Cmd + /): Focus Search Bar</li>
+            <li><strong>Ctrl + K</strong> (or Cmd + K): Focus Search Bar</li>
             <li><strong>Alt + S:</strong> Open Settings</li>
             <li><strong>Alt + A:</strong> Open Analytics Dashboard</li>
             <li><strong>Alt + I:</strong> Generate AI Insights</li>

@@ -163,10 +163,14 @@ async function fetchAndCalculateMetrics(
     clearTimeout(timeoutId);
 
     if (!response.ok) {
+      if (response.status === 404) {
+        return { isInvalid: true, name: "" };
+      }
       throw new Error(`Data fetch error! status: ${response.status}`);
     }
     const data = await response.json();
     const result = data.chart?.result?.[0];
+    const meta = result?.meta || {};
 
     if (
       !result ||
@@ -174,8 +178,10 @@ async function fetchAndCalculateMetrics(
       !result.indicators.quote ||
       !result.indicators.quote[0]
     ) {
-      return null;
+      return { isInvalid: true, name: meta.longName || meta.shortName || "" };
     }
+
+    const companyName = meta.longName || meta.shortName || "";
 
     const quotes = result.indicators.quote[0];
     const adjCloses = result.indicators.adjclose?.[0]?.adjclose || [];
@@ -189,18 +195,21 @@ async function fetchAndCalculateMetrics(
     let rawBars = [];
     for (let i = 0; i < timestamps.length; i++) {
         const closeVal = adjCloses[i] !== undefined && adjCloses[i] !== null ? adjCloses[i] : closes[i];
+        const rawClose = closes[i]; // Unadjusted close for turnover/liquidity calculation
         if (
             timestamps[i] != null &&
             highs[i] != null &&
             lows[i] != null &&
             closeVal != null &&
+            rawClose != null &&
             volumes[i] != null
         ) {
             rawBars.push({
                 timestamp: timestamps[i],
                 high: highs[i],
                 low: lows[i],
-                close: closeVal, // Use adjusted close for SMA/Calculations
+                close: closeVal,     // Adjusted close for SMA/MA calculations
+                rawClose: rawClose,  // Unadjusted close for liquidity turnover
                 volume: volumes[i],
             });
         }
@@ -212,7 +221,6 @@ async function fetchAndCalculateMetrics(
     const validDays = rawBars.sort((a, b) => a.timestamp - b.timestamp);
 
     let totalAdR = 0;
-    let totalVolume = 0;
 
     const adrPeriod = validDays.slice(-adrDays);
     adrPeriod.forEach((day) => {
@@ -220,15 +228,17 @@ async function fetchAndCalculateMetrics(
       totalAdR += dailyRangePct;
     });
 
+    // Liquidity: compute per-day turnover (volume × unadjusted close), then average
+    // Using unadjusted close because Yahoo Finance volume data is NOT split-adjusted
     const liqPeriod = validDays.slice(-liquidityDays);
+    let totalTurnover = 0;
     liqPeriod.forEach((day) => {
-      totalVolume += day.volume;
+      totalTurnover += day.volume * day.rawClose;
     });
 
     const avgAdr = adrPeriod.length > 0 ? totalAdR / adrPeriod.length : 0;
-    const avgVolume = liqPeriod.length > 0 ? totalVolume / liqPeriod.length : 0;
+    const liquidityValue = liqPeriod.length > 0 ? totalTurnover / liqPeriod.length : 0;
     const lastClosePrice = validDays[validDays.length - 1].close;
-    const liquidityValue = avgVolume * lastClosePrice;
 
     const adrMatch = getActualParamKeyAndDef(paramDefs, "adr", "adr", country);
     const liqMatch = getActualParamKeyAndDef(
@@ -258,6 +268,8 @@ async function fetchAndCalculateMetrics(
       adr: formattedAdr,
       liquidity: formattedLiquidity,
       movingAverages: maBucket,
+      name: companyName,
+      isInvalid: false,
       adrKey: adrMatch.key,
       liquidityKey: liqMatch.key,
       movingAveragesKey: maMatch.key,
@@ -292,11 +304,15 @@ async function updateStorageWithMetrics(updates) {
           if (
             stock.params[adrKey] !== metrics.adr ||
             stock.params[liqKey] !== metrics.liquidity ||
-            stock.params[maKey] !== metrics.movingAverages
+            stock.params[maKey] !== metrics.movingAverages ||
+            stock.name !== metrics.name ||
+            stock.isInvalid !== metrics.isInvalid
           ) {
             stock.params[adrKey] = metrics.adr;
             stock.params[liqKey] = metrics.liquidity;
             stock.params[maKey] = metrics.movingAverages;
+            stock.name = metrics.name;
+            stock.isInvalid = metrics.isInvalid;
             dataChanged = true;
           }
 

@@ -4,7 +4,8 @@ export const EMPTY_DATA = {
   weeks: {},
   paramDefinitions: {},
   uiConfig: {
-    autoRefreshMetrics: true
+    autoRefreshMetrics: true,
+    confirmations: {}
   },
   aiSettings: {
     apiKey: "",

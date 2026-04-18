@@ -33,7 +33,7 @@ const MENU_ITEMS = [
     key: "tags",
   },
   {
-    label: "Editing Rules",
+    label: "Rules",
     title: "Set rules for editing data across weeks and lock previous entries",
     key: "rules",
   },

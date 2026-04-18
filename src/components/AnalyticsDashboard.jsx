@@ -12,6 +12,7 @@ const COLORS = [
   "#84cc16", // Lime
 ];
 import { parseInstitutionalDate } from "../utils/dateUtils";
+import MovingAverageRibbon from "./MovingAverageRibbon";
 
 const BarChartIcon = () => (
   <svg
@@ -238,6 +239,178 @@ const SimpleBarChart = ({ data, onBarClick, isExpanded }) => {
               label={item.name}
             />
           ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const MASummaryWidget = ({ data, onBarClick, isExpanded }) => {
+  // data comes in as array of { name: 'Above 200 SMA', value: 12, rawData: { 'Above 5, 10, ...': { value: 5, stocks: [] } }, stocks: [...] }
+  if (!data || data.length === 0) return <div className="chart-empty">No MA data available</div>;
+
+  // Aggregate above vs below counts for each MA using the RAW internal data if present
+  const internalRawData = [];
+  data.forEach(item => {
+    if (item.rawData && Object.keys(item.rawData).length > 0) {
+      Object.entries(item.rawData).forEach(([rawName, rawVal]) => {
+        internalRawData.push({ name: rawName, value: rawVal.value, stocks: rawVal.stocks });
+      });
+    } else {
+      internalRawData.push(item);
+    }
+  });
+
+  const masToTrack = ["5", "10", "21", "50", "200"];
+  const maCounts = masToTrack.reduce((acc, ma) => {
+    acc[ma] = { above: 0, below: 0, aboveStocks: [], belowStocks: [] };
+    return acc;
+  }, {});
+
+  let belowAllCount = 0;
+  const belowAllStocks = [];
+  
+  let aboveAllCount = 0;
+  const aboveAllStocks = [];
+
+  internalRawData.forEach((item) => {
+    const text = (item.name || "").toLowerCase();
+    
+    // Check global states
+    if (text.includes("below all")) {
+      belowAllCount += item.value;
+      belowAllStocks.push(...item.stocks);
+      // If below all, it's below each individual MA
+      masToTrack.forEach(ma => {
+        maCounts[ma].below += item.value;
+        maCounts[ma].belowStocks.push(...item.stocks);
+      });
+      return;
+    }
+
+    let isAboveAll = true;
+
+    // Check individual MAs
+    masToTrack.forEach(ma => {
+      const maNum = parseInt(ma);
+      const regex = new RegExp(`\\b${ma}\\b`);
+      
+      // Basic check: does the text explicitly mention this MA is above?
+      let isAbove = text.includes("above") && (text.includes("all") || regex.test(text));
+      
+      // Hierarchy check: if it says "Above 200", it implies 50, 21, 10, 5
+      if (!isAbove && text.includes("above")) {
+        const matches = text.match(/\d+/g);
+        if (matches) {
+          const highestNum = Math.max(...matches.map(n => parseInt(n)));
+          if (maNum <= highestNum) isAbove = true;
+        }
+      }
+
+      if (isAbove) {
+        maCounts[ma].above += item.value;
+        maCounts[ma].aboveStocks.push(...item.stocks);
+      } else {
+        maCounts[ma].below += item.value;
+        maCounts[ma].belowStocks.push(...item.stocks);
+        isAboveAll = false;
+      }
+    });
+
+    if (isAboveAll) {
+      aboveAllCount += item.value;
+      aboveAllStocks.push(...item.stocks);
+    }
+  });
+
+  const generateStatusGroup = (label, count, stocks) => {
+    return { name: label, value: count, stocks: stocks, paramLabel: "Moving Averages" };
+  };
+
+  return (
+    <div className="chart-container ma-summary-container">
+      <div className="ma-summary-content">
+        <div className="ma-summary-stats">
+          <div 
+            className="ma-stat-card bullish"
+            onClick={(e) => onBarClick && onBarClick(generateStatusGroup("Above All MAs", aboveAllCount, aboveAllStocks), e)}
+            title="Click to view stocks"
+          >
+            <div className="ma-stat-badge">BULLISH</div>
+            <div className="ma-stat-value">{aboveAllCount}</div>
+            <div className="ma-stat-label">Above All</div>
+          </div>
+          
+          <div 
+            className="ma-stat-card bearish"
+            onClick={(e) => onBarClick && onBarClick(generateStatusGroup("Below All MAs", belowAllCount, belowAllStocks), e)}
+            title="Click to view stocks"
+          >
+            <div className="ma-stat-badge">BEARISH</div>
+            <div className="ma-stat-value">{belowAllCount}</div>
+            <div className="ma-stat-label">Below All</div>
+          </div>
+        </div>
+
+        <div className="ma-bars themed-scroll">
+          {masToTrack.map(ma => {
+            const counts = maCounts[ma];
+            const total = counts.above + counts.below;
+            if (total === 0) return null;
+            
+            const abovePct = Math.round((counts.above / total) * 100);
+            
+            return (
+              <div key={ma} className="ma-row">
+                <div className="ma-row-details">
+                  <div className="ma-row-header">
+                    <div className="ma-period-label">
+                      <span className="ma-label-text">SMA</span>
+                      <span className="ma-label-num">{ma}</span>
+                    </div>
+                    
+                    <div className="ma-row-stats">
+                      <span 
+                        className="ma-count-chip bullish"
+                        onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Above ${ma} MA`, counts.above, counts.aboveStocks), e)}
+                      >
+                        {counts.above} ↑
+                      </span>
+                      <span 
+                        className="ma-count-chip bearish"
+                        onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Below ${ma} MA`, counts.below, counts.belowStocks), e)}
+                      >
+                        {counts.below} ↓
+                      </span>
+                    </div>
+                  </div>
+                  
+                  <div className="ma-progress-container">
+                    <div className="ma-progress-track">
+                      <div 
+                        className="ma-progress-fill bullish" 
+                        style={{ width: `${abovePct}%` }}
+                        onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Above ${ma} MA`, counts.above, counts.aboveStocks), e)}
+                      />
+                      <div 
+                        className="ma-progress-fill bearish" 
+                        style={{ width: `${100-abovePct}%` }}
+                        onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Below ${ma} MA`, counts.below, counts.belowStocks), e)}
+                      />
+                    </div>
+                    <div className="ma-progress-marker" style={{ left: '50%' }} />
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+      
+      {!isExpanded && (
+        <div className="print-only-block mt-4 space-y-1">
+          <PrintStockList stocks={aboveAllStocks} label="Above All MAs" />
+          <PrintStockList stocks={belowAllStocks} label="Below All MAs" />
         </div>
       )}
     </div>
@@ -707,7 +880,9 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
           />
         );
       default:
-        return param.chartType === "bar" ? (
+        return param.id === "movingAverages" ? (
+          <MASummaryWidget data={param.data} onBarClick={onChartClick} isExpanded={true} />
+        ) : param.chartType === "bar" ? (
           <SimpleBarChart data={param.data} onBarClick={onChartClick} isExpanded={true} />
         ) : (
           <SimplePieChart data={param.data} onSliceClick={onChartClick} isExpanded={true} />
@@ -1236,23 +1411,63 @@ const AnalyticsDashboard = ({
             value = "Unspecified";
           }
 
-          const key = String(value);
+          // --- SMART MOVING AVERAGE AGGREGATION ---
+          let smartValue = value;
+          if (param.id === "movingAverages" && value !== "Unspecified") {
+            const valStr = String(value);
+            if (valStr.toLowerCase().includes("below all")) {
+              smartValue = "Below All MAs";
+            } else if (valStr.includes("200")) {
+              smartValue = "Above 200 SMA";
+            } else if (valStr.includes("50")) {
+              smartValue = "Above 50 SMA";
+            } else if (valStr.includes("21")) {
+              smartValue = "Above 21 SMA";
+            } else if (valStr.includes("10")) {
+              smartValue = "Above 10 SMA";
+            } else if (valStr.includes("5")) {
+              smartValue = "Above 5 SMA";
+            }
+          }
+
+          const key = String(smartValue);
           if (!counts[key]) {
-            counts[key] = { value: 0, stocks: [] };
+            counts[key] = { value: 0, stocks: [], rawData: {} };
           }
           counts[key].value += 1;
           counts[key].stocks.push(stock.symbol || stock.ticker || "Unknown");
+
+          // Keep track of raw combination counts for the specialized Summary widget
+          if (param.id === "movingAverages") {
+            const rawKey = String(value);
+            if (!counts[key].rawData[rawKey]) {
+              counts[key].rawData[rawKey] = { value: 0, stocks: [] };
+            }
+            counts[key].rawData[rawKey].value += 1;
+            counts[key].rawData[rawKey].stocks.push(stock.symbol || stock.ticker || "Unknown");
+          }
         });
 
-        const data = Object.keys(counts).map((key) => ({
+        let data = Object.keys(counts).map((key) => ({
           name: key,
           value: counts[key].value,
           stocks: counts[key].stocks,
+          rawData: counts[key].rawData, // Include raw data for summary processing
           paramLabel: param.label,
         }));
 
-        // Sort logic: Special handling for "Liquidity" to sort by defined order/value instead of count
-        if (param.label && param.label.toLowerCase().includes("liquidity")) {
+        // Sort logic: Special handling for MAs and Liquidity
+        if (param.id === "movingAverages") {
+          const maOrder = ["Above 200 SMA", "Above 50 SMA", "Above 21 SMA", "Above 10 SMA", "Above 5 SMA", "Below All MAs", "Unspecified"];
+          data.sort((a, b) => {
+            const idxA = maOrder.indexOf(a.name);
+            const idxB = maOrder.indexOf(b.name);
+            if (idxA !== -1 && idxB !== -1) return idxA - idxB;
+            if (idxA === -1) return 1;
+            if (idxB === -1) return -1;
+            return 0;
+          });
+        } else if (param.label && param.label.toLowerCase().includes("liquidity")) {
           if (param.options && param.options.length > 0) {
             data.sort((a, b) => {
               const idxA = param.options.indexOf(a.name);
@@ -1333,7 +1548,9 @@ const AnalyticsDashboard = ({
       // Determine chart type (user preference > default logic)
       let chartType = config.chartType;
       if (!chartType) {
-        if (
+        if (item.id === "movingAverages") {
+          chartType = "summary";
+        } else if (
           item.type === "numeric-distribution" ||
           item.type === "date-timeline"
         ) {
@@ -1542,7 +1759,8 @@ const AnalyticsDashboard = ({
                       <h3 className="chart-title">{item.label}</h3>
                       <div className="chart-card-actions">
                         {item.type !== "numeric-distribution" &&
-                          item.type !== "date-timeline" && (
+                          item.type !== "date-timeline" && 
+                          item.id !== "movingAverages" && (
                             <button
                               className="icon-btn small chart-toggle-btn"
                               onClick={() =>
@@ -1585,15 +1803,20 @@ const AnalyticsDashboard = ({
                             handleChartClick(point, event, item)
                           }
                         />
+                      ) : item.id === "movingAverages" ? (
+                        <MASummaryWidget
+                          data={item.data}
+                          onBarClick={(data, e) => handleChartClick(data, e, item)}
+                        />
                       ) : item.chartType === "pie" ? (
                         <SimplePieChart
                           data={item.data}
-                          onSliceClick={handleChartClick}
+                          onSliceClick={(data, e) => handleChartClick(data, e, item)}
                         />
                       ) : (
                         <SimpleBarChart
                           data={item.data}
-                          onBarClick={handleChartClick}
+                          onBarClick={(data, e) => handleChartClick(data, e, item)}
                         />
                       )}
                     </div>

@@ -288,8 +288,21 @@ function AppContent() {
   const currentWeekKey = getSundayOfWeek(todayStr);
   const isReadOnly = isWeekReadOnly(weekKey, currentWeekKey, data?.uiConfig);
 
+  const handleConfirmSettingsChange = (key, value) => {
+    setData(prev => {
+      const newData = structuredClone(prev);
+      if (!newData.uiConfig) newData.uiConfig = {};
+      if (!newData.uiConfig.confirmations) newData.uiConfig.confirmations = {};
+      newData.uiConfig.confirmations[key] = value;
+      return newData;
+    });
+  };
+
   return (
-    <>
+    <ConfirmProvider 
+      settings={data.uiConfig?.confirmations} 
+      onUpdateSettings={handleConfirmSettingsChange}
+    >
       <GlobalTooltip />
 
       <Header
@@ -474,16 +487,14 @@ function AppContent() {
           onOpenModal={modals.openModal}
         />
       )}
-    </>
+    </ConfirmProvider>
   );
 }
 
 export default function App() {
   return (
     <ToastProvider>
-      <ConfirmProvider>
-        <AppContent />
-      </ConfirmProvider>
+      <AppContent />
     </ToastProvider>
   );
 }

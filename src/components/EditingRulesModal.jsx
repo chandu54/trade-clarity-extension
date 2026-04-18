@@ -27,7 +27,7 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
   }
 
   return (
-    <Modal isOpen={isOpen} onClose={onClose} title="Editing Rules" subtitle="Set rules for editing data across weeks and lock previous entries">
+    <Modal isOpen={isOpen} onClose={onClose} title="Rules" subtitle="Set rules for editing data across weeks and lock previous entries">
       <div className="param-row">
         <div>
           <strong>Read-only Previous Weeks</strong>
@@ -46,54 +46,51 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
         </label>
       </div>
 
-      <div className="param-row" style={{ marginTop: "16px" }}>
-        <div>
-          <strong>Enable Background Auto-Fetch (ADR & Liquidity)</strong>
-          <div className="muted small">
-            Automatically fetch and calculate ADR and Liquidity when adding new stocks.
+      <div className="param-row-group" style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
+        <div className="param-row" style={{ border: "none", borderRadius: "0" }}>
+          <div>
+            <strong>Enable Background Auto-Fetch (ADR & Liquidity)</strong>
+            <div className="muted small">
+              Automatically fetch and calculate ADR and Liquidity when adding new stocks.
+            </div>
           </div>
+
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={enableApiHydration}
+              onChange={(e) => toggleApiHydration(e.target.checked)}
+            />
+            <span className="slider" />
+          </label>
         </div>
 
-        <label className="switch">
-          <input
-            type="checkbox"
-            checked={enableApiHydration}
-            onChange={(e) => toggleApiHydration(e.target.checked)}
-          />
-          <span className="slider" />
-        </label>
+        {enableApiHydration && (
+          <div style={{ padding: "0 16px 16px", background: "rgba(15, 23, 42, 0.02)", display: "flex", alignItems: "center", gap: "24px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)" }}>ADR:</span>
+              <input 
+                type="number" 
+                value={adrDays}
+                onChange={(e) => handleDaysChange("adrDays", e.target.value)}
+                min="1" max="100"
+                style={{ width: "50px", padding: "4px 6px", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "12px" }}
+              />
+            </div>
+            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+              <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)" }}>Liquidity:</span>
+              <input 
+                type="number" 
+                value={liquidityDays}
+                onChange={(e) => handleDaysChange("liquidityDays", e.target.value)}
+                min="1" max="100"
+                style={{ width: "50px", padding: "4px 6px", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "12px" }}
+              />
+              <span className="info-icon" style={{ marginLeft: "4px" }} title="Number of trading days to use when calculating averages. Defaults to 20 days." />
+            </div>
+          </div>
+        )}
       </div>
-
-      {enableApiHydration && (
-        <div style={{ marginTop: "16px", padding: "12px", background: "var(--bg-light)", borderRadius: "8px", border: "1px solid var(--border-color)" }}>
-           <h4 style={{ margin: "0 0 10px 0", fontSize: "14px" }}>Auto-Fetch Lookback Period</h4>
-           <div style={{ display: "flex", gap: "20px" }}>
-              <div style={{ flex: 1 }}>
-                 <label style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--text-muted)" }}>ADR Days</label>
-                 <input 
-                    type="number" 
-                    value={adrDays}
-                    onChange={(e) => handleDaysChange("adrDays", e.target.value)}
-                    min="1"
-                    max="100"
-                    style={{ width: "100%", padding: "6px 8px", borderRadius: "4px", border: "1px solid var(--border-color)", background: "var(--bg-dark)", color: "var(--text-color)" }}
-                 />
-              </div>
-              <div style={{ flex: 1 }}>
-                 <label style={{ display: "block", fontSize: "12px", marginBottom: "4px", color: "var(--text-muted)" }}>Liquidity Days</label>
-                 <input 
-                    type="number" 
-                    value={liquidityDays}
-                    onChange={(e) => handleDaysChange("liquidityDays", e.target.value)}
-                    min="1"
-                    max="100"
-                    style={{ width: "100%", padding: "6px 8px", borderRadius: "4px", border: "1px solid var(--border-color)", background: "var(--bg-dark)", color: "var(--text-color)" }}
-                 />
-              </div>
-           </div>
-           <div className="muted small" style={{ marginTop: "8px" }}>Number of trading days to use when calculating averages. Defaults to 20 days.</div>
-        </div>
-      )}
 
       <div className="param-row" style={{ marginTop: "16px" }}>
         <div>

@@ -35,6 +35,109 @@ function getWeekRangeLabel(sundayDateStr) {
   return `${formatDate(monday)} to ${formatDate(friday)}`;
 }
 
+export function MovingAverageFilter({ value, onChange, id }) {
+  const [isOpen, setIsOpen] = useState(false);
+  const containerRef = useRef(null);
+  const availableMAs = ["5", "10", "21", "50", "200"];
+  
+  // value is an object: { "5": "below", "50": "above" }
+  const activeConditions = value || {};
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (containerRef.current && !containerRef.current.contains(event.target)) {
+        setIsOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  const handleSetMA = (ma, mode) => {
+    const next = { ...activeConditions };
+    if (next[ma] === mode) {
+      delete next[ma]; // Toggle off if same mode clicked
+    } else {
+      next[ma] = mode;
+    }
+    onChange(Object.keys(next).length === 0 ? "" : next);
+  };
+
+  const displayText = useMemo(() => {
+    const keys = Object.keys(activeConditions);
+    if (keys.length === 0) return "All";
+    
+    const above = keys.filter(k => activeConditions[k] === 'above').sort((a,b)=>a-b);
+    const below = keys.filter(k => activeConditions[k] === 'below').sort((a,b)=>a-b);
+    
+    let parts = [];
+    if (above.length > 0) parts.push(`Above ${above.join(", ")}`);
+    if (below.length > 0) parts.push(`Below ${below.join(", ")}`);
+    
+    return parts.join(" | ");
+  }, [activeConditions]);
+
+  return (
+    <div className="ma-popover-container" ref={containerRef}>
+      <button
+        type="button"
+        id={id}
+        className={`ma-popover-trigger ${isOpen ? "open" : ""} ${Object.keys(activeConditions).length > 0 ? "has-value" : ""}`}
+        onClick={() => setIsOpen(!isOpen)}
+        title={displayText !== "All" ? displayText : undefined}
+      >
+        <span className="ma-popover-text">{displayText}</span>
+        <span className="ma-popover-icon">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+            <polyline points="6 9 12 15 18 9" />
+          </svg>
+        </span>
+      </button>
+
+      {isOpen && (
+        <div className="ma-popover-dropdown matrix-style">
+          <div className="ma-matrix-header">
+            <span className="col-period">Period</span>
+            <span className="col-opt">Above</span>
+            <span className="col-opt">Below</span>
+          </div>
+          <div className="ma-matrix-body">
+            {availableMAs.map((ma) => {
+              const currentMode = activeConditions[ma];
+              return (
+                <div key={ma} className="ma-matrix-row">
+                  <span className="ma-period-label">{ma} MA</span>
+                  <div 
+                    className={`ma-matrix-cell ${currentMode === 'above' ? 'active' : ''}`}
+                    onClick={() => handleSetMA(ma, 'above')}
+                  >
+                    <div className="ma-matrix-check"></div>
+                  </div>
+                  <div 
+                    className={`ma-matrix-cell ${currentMode === 'below' ? 'active' : ''}`}
+                    onClick={() => handleSetMA(ma, 'below')}
+                  >
+                    <div className="ma-matrix-check"></div>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+          {Object.keys(activeConditions).length > 0 && (
+            <div className="ma-matrix-footer">
+              <button className="ma-matrix-reset" onClick={() => onChange("")}>
+                Clear
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function parseTradingViewData(content, sectorList) {
   // We split by comma or newline to handle both:
   // 1. Single-line comma-separated strings (like TradingView export Case 2)
@@ -331,8 +434,8 @@ export default function StockGrid({
         }
       }
 
-      // Ctrl + / (or Cmd + /) -> Focus Search Bar
-      if ((e.ctrlKey || e.metaKey) && e.key === "/") {
+      // Ctrl + K (or Cmd + K) -> Focus Search Bar
+      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
         e.preventDefault();
         // Expand filters if they are collapsed so the search bar is actually visible
         if (!showFilters) setShowFilters(true);
@@ -495,8 +598,9 @@ export default function StockGrid({
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
         const symbolMatch = stock.symbol.toLowerCase().includes(q);
+        const nameMatch = (stock.name || "").toLowerCase().includes(q);
         const notesMatch = (stock.notes || "").toLowerCase().includes(q);
-        if (!symbolMatch && !notesMatch) return false;
+        if (!symbolMatch && !nameMatch && !notesMatch) return false;
       }
 
       /*SECTOR FILTER*/
@@ -537,7 +641,7 @@ export default function StockGrid({
 
         const stockVal = stock.params?.[key];
 
-        // --- SMART MOVING AVERAGE FILTERING ---
+        // --- SMART MOVING AVERAGE FILTERING (COMBO CASE SUPPORT) ---
         if (key === "movingAverages" && stockVal && filterVal) {
           const parseMAs = (str) => {
             if (!str || typeof str !== 'string') return [];
@@ -545,22 +649,30 @@ export default function StockGrid({
             return str.match(/\d+/g) || [];
           };
 
-          const doSmartMatch = (sVal, fVal) => {
-            const sCheck = parseMAs(sVal);
-            const fCheck = parseMAs(fVal);
+          const stockAboveMAs = parseMAs(stockVal);
+          const isStockBelowAll = stockAboveMAs.includes("below");
 
-            if (fCheck.includes("below")) {
-              return sCheck.includes("below");
-            }
-            
-            // If filter selection has "Above 5", check if stock's "Above 5, 10..." contains "5"
-            return fCheck.every(ma => sCheck.includes(ma));
-          };
+          // Handle Object format (new per-MA condition map)
+          // filterVal: { "5": "below", "50": "above" }
+          if (filterVal && typeof filterVal === 'object' && !Array.isArray(filterVal)) {
+            const conditions = Object.entries(filterVal);
+            if (conditions.length === 0) return true;
 
-          if (Array.isArray(filterVal)) {
-            return filterVal.some(fv => doSmartMatch(stockVal, fv));
+            return conditions.every(([ma, mode]) => {
+              if (mode === "below") {
+                // Below condition: Price is NOT in the "above" set for that period
+                if (isStockBelowAll) return true;
+                return !stockAboveMAs.includes(ma);
+              } else {
+                // Above condition: Price IS in the "above" set for that period
+                if (isStockBelowAll) return false;
+                return stockAboveMAs.includes(ma);
+              }
+            });
           }
-          return doSmartMatch(stockVal, filterVal);
+
+          // Fallback / Initial State support
+          return true;
         }
 
         if (p.type === "checkbox") {
@@ -690,6 +802,10 @@ export default function StockGrid({
     return Object.entries(filters).filter(([key, value]) => {
       if (value === undefined || value === "") return false;
       if (Array.isArray(value) && value.length === 0) return false;
+      // MA toggle filter object: active only if mas has selections
+      if (value && typeof value === 'object' && !Array.isArray(value)) {
+        return Object.keys(value).length > 0;
+      }
       return true;
     });
   }, [filters]);
@@ -832,7 +948,7 @@ export default function StockGrid({
   }
 
   async function deleteStock(symbol) {
-    if (!(await confirm(`Delete ${symbol}?`))) return;
+    if (!(await confirm(`Delete ${symbol}?`, { confirmSettingsKey: 'skipDeleteConfirm' }))) return;
     setData((prev) => {
       const prevWeek = prev.weeks[country][weekKey];
       const newStocks = { ...prevWeek.stocks };
@@ -1101,8 +1217,12 @@ export default function StockGrid({
             ...base,
             ...existing,
             ...s,
+            // Preserve existing populated fields — don't let empty import data wipe them
+            sector: s.sector || existing?.sector || "",
+            notes: s.notes || existing?.notes || "",
+            tradable: (s.tradable !== undefined && s.tradable !== false) ? s.tradable : (existing?.tradable || false),
             params: { ...(existing?.params || {}), ...(s.params || {}) },
-            tags: s.tags || existing?.tags || [],
+            tags: (s.tags && s.tags.length > 0) ? s.tags : (existing?.tags || []),
             watchlists: Array.from(
               new Set([
                 ...(existing?.watchlists || []),
@@ -1242,7 +1362,7 @@ export default function StockGrid({
                 <input
                   ref={searchInputRef}
                   type="text"
-                  placeholder="Search symbols..."
+                  placeholder="Search symbols... (Ctrl+K)"
                   aria-label="Search symbols"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
@@ -1285,7 +1405,21 @@ export default function StockGrid({
                   let displayValue = value;
                   if (typeof value === "boolean")
                     displayValue = value ? "Yes" : "No";
-                  else if (Array.isArray(value)) {
+                  else if (value && typeof value === "object" && !Array.isArray(value)) {
+                    // MA condition map: { "5": "below", "200": "above" }
+                    const keys = Object.keys(value);
+                    const above = keys
+                      .filter((k) => value[k] === "above")
+                      .sort((a, b) => a - b);
+                    const below = keys
+                      .filter((k) => value[k] === "below")
+                      .sort((a, b) => a - b);
+
+                    let parts = [];
+                    if (above.length > 0) parts.push(`${above.join(", ")} (Above)`);
+                    if (below.length > 0) parts.push(`${below.join(", ")} (Below)`);
+                    displayValue = parts.join(" | ");
+                  } else if (Array.isArray(value)) {
                     displayValue =
                       value.length > 2
                         ? `${value.length} Selected`
@@ -1373,7 +1507,7 @@ export default function StockGrid({
               )}
 
               {filterableParams.map(([key, p]) => (
-                <div key={key} className="filter-item">
+                <div key={key} className={`filter-item ${key === "movingAverages" ? "filter-item-ma" : ""}`}>
                   <label htmlFor={`filter-param-${key}`}>
                     {p.label}
                     {(p.type === "number" || p.type === "date") && (
@@ -1385,83 +1519,94 @@ export default function StockGrid({
                       </span>
                     )}
                   </label>
+
                   <div className="filter-input-wrapper">
-                    {p.type === "checkbox" && (
+                    {key === "movingAverages" ? (
+                      <MovingAverageFilter
+                        id={`filter-param-${key}`}
+                        value={filters[key]}
+                        onChange={(val) => setFilter(key, val)}
+                      />
+                    ) : (
                       <>
-                        <select
-                          id={`filter-param-${key}`}
-                          className="select-control filter-select-control"
-                          value={filters[key] ?? ""}
-                          onChange={(e) =>
-                            setFilter(
-                              key,
-                              e.target.value === ""
-                                ? ""
-                                : e.target.value === "true",
-                            )
-                          }
-                        >
-                          <option value="">All</option>
-                          <option value="true">Yes</option>
-                          <option value="false">No</option>
-                        </select>
-                        {filters[key] !== undefined && filters[key] !== "" && (
-                          <ClearButton
-                            onClick={() => setFilter(key, "")}
-                            isSelect
-                          />
+                        {p.type === "checkbox" && (
+                          <>
+                            <select
+                              id={`filter-param-${key}`}
+                              className="select-control filter-select-control"
+                              value={filters[key] ?? ""}
+                              onChange={(e) =>
+                                setFilter(
+                                  key,
+                                  e.target.value === ""
+                                    ? ""
+                                    : e.target.value === "true",
+                                )
+                              }
+                            >
+                              <option value="">All</option>
+                              <option value="true">Yes</option>
+                              <option value="false">No</option>
+                            </select>
+                            {filters[key] !== undefined && filters[key] !== "" && (
+                              <ClearButton
+                                onClick={() => setFilter(key, "")}
+                                isSelect
+                              />
+                            )}
+                          </>
                         )}
-                      </>
-                    )}
 
-                    {p.type === "select" && (
-                      <>
-                        <MultiSelectDropdown
-                          id={`filter-param-${key}`}
-                          options={p.options || []}
-                          value={
-                            Array.isArray(filters[key])
-                              ? filters[key]
-                              : filters[key]
-                                ? [filters[key]]
-                                : []
-                          }
-                          onChange={(val) => setFilter(key, val)}
-                          placeholder="All"
-                        />
-                        {filters[key] !== undefined &&
-                          (Array.isArray(filters[key])
-                            ? filters[key].length > 0
-                            : filters[key] !== "") && (
-                            <ClearButton
-                              onClick={() => setFilter(key, [])}
-                              isSelect
+                        {p.type === "select" && (
+                          <>
+                            <MultiSelectDropdown
+                              id={`filter-param-${key}`}
+                              options={p.options || []}
+                              value={
+                                Array.isArray(filters[key])
+                                  ? filters[key]
+                                  : filters[key]
+                                    ? [filters[key]]
+                                    : []
+                              }
+                              onChange={(val) => setFilter(key, val)}
+                              placeholder="All"
                             />
-                          )}
-                      </>
-                    )}
+                            {filters[key] !== undefined &&
+                              (Array.isArray(filters[key])
+                                ? filters[key].length > 0
+                                : filters[key] !== "") && (
+                                <ClearButton
+                                  onClick={() => setFilter(key, [])}
+                                  isSelect
+                                />
+                              )}
+                          </>
+                        )}
 
-                    {(p.type === "text" ||
-                      p.type === "number" ||
-                      p.type === "date") && (
-                      <>
-                        <input
-                          id={`filter-param-${key}`}
-                          type="text"
-                          className="filter-input"
-                          value={filters[key] || ""}
-                          onChange={(e) => setFilter(key, e.target.value)}
-                          placeholder={
-                            p.type === "date"
-                              ? "YYYY-MM-DD or >..."
-                              : p.type === "number"
-                                ? "e.g. >10 or 10-20"
-                                : ""
-                          }
-                          style={{ width: "100%", paddingRight: "24px" }}
-                        />
-                        {filters[key] !== undefined && filters[key] !== "" && (
-                          <ClearButton onClick={() => setFilter(key, "")} />
+                        {(p.type === "text" ||
+                          p.type === "number" ||
+                          p.type === "date") && (
+                          <>
+                            <input
+                              id={`filter-param-${key}`}
+                              type="text"
+                              className="filter-input"
+                              value={filters[key] || ""}
+                              onChange={(e) => setFilter(key, e.target.value)}
+                              placeholder={
+                                p.type === "date"
+                                  ? "YYYY-MM-DD or >..."
+                                  : p.type === "number"
+                                    ? "e.g. >10 or 10-20"
+                                    : ""
+                              }
+                              style={{ width: "100%", paddingRight: "24px" }}
+                            />
+                            {filters[key] !== undefined && filters[key] !== "" && (
+                              <ClearButton onClick={() => setFilter(key, "")} />
+                            )}
+                          </>
                         )}
                       </>
                     )}
@@ -1902,22 +2047,23 @@ export default function StockGrid({
                 >
                   <div className="stock-cell-content">
                     <div className="stock-header-row">
-                      <span
-                        className={
-                          !isReadOnly
-                            ? "stock-name stock-symbol-link"
-                            : "stock-name"
-                        }
-                        onClick={(e) => {
-                          if (!isReadOnly) {
-                            e.stopPropagation();
-                            setEditingStock(stock);
-                          }
-                        }}
-                        title={!isReadOnly ? "Click to edit details" : ""}
-                      >
-                        {stock.symbol}
-                      </span>
+                      <div className="symbol-cell-content">
+                        <span
+                          className={`stock-symbol ${!isReadOnly ? "clickable" : ""}`}
+                          onClick={() => {
+                            if (!isReadOnly) {
+                              setEditingStock(stock);
+                              setIsEditModalOpen(true);
+                            }
+                          }}
+                          title={!isReadOnly ? "Click to edit details" : ""}
+                        >
+                          {stock.symbol}
+                          {stock.isInvalid && (
+                            <span className="symbol-invalid-icon" title="Symbol not found or data unavailable. Please verify the ticker.">!</span>
+                          )}
+                        </span>
+                      </div>
 
                       {!isReadOnly && showTags && (
                         <div className="add-tag-wrapper">
