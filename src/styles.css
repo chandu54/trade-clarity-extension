@@ -8564,28 +8564,31 @@ input[type="date"].input-with-clear {
 .ma-summary-content {
   display: flex;
   flex-direction: column;
-  justify-content: space-between;
+  justify-content: flex-start;
   height: 100%;
-  padding-top: 4px;
+  padding: 4px 0;
+  width: 100%;
 }
+
+
 
 .ma-summary-stats {
   display: flex;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
-  padding-bottom: 12px;
+  gap: 8px;
+  margin-bottom: 8px;
+  padding-bottom: 8px;
   border-bottom: 1px solid var(--border);
 }
 
 .ma-stat-card {
   flex: 1;
-  border-radius: 12px;
+  border-radius: 8px;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 12px 8px;
+  padding: 6px 4px;
   cursor: pointer;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   border: 1px solid transparent;
@@ -8593,90 +8596,134 @@ input[type="date"].input-with-clear {
   overflow: hidden;
 }
 
-.ma-stat-badge {
-  font-size: 8px;
-  font-weight: 900;
-  letter-spacing: 0.12em;
-  padding: 2px 6px;
-  border-radius: 4px;
-  margin-bottom: 4px;
+.ma-stat-main {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 2px;
 }
 
+.ma-stat-badge {
+  font-size: 7px;
+  font-weight: 900;
+  letter-spacing: 0.1em;
+  padding: 1px 4px;
+  border-radius: 3px;
+}
+
+
 .ma-stat-card.bullish {
-  background: rgba(37, 99, 235, 0.05);
-  border-color: rgba(37, 99, 235, 0.15);
+  background: rgba(45, 212, 191, 0.05);
+  border-color: rgba(45, 212, 191, 0.15);
 }
 
 .ma-stat-card.bullish .ma-stat-badge {
-  background: rgba(37, 99, 235, 0.1);
-  color: var(--primary);
+  background: rgba(45, 212, 191, 0.1);
+  color: #2dd4bf;
 }
 
 .ma-stat-card.bullish:hover {
-  background: rgba(37, 99, 235, 0.1);
-  border-color: var(--primary);
+  background: rgba(45, 212, 191, 0.08);
+  border-color: #2dd4bf;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(37, 99, 235, 0.15);
+  box-shadow: 0 8px 16px rgba(45, 212, 191, 0.1);
 }
 
+
 .ma-stat-card.bearish {
-  background: rgba(239, 68, 68, 0.05);
-  border-color: rgba(239, 68, 68, 0.15);
+  background: rgba(148, 163, 184, 0.05);
+  border-color: rgba(148, 163, 184, 0.15);
 }
 
 .ma-stat-card.bearish .ma-stat-badge {
-  background: rgba(239, 68, 68, 0.1);
-  color: #dc2626;
+  background: rgba(148, 163, 184, 0.1);
+  color: #94a3b8;
 }
 
 .ma-stat-card.bearish:hover {
-  background: rgba(239, 68, 68, 0.1);
-  border-color: #dc2626;
+  background: rgba(148, 163, 184, 0.08);
+  border-color: #64748b;
   transform: translateY(-2px);
-  box-shadow: 0 4px 12px rgba(239, 68, 68, 0.15);
+  box-shadow: 0 8px 16px rgba(100, 116, 139, 0.1);
 }
 
+.ma-stat-card.institutional-core {
+  background: rgba(20, 184, 166, 0.08);
+  border-color: rgba(20, 184, 166, 0.2);
+}
+
+.ma-stat-card.institutional-core .ma-stat-value {
+  color: #14b8a6;
+}
+
+.ma-stat-card.institutional-core:hover {
+  background: rgba(20, 184, 166, 0.12);
+  border-color: #14b8a6;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 16px rgba(20, 184, 166, 0.15);
+}
+
+
+
 .ma-stat-label {
-  font-size: 10px;
+  font-size: 9px;
   font-weight: 700;
   color: var(--muted);
   text-transform: uppercase;
-  letter-spacing: 0.03em;
-  margin-top: 2px;
+  letter-spacing: 0.02em;
 }
 
 .ma-stat-value {
-  font-size: 24px;
+  font-size: 18px;
   font-weight: 900;
   line-height: 1;
   font-family: var(--font-mono, monospace);
+  letter-spacing: -0.05em;
 }
 
-.ma-stat-card.bullish .ma-stat-value { color: var(--primary); }
-.ma-stat-card.bearish .ma-stat-value { color: #dc2626; }
+.ma-stat-card.bullish .ma-stat-value { color: #2dd4bf; }
+.ma-stat-card.bearish .ma-stat-value { color: #94a3b8; }
+
+
 
 .ma-row {
-  padding: 8px 4px;
-  border-radius: 8px;
-  transition: background 0.2s;
+  padding: 8px 0;
+  width: 100%;
+  border-radius: 4px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  border-left: 3px solid transparent;
+  margin-bottom: 2px;
 }
+
+
+
+
 
 .ma-row:hover {
   background: rgba(128, 128, 128, 0.04);
+  border-left-color: #2dd4bf;
+  padding-left: 8px;
 }
 
-.ma-row-header {
+
+.ma-row-details-horizontal {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-bottom: 6px;
+  gap: 12px;
+  width: 100%;
+  justify-content: flex-start;
 }
+
+
 
 .ma-period-label {
   display: flex;
   align-items: baseline;
   gap: 3px;
+  width: 52px;
+  flex-shrink: 0;
 }
+
 
 .ma-label-text {
   font-size: 9px;
@@ -8686,50 +8733,103 @@ input[type="date"].input-with-clear {
 }
 
 .ma-label-num {
-  font-size: 14px;
-  font-weight: 900;
+  font-size: 13px;
+  font-weight: 800;
   color: var(--text);
+  font-family: var(--font-mono, monospace);
+  letter-spacing: -0.02em;
+  opacity: 0.9;
 }
+
+
+
+
 
 .ma-row-stats {
   display: flex;
-  gap: 6px;
+  gap: 4px;
+  flex-shrink: 0;
 }
 
 .ma-count-chip {
   font-size: 11px;
   font-weight: 800;
-  padding: 2px 8px;
-  border-radius: 6px;
+  padding: 3px 8px;
+  border-radius: 4px;
   cursor: pointer;
-  transition: all 0.2s;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  gap: 3px;
   border: 1px solid transparent;
 }
 
+
+.ma-chip-num {
+  font-weight: 900;
+}
+
+.ma-chip-arrow {
+  opacity: 0.7;
+  font-size: 10px;
+}
+
 .ma-count-chip.bullish {
-  background: rgba(37, 99, 235, 0.05);
-  color: var(--primary);
+  background: rgba(45, 212, 191, 0.08);
+  color: #2dd4bf;
+  border-color: rgba(45, 212, 191, 0.15);
 }
 
 .ma-count-chip.bullish:hover {
-  background: var(--primary);
+  background: #0d9488;
   color: white;
+  border-color: #0d9488;
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(45, 212, 191, 0.4);
 }
 
 .ma-count-chip.bearish {
-  background: rgba(239, 68, 68, 0.05);
-  color: #dc2626;
+  background: rgba(148, 163, 184, 0.08);
+  color: #94a3b8;
+  border-color: rgba(148, 163, 184, 0.15);
 }
 
 .ma-count-chip.bearish:hover {
-  background: #dc2626;
+  background: #64748b;
   color: white;
+  border-color: #64748b;
+  transform: scale(1.05);
+  box-shadow: 0 0 15px rgba(100, 116, 139, 0.3);
 }
+
+
+.ma-progress-container-expanded {
+  flex: 1;
+  min-width: 60px;
+  height: 10px;
+  position: relative;
+}
+
+.ma-progress-track {
+  height: 100%;
+  width: 100%;
+  border-radius: 4px;
+  display: flex;
+  overflow: hidden;
+  background: rgba(128, 128, 128, 0.08);
+}
+
+
+
+
 
 .ma-progress-container {
   position: relative;
   height: 8px;
 }
+
+
+
 
 .ma-progress-track {
   height: 100%;
@@ -8737,18 +8837,10 @@ input[type="date"].input-with-clear {
   display: flex;
   overflow: hidden;
   background: rgba(128, 128, 128, 0.08);
-  border: 1px solid rgba(128, 128, 128, 0.1);
 }
 
-.ma-progress-marker {
-  position: absolute;
-  top: -2px;
-  bottom: -2px;
-  width: 2px;
-  background: var(--border);
-  opacity: 0.5;
-  z-index: 2;
-}
+
+
 
 .ma-progress-fill {
   height: 100%;
@@ -8757,10 +8849,58 @@ input[type="date"].input-with-clear {
 }
 
 .ma-progress-fill.bullish { 
-  background: var(--primary);
-  box-shadow: 0 0 8px rgba(37, 99, 235, 0.3);
+  background: linear-gradient(90deg, #14b8a6, #2dd4bf);
 }
 .ma-progress-fill.bearish { 
-  background: #dc2626;
+  background: linear-gradient(90deg, #475569, #64748b);
 }
+
+/* Expanded State for Large Modal */
+.ma-summary-container.expanded {
+  padding: 24px;
+  background: rgba(128, 128, 128, 0.02);
+  border-radius: 16px;
+  max-width: 600px;
+  margin: 0 auto;
+}
+
+.ma-summary-container.expanded .ma-stat-card {
+  padding: 24px 16px;
+}
+
+.ma-summary-container.expanded .ma-stat-value {
+  font-size: 32px;
+  font-family: var(--font-mono, monospace);
+}
+
+.ma-market-regime {
+  margin-bottom: 24px;
+  padding: 8px 16px;
+  background: rgba(128, 128, 128, 0.04);
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--muted);
+}
+
+
+.ma-summary-container.expanded .ma-row {
+  padding: 12px 8px;
+}
+
+.ma-summary-container.expanded .ma-label-num {
+  font-size: 18px;
+}
+
+.ma-summary-container.expanded .ma-progress-container {
+  height: 12px;
+}
+
 

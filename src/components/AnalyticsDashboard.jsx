@@ -245,112 +245,71 @@ const SimpleBarChart = ({ data, onBarClick, isExpanded }) => {
   );
 };
 
-const MASummaryWidget = ({ data, onBarClick, isExpanded }) => {
-  // data comes in as array of { name: 'Above 200 SMA', value: 12, rawData: { 'Above 5, 10, ...': { value: 5, stocks: [] } }, stocks: [...] }
+const MASummaryWidget = ({ data, onBarClick, isExpanded, totalStocks = 0 }) => {
+
   if (!data || data.length === 0) return <div className="chart-empty">No MA data available</div>;
 
-  // Aggregate above vs below counts for each MA using the RAW internal data if present
-  const internalRawData = [];
-  data.forEach(item => {
-    if (item.rawData && Object.keys(item.rawData).length > 0) {
-      Object.entries(item.rawData).forEach(([rawName, rawVal]) => {
-        internalRawData.push({ name: rawName, value: rawVal.value, stocks: rawVal.stocks });
-      });
-    } else {
-      internalRawData.push(item);
-    }
-  });
+  const masToTrack = [5, 10, 21, 50, 200];
+  
+  // 1. Extract Global States from the pre-aggregated data
+  const aboveAll = data.find(d => d.key === "Above All MAs" || d.name === "Above All MAs") || { value: 0, stocks: [] };
+  const belowAll = data.find(d => d.key === "Below All MAs" || d.name === "Below All MAs") || { value: 0, stocks: [] };
+  const institutionalCore = data.find(d => d.key === "Institutional Core" || d.name === "Institutional Core") || { value: 0, stocks: [] };
 
-  const masToTrack = ["5", "10", "21", "50", "200"];
+
+  // 2. Extract specific SMA support levels
   const maCounts = masToTrack.reduce((acc, ma) => {
-    acc[ma] = { above: 0, below: 0, aboveStocks: [], belowStocks: [] };
+    const above = data.find(d => d.name === `Above ${ma} SMA`) || { value: 0, stocks: [] };
+    const below = data.find(d => d.name === `Below ${ma} SMA`) || { value: 0, stocks: [] };
+    acc[ma] = { above: above.value, below: below.value, aboveStocks: above.stocks, belowStocks: below.stocks };
     return acc;
   }, {});
-
-  let belowAllCount = 0;
-  const belowAllStocks = [];
-  
-  let aboveAllCount = 0;
-  const aboveAllStocks = [];
-
-  internalRawData.forEach((item) => {
-    const text = (item.name || "").toLowerCase();
-    
-    // Check global states
-    if (text.includes("below all")) {
-      belowAllCount += item.value;
-      belowAllStocks.push(...item.stocks);
-      // If below all, it's below each individual MA
-      masToTrack.forEach(ma => {
-        maCounts[ma].below += item.value;
-        maCounts[ma].belowStocks.push(...item.stocks);
-      });
-      return;
-    }
-
-    let isAboveAll = true;
-
-    // Check individual MAs
-    masToTrack.forEach(ma => {
-      const maNum = parseInt(ma);
-      const regex = new RegExp(`\\b${ma}\\b`);
-      
-      // Basic check: does the text explicitly mention this MA is above?
-      let isAbove = text.includes("above") && (text.includes("all") || regex.test(text));
-      
-      // Hierarchy check: if it says "Above 200", it implies 50, 21, 10, 5
-      if (!isAbove && text.includes("above")) {
-        const matches = text.match(/\d+/g);
-        if (matches) {
-          const highestNum = Math.max(...matches.map(n => parseInt(n)));
-          if (maNum <= highestNum) isAbove = true;
-        }
-      }
-
-      if (isAbove) {
-        maCounts[ma].above += item.value;
-        maCounts[ma].aboveStocks.push(...item.stocks);
-      } else {
-        maCounts[ma].below += item.value;
-        maCounts[ma].belowStocks.push(...item.stocks);
-        isAboveAll = false;
-      }
-    });
-
-    if (isAboveAll) {
-      aboveAllCount += item.value;
-      aboveAllStocks.push(...item.stocks);
-    }
-  });
 
   const generateStatusGroup = (label, count, stocks) => {
     return { name: label, value: count, stocks: stocks, paramLabel: "Moving Averages" };
   };
 
   return (
-    <div className="chart-container ma-summary-container">
+    <div className={`chart-container ma-summary-container ${isExpanded ? "expanded" : ""}`}>
       <div className="ma-summary-content">
-        <div className="ma-summary-stats">
-          <div 
-            className="ma-stat-card bullish"
-            onClick={(e) => onBarClick && onBarClick(generateStatusGroup("Above All MAs", aboveAllCount, aboveAllStocks), e)}
-            title="Click to view stocks"
-          >
-            <div className="ma-stat-badge">BULLISH</div>
-            <div className="ma-stat-value">{aboveAllCount}</div>
-            <div className="ma-stat-label">Above All</div>
+        {isExpanded && (
+          <div className="ma-summary-stats">
+            <div 
+              className="ma-stat-card bullish"
+              onClick={(e) => onBarClick && onBarClick(generateStatusGroup("Above All", aboveAll.value, aboveAll.stocks), e)}
+              title="Click to view stocks"
+            >
+              <div className="ma-stat-main">
+                <span className="ma-stat-value">{aboveAll.value}</span>
+              </div>
+              <div className="ma-stat-label">Above All</div>
+            </div>
+
+            <div 
+              className="ma-stat-card institutional-core"
+              onClick={(e) => onBarClick && onBarClick(generateStatusGroup("Institutional Core (21/50/200)", institutionalCore.value, institutionalCore.stocks), e)}
+              title="Click to view stocks"
+            >
+              <div className="ma-stat-main">
+                <span className="ma-stat-value">{institutionalCore.value}</span>
+              </div>
+              <div className="ma-stat-label">Key MAs (21/50/200)</div>
+            </div>
+
+            
+            <div 
+              className="ma-stat-card bearish"
+              onClick={(e) => onBarClick && onBarClick(generateStatusGroup("Below All", belowAll.value, belowAll.stocks), e)}
+              title="Click to view stocks"
+            >
+              <div className="ma-stat-main">
+                <span className="ma-stat-value">{belowAll.value}</span>
+              </div>
+              <div className="ma-stat-label">Below All</div>
+            </div>
           </div>
-          
-          <div 
-            className="ma-stat-card bearish"
-            onClick={(e) => onBarClick && onBarClick(generateStatusGroup("Below All MAs", belowAllCount, belowAllStocks), e)}
-            title="Click to view stocks"
-          >
-            <div className="ma-stat-badge">BEARISH</div>
-            <div className="ma-stat-value">{belowAllCount}</div>
-            <div className="ma-stat-label">Below All</div>
-          </div>
-        </div>
+
+        )}
 
         <div className="ma-bars themed-scroll">
           {masToTrack.map(ma => {
@@ -362,43 +321,43 @@ const MASummaryWidget = ({ data, onBarClick, isExpanded }) => {
             
             return (
               <div key={ma} className="ma-row">
-                <div className="ma-row-details">
-                  <div className="ma-row-header">
-                    <div className="ma-period-label">
-                      <span className="ma-label-text">SMA</span>
-                      <span className="ma-label-num">{ma}</span>
-                    </div>
-                    
-                    <div className="ma-row-stats">
-                      <span 
-                        className="ma-count-chip bullish"
-                        onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Above ${ma} MA`, counts.above, counts.aboveStocks), e)}
-                      >
-                        {counts.above} ↑
-                      </span>
-                      <span 
-                        className="ma-count-chip bearish"
-                        onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Below ${ma} MA`, counts.below, counts.belowStocks), e)}
-                      >
-                        {counts.below} ↓
-                      </span>
-                    </div>
+                <div className="ma-row-details-horizontal">
+                  <div className="ma-period-label" title={`${ma} Period Moving Average`}>
+                    <span className="ma-label-num">{ma}MA</span>
                   </div>
                   
-                  <div className="ma-progress-container">
+                  <div className="ma-progress-container-expanded">
                     <div className="ma-progress-track">
                       <div 
                         className="ma-progress-fill bullish" 
                         style={{ width: `${abovePct}%` }}
-                        onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Above ${ma} MA`, counts.above, counts.aboveStocks), e)}
+                        onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Above ${ma} SMA`, counts.above, counts.aboveStocks), e)}
+                        title={`Above ${ma} SMA: ${abovePct}%`}
                       />
                       <div 
                         className="ma-progress-fill bearish" 
-                        style={{ width: `${100-abovePct}%` }}
-                        onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Below ${ma} MA`, counts.below, counts.belowStocks), e)}
+                        style={{ flex: 1 }}
+                        onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Below ${ma} SMA`, counts.below, counts.belowStocks), e)}
+                        title={`Below ${ma} SMA: ${100 - abovePct}%`}
                       />
                     </div>
-                    <div className="ma-progress-marker" style={{ left: '50%' }} />
+                  </div>
+
+                  <div className="ma-row-stats">
+                    <span 
+                      className="ma-count-chip bullish"
+                      onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Above ${ma} SMA`, counts.above, counts.aboveStocks), e)}
+                      title={`Stocks Above ${ma} SMA`}
+                    >
+                      <span className="ma-chip-num">{counts.above}</span>
+                    </span>
+                    <span 
+                      className="ma-count-chip bearish"
+                      onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Below ${ma} SMA`, counts.below, counts.belowStocks), e)}
+                      title={`Stocks Below ${ma} SMA`}
+                    >
+                      <span className="ma-chip-num">{counts.below}</span>
+                    </span>
                   </div>
                 </div>
               </div>
@@ -409,8 +368,8 @@ const MASummaryWidget = ({ data, onBarClick, isExpanded }) => {
       
       {!isExpanded && (
         <div className="print-only-block mt-4 space-y-1">
-          <PrintStockList stocks={aboveAllStocks} label="Above All MAs" />
-          <PrintStockList stocks={belowAllStocks} label="Below All MAs" />
+          <PrintStockList stocks={aboveAll.stocks} label="Above All MAs" />
+          <PrintStockList stocks={belowAll.stocks} label="Below All MAs" />
         </div>
       )}
     </div>
@@ -881,7 +840,13 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
         );
       default:
         return param.id === "movingAverages" ? (
-          <MASummaryWidget data={param.data} onBarClick={onChartClick} isExpanded={true} />
+          <MASummaryWidget 
+            data={param.data} 
+            onBarClick={onChartClick} 
+            isExpanded={true} 
+            totalStocks={param.totalStocksCount}
+          />
+
         ) : param.chartType === "bar" ? (
           <SimpleBarChart data={param.data} onBarClick={onChartClick} isExpanded={true} />
         ) : (
@@ -1411,26 +1376,62 @@ const AnalyticsDashboard = ({
             value = "Unspecified";
           }
 
-          // --- SMART MOVING AVERAGE AGGREGATION ---
-          let smartValue = value;
+          // --- SMART MOVING AVERAGE AGGREGATION (INCLUSIVE HIERARCHY) ---
           if (param.id === "movingAverages" && value !== "Unspecified") {
-            const valStr = String(value);
-            if (valStr.toLowerCase().includes("below all")) {
-              smartValue = "Below All MAs";
-            } else if (valStr.includes("200")) {
-              smartValue = "Above 200 SMA";
-            } else if (valStr.includes("50")) {
-              smartValue = "Above 50 SMA";
-            } else if (valStr.includes("21")) {
-              smartValue = "Above 21 SMA";
-            } else if (valStr.includes("10")) {
-              smartValue = "Above 10 SMA";
-            } else if (valStr.includes("5")) {
-              smartValue = "Above 5 SMA";
+            const valStr = String(value).toLowerCase();
+            const mas = [200, 50, 21, 10, 5];
+            
+            // 1. Identify "Below All"
+            if (valStr.includes("below all")) {
+              const key = "Below All MAs";
+              if (!counts[key]) counts[key] = { value: 0, stocks: [], isBelowAll: true };
+              counts[key].value += 1;
+              counts[key].stocks.push(stock.symbol || stock.ticker || "Unknown");
+            } else {
+              // 2. Identify the highest SMA cleared
+              let highestMA = null;
+              if (valStr.includes("200")) highestMA = 200;
+              else if (valStr.includes("50")) highestMA = 50;
+              else if (valStr.includes("21")) highestMA = 21;
+              else if (valStr.includes("10")) highestMA = 10;
+              else if (valStr.includes("5")) highestMA = 5;
+              
+              // 3. Increment ALL buckets below or equal to the highest MA cleared
+              if (highestMA) {
+                // 3a. Record Institutional Core (21/50/200) and Above All insights
+                if (highestMA >= 200) {
+                  const coreKey = "Institutional Core";
+                  if (!counts[coreKey]) counts[coreKey] = { value: 0, stocks: [] };
+                  counts[coreKey].value += 1;
+                  counts[coreKey].stocks.push(stock.symbol || stock.ticker || "Unknown");
+
+                  const allKey = "Above All MAs";
+                  if (!counts[allKey]) counts[allKey] = { value: 0, stocks: [] };
+                  counts[allKey].value += 1;
+                  counts[allKey].stocks.push(stock.symbol || stock.ticker || "Unknown");
+                }
+
+
+                mas.forEach(ma => {
+                  if (ma <= highestMA) {
+                    const key = `Above ${ma} SMA`;
+                    if (!counts[key]) counts[key] = { value: 0, stocks: [] };
+                    counts[key].value += 1;
+                    counts[key].stocks.push(stock.symbol || stock.ticker || "Unknown");
+                  } else {
+                    // It is naturally BELOW the ones larger than highestMA
+                    const key = `Below ${ma} SMA`;
+                    if (!counts[key]) counts[key] = { value: 0, stocks: [] };
+                    counts[key].value += 1;
+                    counts[key].stocks.push(stock.symbol || stock.ticker || "Unknown");
+                  }
+                });
+              }
             }
+            return; // Skip standard grouping for this param
           }
 
-          const key = String(smartValue);
+          const key = String(value);
           if (!counts[key]) {
             counts[key] = { value: 0, stocks: [], rawData: {} };
           }
@@ -1486,8 +1487,9 @@ const AnalyticsDashboard = ({
           data.sort((a, b) => b.value - a.value); // Default: Sort by count descending
         }
 
-        return { ...param, data };
+        return { ...param, data, totalStocksCount: filteredStocks.length };
       }
+
     });
 
     return [...systemMetrics, ...paramMetrics];
@@ -1554,7 +1556,7 @@ const AnalyticsDashboard = ({
           item.type === "numeric-distribution" ||
           item.type === "date-timeline"
         ) {
-          chartType = "special"; // These don't toggle between pie/bar
+          chartType = "special";
         } else {
           chartType =
             item.type === "checkbox" ||
@@ -1565,8 +1567,12 @@ const AnalyticsDashboard = ({
         }
       }
 
+      // Remove any dynamic span that might be forcing vertical height to be inconsistent
+      const finalSpan = item.id === "movingAverages" ? undefined : item.span;
+
       return {
         ...item,
+        span: finalSpan,
         visible: config.visible !== false, // Default true
         order: config.order !== undefined ? config.order : 9999,
         chartType,
@@ -1807,7 +1813,9 @@ const AnalyticsDashboard = ({
                         <MASummaryWidget
                           data={item.data}
                           onBarClick={(data, e) => handleChartClick(data, e, item)}
+                          totalStocks={stocks.length}
                         />
+
                       ) : item.chartType === "pie" ? (
                         <SimplePieChart
                           data={item.data}
