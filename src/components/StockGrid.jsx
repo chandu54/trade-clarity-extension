@@ -716,7 +716,17 @@ export default function StockGrid({
         }
 
         if (p.type === "number") {
-          return checkCondition(stockVal, filterVal, "number");
+          let effectiveFilterVal = filterVal;
+          const isLiquidity = key.toLowerCase().includes("liquidity") || (p.label && p.label.toLowerCase().includes("liquidity"));
+          
+          if (isLiquidity && typeof effectiveFilterVal === "string" && effectiveFilterVal !== "") {
+             if (!/[cmk]/i.test(effectiveFilterVal)) {
+                const unit = country === "IN" ? "Cr" : "M";
+                // Append unit to any number in the filter (handles ranges and operators)
+                effectiveFilterVal = effectiveFilterVal.replace(/(\d+(?:\.\d+)?)/g, `$1${unit}`);
+             }
+          }
+          return checkCondition(stockVal, effectiveFilterVal, "number");
         }
 
         if (p.type === "date") {
@@ -1645,7 +1655,11 @@ export default function StockGrid({
                               className="filter-input input-with-icon-padding"
                               value={filters[key] || ""}
                               onChange={(e) => setFilter(key, e.target.value)}
-                              placeholder="Filter.."
+                              placeholder={
+                                (key.toLowerCase().includes("liquidity") || (p.label && p.label.toLowerCase().includes("liquidity")))
+                                  ? (country === "IN" ? "Filter (Cr).." : "Filter (M)..")
+                                  : "Filter.."
+                              }
                             />
                             {filters[key] !== undefined && filters[key] !== "" && (
                               <ClearButton onClick={() => setFilter(key, "")} />
