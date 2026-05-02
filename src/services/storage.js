@@ -96,9 +96,36 @@ export async function loadData() {
        apiKey: "",
        model: CONFIG.DEFAULT_AI_MODEL,
        systemPrompt: CONFIG.DEFAULT_SYSTEM_PROMPT,
-       customPrompts: []
+       phenomenaPrompt: "",
+       singleStockPrompt: "",
+       customPrompts: [],
+       promptLibrary: {
+         watchlist: [],
+         phenomena: [],
+         stock: []
+       }
     };
     needsSave = true;
+  } else {
+    // Migrate existing aiSettings to include new fields if they are missing
+    let migrated = false;
+    if (data.aiSettings.phenomenaPrompt === undefined) {
+      data.aiSettings.phenomenaPrompt = "";
+      migrated = true;
+    }
+    if (data.aiSettings.singleStockPrompt === undefined) {
+      data.aiSettings.singleStockPrompt = "";
+      migrated = true;
+    }
+    if (data.aiSettings.promptLibrary === undefined) {
+      data.aiSettings.promptLibrary = {
+        watchlist: [],
+        phenomena: [],
+        stock: []
+      };
+      migrated = true;
+    }
+    if (migrated) needsSave = true;
   }
 
   // Check for legacy root-level keys

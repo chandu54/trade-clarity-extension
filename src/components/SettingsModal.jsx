@@ -1,457 +1,416 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Modal from "./Modal";
 import { testConnection, PROMPT_TEMPLATES } from "../services/ai";
+import { CONFIG } from "../constants/config";
+import { useConfirm } from "./ConfirmContext";
 
-const KNOWN_MODELS = [
-  { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", isPremium: false },
-];
+const KNOWN_MODELS = CONFIG.MODELS;
 
 const SettingsModal = ({ isOpen, onClose, data, setData }) => {
+  const [activeTab, setActiveTab] = useState("general");
+  const [libraryCategory, setLibraryCategory] = useState("watchlist");
   const [apiKey, setApiKey] = useState("");
   const [model, setModel] = useState("");
   const [isCustomModel, setIsCustomModel] = useState(false);
   const [isPro, setIsPro] = useState(false);
   const [saveStatus, setSaveStatus] = useState("");
+  const textareaRef = useRef(null);
+  const { confirm } = useConfirm();
   const [isTesting, setIsTesting] = useState(false);
   const [testResult, setTestResult] = useState(null);
 
-  // Prompts State
-  const [customPromptsList, setCustomPromptsList] = useState([]);
-  const [selectedTemplate, setSelectedTemplate] = useState("swing");
-  const [promptText, setPromptText] = useState("");
-  const [promptName, setPromptName] = useState("");
+  // Library State
+  const [library, setLibrary] = useState({ watchlist: [], phenomena: [], stock: [] });
+  const [editingPromptId, setEditingPromptId] = useState(null);
+  const [tempPrompt, setTempPrompt] = useState({ label: "", text: "" });
 
   useEffect(() => {
     if (isOpen && data?.aiSettings) {
       setIsPro(data.isPro || false);
-
-      const {
-        apiKey: savedKey,
-        model: savedModel,
-        systemPrompt: savedPrompt,
-        customPrompts: cList,
-      } = data.aiSettings;
+      const { apiKey: savedKey, model: savedModel, promptLibrary } = data.aiSettings;
 
       if (savedKey) setApiKey(savedKey);
-
+      
       if (savedModel) {
         setModel(savedModel);
         const isKnown = KNOWN_MODELS.some((m) => m.value === savedModel);
         setIsCustomModel(!isKnown);
       } else {
-        setModel(storedIsPro ? "gemini-1.5-pro" : "gemini-1.5-flash");
+        setModel(CONFIG.DEFAULT_AI_MODEL);
         setIsCustomModel(false);
       }
 
-      const finalCustomList = cList || [];
-      setCustomPromptsList(finalCustomList);
-      const combined = [...PROMPT_TEMPLATES, ...finalCustomList];
-
-      if (savedPrompt) {
-        const matchedTemplate = combined.find((t) => t.text === savedPrompt);
-        if (matchedTemplate) {
-          setSelectedTemplate(matchedTemplate.value);
-          setPromptText(matchedTemplate.text);
-          setPromptName(matchedTemplate.label);
-        } else {
-          // Assume it's a legacy unsaved custom text, wrap it into a new custom prompt
-          setPromptText(savedPrompt);
-          setPromptName("Legacy Custom Prompt");
-          setSelectedTemplate("legacy_custom");
-        }
-      } else {
-        setPromptText(PROMPT_TEMPLATES[0].text);
-        setPromptName(PROMPT_TEMPLATES[0].label);
-        setSelectedTemplate(PROMPT_TEMPLATES[0].value);
+      if (promptLibrary) {
+        setLibrary(structuredClone(promptLibrary));
       }
     }
   }, [isOpen, data]);
 
-  // Clear test result when inputs change
-  useEffect(() => {
-    setTestResult(null);
-  }, [apiKey, model]);
-
   const handleSave = () => {
-    // Handle dynamic custom prompts
-    let textToSave = promptText.trim();
-    const isPredefined = PROMPT_TEMPLATES.find(
-      (t) => t.value === selectedTemplate,
-    );
-
-    let updatedCustom = [...customPromptsList];
-    if (!isPredefined) {
-      const existingIdx = updatedCustom.findIndex(
-        (c) => c.value === selectedTemplate,
-      );
-      if (existingIdx >= 0) {
-        updatedCustom[existingIdx] = {
-          ...updatedCustom[existingIdx],
-          text: textToSave,
-          label: promptName.trim() || "Untitled",
-        };
-      } else {
-        updatedCustom.push({
-          value: selectedTemplate,
-          text: textToSave,
-          label: promptName.trim() || "Untitled",
-        });
-      }
-      setCustomPromptsList(updatedCustom);
-    }
-
-    // Mutate global data state directly
     setData((prev) => ({
       ...prev,
       isPro: isPro,
       aiSettings: {
         ...prev.aiSettings,
         apiKey: apiKey,
-        model: model.trim() ? model.trim() : "",
-        systemPrompt: textToSave || "",
-        customPrompts: updatedCustom,
+        model: (model || "").trim(),
+        promptLibrary: library,
       },
     }));
-
     setSaveStatus("Saved!");
     setTimeout(() => setSaveStatus(""), 2000);
   };
 
-  const handleTest = async () => {
-    if (!apiKey) return;
-    setIsTesting(true);
-    setTestResult(null);
-    try {
-      await testConnection(apiKey, model);
-      setTestResult({ success: true, message: "Connection successful!" });
-    } catch (e) {
-      setTestResult({
-        success: false,
-        message: "Connection failed: " + e.message,
+  const handleAddToLibrary = () => {
+    if (!tempPrompt.label.trim() || !tempPrompt.text.trim()) return;
+    
+    const newPrompt = {
+      id: "p_" + Date.now(),
+      label: tempPrompt.label.trim(),
+      text: tempPrompt.text.trim()
+    };
+
+    setLibrary(prev => ({
+      ...prev,
+      [libraryCategory]: [...(prev[libraryCategory] || []), newPrompt]
+    }));
+    setTempPrompt({ label: "", text: "" });
+    setEditingPromptId(null);
+  };
+
+  const handleUpdatePrompt = () => {
+    if (!tempPrompt.label.trim() || !tempPrompt.text.trim()) return;
+    
+    setLibrary(prev => ({
+      ...prev,
+      [libraryCategory]: (prev[libraryCategory] || []).map(p => 
+        p.id === editingPromptId ? { ...p, label: tempPrompt.label, text: tempPrompt.text } : p
+      )
+    }));
+    setTempPrompt({ label: "", text: "" });
+    setEditingPromptId(null);
+  };
+
+  const handleSetDefault = (id) => {
+    setLibrary(prev => ({
+      ...prev,
+      defaults: {
+        ...(prev.defaults || {}),
+        [libraryCategory]: id
+      }
+    }));
+  };
+
+  const handleClonePrompt = (prompt) => {
+    const cloned = {
+      ...prompt,
+      id: "p_" + Date.now(),
+      label: prompt.label + " (Copy)"
+    };
+    setLibrary(prev => ({
+      ...prev,
+      [libraryCategory]: [...(prev[libraryCategory] || []), cloned]
+    }));
+  };
+
+  const handleDeletePrompt = async (id) => {
+    if (await confirm("Delete this strategy from your library? This action cannot be undone.")) {
+      setLibrary(prev => {
+        const nextDefaults = { ...(prev.defaults || {}) };
+        if (nextDefaults[libraryCategory] === id) {
+          nextDefaults[libraryCategory] = "system";
+        }
+        return {
+          ...prev,
+          [libraryCategory]: (prev[libraryCategory] || []).filter(p => p.id !== id),
+          defaults: nextDefaults
+        };
       });
-    } finally {
-      setIsTesting(false);
     }
+  };
+
+  const getSystemDefault = (cat) => {
+    if (cat === "watchlist") return PROMPT_TEMPLATES.find(t => t.value === "swing");
+    if (cat === "phenomena") return PROMPT_TEMPLATES.find(t => t.value === "phenomena");
+    if (cat === "stock") return PROMPT_TEMPLATES.find(t => t.value === "deep_view");
+    return null;
+  };
+
+  const startEdit = (prompt) => {
+    setEditingPromptId(prompt.id);
+    setTempPrompt({ label: prompt.label, text: prompt.text });
+  };
+
+  const getVariableHints = (cat) => {
+    if (cat === "watchlist") return ["{stocks}", "{sectors}", "{tickers}"];
+    if (cat === "phenomena") return ["{category}", "{tickers}"];
+    return ["{symbol}", "{name}", "{price}", "{sector}", "{notes}"];
+  };
+
+  const insertVariable = (variable) => {
+    const textarea = textareaRef.current;
+    if (!textarea) {
+      setTempPrompt(prev => ({ ...prev, text: prev.text + variable }));
+      return;
+    }
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = tempPrompt.text;
+    const before = text.substring(0, start);
+    const after = text.substring(end);
+
+    setTempPrompt(prev => ({
+      ...prev,
+      text: before + variable + after
+    }));
+
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + variable.length, start + variable.length);
+    }, 0);
   };
 
   return (
     <Modal
       isOpen={isOpen}
       onClose={onClose}
-      title="AI Configuration"
-      subtitle="Configure API keys and AI model settings"
+      title="AI configuration"
+      subtitle="Configure AI models and proprietary strategy libraries"
+      className="modal-wide"
     >
-      <div className="modal-body settings-modal-body">
+      <div className="modal-tabs">
+        <button className={`tab-btn ${activeTab === "general" ? "active" : ""}`} onClick={() => setActiveTab("general")}>General</button>
+        <button className={`tab-btn ${activeTab === "library" ? "active" : ""}`} onClick={() => setActiveTab("library")}>Prompt Library</button>
+      </div>
+
+      <div className="modal-body settings-modal-body themed-scroll">
         {testResult && (
-          <div
-            className={`status-banner ${testResult.success ? "success" : "error"}`}
-          >
-            <span className="status-banner-icon">
-              {testResult.success ? "✅" : "❌"}
-            </span>
+          <div className={`status-banner ${testResult.success ? "success" : "error"}`}>
+            <span className="status-banner-icon">{testResult.success ? "✅" : "❌"}</span>
             <span className="status-banner-text">{testResult.message}</span>
           </div>
         )}
 
-        <div className="settings-card">
-          <div className="form-field">
-            <label htmlFor="apiKey" className="settings-label-v2">
-              API Key
-              <span
-                className="info-icon"
-                title="Your API key is stored locally in your browser."
-              >
-                ℹ️
-              </span>
-            </label>
-            <div className="settings-input-group">
-              <input
-                type="password"
-                id="apiKey"
-                value={apiKey}
-                onChange={(e) => setApiKey(e.target.value)}
-                placeholder="Paste your Gemini API key here..."
-                className="settings-input-v2"
-              />
-              <button
-                type="button"
-                className="outline settings-btn-v2"
-                onClick={handleTest}
-                disabled={isTesting || !apiKey}
-              >
-                {isTesting ? (
-                  <div className="spinner-small" />
-                ) : (
-                  <svg
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
-                    <polyline points="22 4 12 14.01 9 11.01"></polyline>
-                  </svg>
-                )}
-                {isTesting ? "Testing..." : "Test Connection"}
-              </button>
-            </div>
-          </div>
-          <div className="form-field settings-form-group">
-            <label htmlFor="model" className="settings-label-v2">
-              AI Model
-              <span
-                className="info-icon"
-                title="Select the model architecture."
-              >
-                ℹ️
-              </span>
-            </label>
-
-            {!isCustomModel ? (
-              <select
-                className="select-control settings-select-v2"
-                id="model"
-                value={model}
-                onChange={(e) => {
-                  if (e.target.value === "custom_option") {
-                    setIsCustomModel(true);
-                  } else {
-                    setModel(e.target.value);
-                  }
-                }}
-              >
-                {KNOWN_MODELS.map((m) => (
-                  <option
-                    key={m.value}
-                    value={m.value}
-                    disabled={m.isPremium && !isPro}
-                  >
-                    {m.label} {m.isPremium ? "(Premium)" : ""}
-                  </option>
-                ))}
-                <option value="custom_option">Custom Model ID...</option>
-              </select>
-            ) : (
-              <div className="settings-input-group">
-                <input
-                  type="text"
-                  id="model"
-                  value={model}
-                  onChange={(e) => setModel(e.target.value)}
-                  placeholder="e.g. gemini-1.5-pro"
-                  className="settings-input-v2"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  className="outline settings-btn-v2"
-                  onClick={() => setIsCustomModel(false)}
-                >
-                  Cancel
-                </button>
+        {activeTab === "general" && (
+          <div className="p-2">
+              <div className="form-field">
+                <label htmlFor="apiKey" className="settings-label-v2">
+                  API Key
+                  <span className="info-icon" title="Your API key is stored locally in your browser.">ℹ️</span>
+                </label>
+                <div className="settings-input-group">
+                  <input id="apiKey" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Paste your Gemini API key here..." className="settings-input-v2" />
+                  <button type="button" className="outline settings-btn-v2" onClick={async () => {
+                    setIsTesting(true);
+                    try { await testConnection(apiKey, model); setTestResult({ success: true, message: "Connection successful!" }); }
+                    catch (e) { setTestResult({ success: false, message: e.message }); }
+                    finally { setIsTesting(false); }
+                  }}>
+                    {isTesting ? "Testing..." : "Test Connection"}
+                  </button>
+                </div>
               </div>
-            )}
-          </div>
-        </div>
-
-        <div className="settings-card">
-          <label className="settings-label-v2 settings-label-mb">
-            Analysis Strategy
-            <span
-              className="info-icon"
-              title="Select or create instructions for AI analysis."
-            >
-              ℹ️
-            </span>
-          </label>
-
-          <div className="settings-strategy-row">
-            <div className="settings-strategy-col">
-              <select
-                className="select-control settings-select-v2"
-                value={selectedTemplate}
-                onChange={(e) => {
-                  const val = e.target.value;
-                  if (val === "create_new") {
-                    const newId = "custom_" + Date.now();
-                    setSelectedTemplate(newId);
-                    setPromptName("New Custom Strategy");
-                    setPromptText("");
-                  } else {
-                    setSelectedTemplate(val);
-                    const allList = [...PROMPT_TEMPLATES, ...customPromptsList];
-                    const matched = allList.find((t) => t.text === val);
-                    if (matched) {
-                      setPromptText(matched.text);
-                      setPromptName(matched.label);
-                    }
-                  }
-                }}
-              >
-                <optgroup label="Default Strategies">
-                  {PROMPT_TEMPLATES.map((t) => (
-                    <option key={t.value} value={t.value}>
-                      {t.label}
-                    </option>
-                  ))}
-                </optgroup>
-                {customPromptsList.length > 0 && (
-                  <optgroup label="My Custom Strategies">
-                    {customPromptsList.map((t) => (
-                      <option key={t.value} value={t.value}>
-                        {t.label}
+              <div className="form-field mt-4">
+                <label htmlFor="modelSelect" className="settings-label-v2">
+                  AI Model
+                  <span className="info-icon" title="Select the model architecture. Gemini 1.5 Pro is recommended for complex reasoning.">ℹ️</span>
+                </label>
+                
+                {!isCustomModel ? (
+                  <select 
+                    id="modelSelect" 
+                    className="select-control settings-select-v2" 
+                    value={model} 
+                    onChange={(e) => {
+                      if (e.target.value === "custom_option") {
+                        setIsCustomModel(true);
+                        setModel("");
+                      } else {
+                        setModel(e.target.value);
+                      }
+                    }}
+                  >
+                    {KNOWN_MODELS.map(m => (
+                      <option key={m.value} value={m.value} disabled={m.isPremium && !isPro}>
+                        {m.label} {m.isPremium ? "(Premium)" : ""}
                       </option>
                     ))}
-                  </optgroup>
+                    <option value="custom_option">Custom Model ID...</option>
+                  </select>
+                ) : (
+                  <div className="settings-input-group">
+                    <input
+                      type="text"
+                      value={model}
+                      onChange={(e) => setModel(e.target.value)}
+                      placeholder="e.g. gemini-1.5-pro"
+                      className="settings-input-v2"
+                      autoFocus
+                    />
+                    <button type="button" className="outline settings-btn-v2" onClick={() => {
+                      setIsCustomModel(false);
+                      setModel(CONFIG.DEFAULT_AI_MODEL);
+                    }}>Cancel</button>
+                  </div>
                 )}
-                {selectedTemplate === "legacy_custom" && (
-                  <option value="legacy_custom">Legacy Custom Prompt</option>
-                )}
-                <option value="create_new" className="create-strategy-option">
-                  + Create New Strategy
-                </option>
-              </select>
+              </div>
+
+              <div className="form-field mt-4 flex items-center gap-2">
+                <input 
+                  type="checkbox" 
+                  id="isPro" 
+                  checked={isPro} 
+                  onChange={(e) => setIsPro(e.target.checked)} 
+                  className="checkbox-control"
+                />
+                <label htmlFor="isPro" className="settings-label-v2 no-margin">
+                  Enable Premium Features (Pro Mode)
+                </label>
+              </div>
+
+              <div className="api-portal-card mt-6">
+                <div className="api-portal-row">
+                  <div className="api-portal-brand">
+                    <img src="gemini_logo.svg" alt="Gemini" width="18" height="18" />
+                    <span className="api-portal-title">Google Gemini API Portal</span>
+                  </div>
+                  <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noreferrer" className="api-key-link flex items-center gap-1">
+                    Get API Key
+                    <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                      <line x1="7" y1="17" x2="17" y2="7"></line>
+                      <polyline points="7 7 17 7 17 17"></polyline>
+                    </svg>
+                  </a>
+                </div>
+              </div>
+          </div>
+        )}
+
+        {activeTab === "library" && (
+          <div className="library-container">
+            <div className="library-sidebar-tabs">
+              <button className={`lib-cat-btn ${libraryCategory === "watchlist" ? "active" : ""}`} onClick={() => { setLibraryCategory("watchlist"); setEditingPromptId(null); }}>Watchlist</button>
+              <button className={`lib-cat-btn ${libraryCategory === "phenomena" ? "active" : ""}`} onClick={() => { setLibraryCategory("phenomena"); setEditingPromptId(null); }}>Phenomena</button>
+              <button className={`lib-cat-btn ${libraryCategory === "stock" ? "active" : ""}`} onClick={() => { setLibraryCategory("stock"); setEditingPromptId(null); }}>Single Stock</button>
             </div>
 
-            {!PROMPT_TEMPLATES.find((t) => t.value === selectedTemplate) &&
-              selectedTemplate !== "create_new" && (
-                <button
-                  type="button"
-                  className="outline danger settings-btn-danger-v2"
-                  onClick={() => {
-                    if (
-                      window.confirm(
-                        "Are you sure you want to delete this custom strategy?",
-                      )
-                    ) {
-                      const updated = customPromptsList.filter(
-                        (c) => c.value !== selectedTemplate,
-                      );
-                      setCustomPromptsList(updated);
-                      setData((prev) => ({
-                        ...prev,
-                        aiSettings: {
-                          ...prev.aiSettings,
-                          customPrompts: updated,
-                        },
-                      }));
-                      setSelectedTemplate("swing");
-                      setPromptText(PROMPT_TEMPLATES[0].text);
-                      setPromptName(PROMPT_TEMPLATES[0].label);
-                    }
-                  }}
-                  title="Delete Strategy"
-                >
-                  <svg
-                    width="18"
-                    height="18"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="3 6 5 6 21 6"></polyline>
-                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                  </svg>
-                </button>
-              )}
-          </div>
+            <div className="library-content">
+              <div className="prompt-editor-mini">
+                <div className="form-field">
+                  <input 
+                    type="text" 
+                    placeholder="Strategy Name (e.g. VCP Breakout)" 
+                    value={tempPrompt.label} 
+                    onChange={e => setTempPrompt(prev => ({ ...prev, label: e.target.value }))}
+                  />
+                </div>
+                <div className="textarea-wrapper">
+                  <textarea 
+                    ref={textareaRef}
+                    className="settings-textarea mt-2 prompt-mini-textarea" 
+                    placeholder="Enter AI instructions..."
+                    value={tempPrompt.text}
+                    onChange={e => setTempPrompt(prev => ({ ...prev, text: e.target.value }))}
+                  />
+                  <div className="textarea-footer">
+                    <span className="char-count">{tempPrompt.text.length} characters</span>
+                  </div>
+                </div>
+                <div className="flex justify-between items-center mt-2">
+                   <div className="settings-variables-wrapper no-margin">
+                    {getVariableHints(libraryCategory).map(v => (
+                      <code 
+                        key={v} 
+                        className="settings-variable-tag clickable-var" 
+                        onClick={() => insertVariable(v)}
+                        title={`Click to insert ${v}`}
+                      >
+                        {v}
+                      </code>
+                    ))}
+                  </div>
+                  <button className="small" onClick={editingPromptId ? handleUpdatePrompt : handleAddToLibrary}>
+                    {editingPromptId ? "Update Prompt" : "+ Add to Library"}
+                  </button>
+                </div>
+              </div>
 
-          {!PROMPT_TEMPLATES.find((t) => t.value === selectedTemplate) && (
-            <div className="settings-spacer">
-              <label className="settings-display-name-label">
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="currentColor"
-                  strokeWidth="3"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                >
-                  <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
-                  <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
-                </svg>
-                Strategy Display Name
-              </label>
-              <input
-                type="text"
-                value={promptName}
-                onChange={(e) => setPromptName(e.target.value)}
-                placeholder="e.g. My Conservative Swing"
-                className="settings-display-name-input"
-              />
+              <div className="library-list mt-4">
+                <div className="flex justify-between items-end mb-2">
+                   <h4 className="section-title-small no-margin">Strategy library</h4>
+                   <span className="text-xs text-muted">{(library[libraryCategory]?.length || 0) + 1} Available</span>
+                </div>
+
+                {/* System Default Item */}
+                {(() => {
+                  const sys = getSystemDefault(libraryCategory);
+                  const isDefault = (library.defaults?.[libraryCategory] || "system") === "system";
+                  return sys && (
+                    <div className={`library-item-card system-default ${isDefault ? "is-active-default" : ""}`}>
+                      <div className="lib-item-info">
+                        <div className="flex items-center gap-2">
+                          <strong>{sys.label}</strong>
+                          <span className="badge-system">System default</span>
+                          {isDefault && <span className="badge-active-default">Active default</span>}
+                        </div>
+                        <p className="lib-item-preview">{sys.text.substring(0, 100)}...</p>
+                      </div>
+                      <div className="lib-item-actions">
+                        {!isDefault && (
+                          <button className="outline btn-tiny" onClick={() => handleSetDefault("system")}>
+                            Set as Default
+                          </button>
+                        )}
+                        <button className="outline icon-btn" onClick={() => {
+                          setEditingPromptId("system");
+                          setTempPrompt({ label: sys.label, text: sys.text });
+                        }} title="View/Copy">
+                           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
+
+                {/* Custom User Prompts */}
+                {(library[libraryCategory] || []).map(p => {
+                  const isDefault = library.defaults?.[libraryCategory] === p.id;
+                  return (
+                    <div key={p.id} className={`library-item-card ${isDefault ? "is-active-default" : ""}`}>
+                      <div className="lib-item-info">
+                        <div className="flex items-center gap-2">
+                          <strong>{p.label}</strong>
+                          {isDefault && <span className="badge-active-default">Active default</span>}
+                        </div>
+                        <p className="lib-item-preview">{p.text.substring(0, 100)}...</p>
+                      </div>
+                      <div className="lib-item-actions">
+                        {!isDefault && (
+                          <button className="outline btn-tiny" onClick={() => handleSetDefault(p.id)}>
+                            Set as Default
+                          </button>
+                        )}
+                        <button className="outline icon-btn" onClick={() => handleClonePrompt(p)} title="Clone/Duplicate">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+                        </button>
+                        <button className="outline icon-btn" onClick={() => startEdit(p)} title="Edit">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" /><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" /></svg>
+                        </button>
+                        <button className="outline danger icon-btn" onClick={() => handleDeletePrompt(p.id)} title="Delete">
+                          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
-          )}
-
-          <textarea
-            value={promptText}
-            onChange={(e) => setPromptText(e.target.value)}
-            disabled={
-              !!PROMPT_TEMPLATES.find((t) => t.value === selectedTemplate)
-            }
-            placeholder="Tell the AI how to analyze your stocks..."
-            className={`settings-textarea ${PROMPT_TEMPLATES.find((t) => t.value === selectedTemplate) ? "is-template" : ""}`}
-          />
-
-          <div className="settings-variables-wrapper">
-            <span className="settings-variables-label">Variables:</span>
-            {["{stocks}", "{sectors}", "{tickers}"].map((v) => (
-              <code key={v} className="settings-variable-tag">
-                {v}
-              </code>
-            ))}
           </div>
-        </div>
+        )}
 
-        <div className="api-portal-card">
-          <div className="api-portal-row">
-            <div className="api-portal-brand">
-              <img
-                src="gemini_logo.svg"
-                alt="Gemini"
-                width="18"
-                height="18"
-              />
-              <span className="api-portal-title">Google Gemini API Portal</span>
-            </div>
-            <a
-              href="https://aistudio.google.com/app/apikey"
-              target="_blank"
-              rel="noreferrer"
-              className="api-key-link"
-            >
-              Get API Key
-              <svg
-                width="10"
-                height="10"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="4"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <line x1="7" y1="17" x2="17" y2="7"></line>
-                <polyline points="7 7 17 7 17 17"></polyline>
-              </svg>
-            </a>
-          </div>
-        </div>
-
-        <div className="settings-footer-note">
-          Institutional-grade AI analysis powered by Google Gemini.
-          <div className="ai-disclaimer-v2 settings-disclaimer-note">
-            AI can make mistakes. Verify with your own research. For
-            informational purposes only.
-          </div>
+        <div className="settings-footer-note mt-4">
+          AI strategies define your analytical edge. Be specific in your instructions.
         </div>
       </div>
 

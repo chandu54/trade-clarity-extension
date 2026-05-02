@@ -153,10 +153,10 @@ export default function MiniCandlestickChart({
     };
   }, [candlesticks, prevClose, interactive]);
 
-  const cardStyle = hideHeaders ? { height: '100%', border: 'none', background: 'transparent', boxShadow: 'none' } : {};
+  // Removed cardStyle object to use classes instead
 
   return (
-    <div className={`mini-chart-card ${hideHeaders ? 'no-headers' : ''}`} onClick={onClick} style={cardStyle}>
+    <div className={`mini-chart-card ${hideHeaders ? 'no-headers chart-card-no-headers' : ''}`} onClick={onClick}>
       {!hideHeaders && (
         <div className="card-top-row">
           <span className="card-symbol">{symbol}</span>
@@ -174,9 +174,8 @@ export default function MiniCandlestickChart({
       )}
       
       <div 
-        className="chart-container-wrapper" 
+        className={`chart-container-wrapper ${hideHeaders ? 'chart-container-full' : 'chart-container-fixed'}`} 
         ref={chartContainerRef} 
-        style={{ width: '100%', height: hideHeaders ? '100%' : '140px' }}
       />
       
       {!hideHeaders && (

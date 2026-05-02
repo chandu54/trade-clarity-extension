@@ -38,7 +38,7 @@ const MENU_ITEMS = [
     key: "rules",
   },
   {
-    label: "Data Management",
+    label: "Data management",
     title: "Delete active weeks and completely purge associated country data",
     key: "data_management",
   },
@@ -188,7 +188,7 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, onManage
           <div
             className="theme-toggle"
             onClick={onToggleTheme}
-            title={theme === "dark" ? "Switch to Light Theme" : "Switch to Dark Theme"}
+            title={theme === "dark" ? "Switch to Light Theme (Alt + T)" : "Switch to Dark Theme (Alt + T)"}
           >
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
           </div>
@@ -238,7 +238,7 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, onManage
                     onShowSettings();
                   }}
                 >
-                  ✨ AI Integration
+                  ✨ AI integration
                 </button>
               </div>
             )}

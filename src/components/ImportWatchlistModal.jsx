@@ -20,11 +20,11 @@ export default function ImportWatchlistModal({ isOpen, stocks, watchlists, selec
         {watchlists.length > 0 ? (
           <div className="form-field">
             <label>Add to Watchlists</label>
-            <div style={{ display: "flex", flexWrap: "wrap", gap: "12px", marginTop: "8px" }}>
+            <div className="flex-wrap gap-3 margin-top-8">
               {watchlists.map((wl) => {
                 const isSelected = selectedWlIds.includes(wl.id);
                 return (
-                  <label key={wl.id} style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "14px", cursor: "pointer" }}>
+                  <label key={wl.id} className="flex-row-center-gap-2 text-sm cursor-pointer">
                     <input
                       type="checkbox"
                       checked={isSelected}
@@ -38,17 +38,17 @@ export default function ImportWatchlistModal({ isOpen, stocks, watchlists, selec
                 )
               })}
             </div>
-            <div className="muted small" style={{ marginTop: "12px" }}>
+            <div className="muted small margin-top-12">
               If no watchlists are selected, stocks will still be imported and available under "All Stocks".
             </div>
           </div>
         ) : (
-          <div className="muted" style={{ padding: "12px 0" }}>
+          <div className="muted padding-v-12">
             No custom watchlists available. Stocks will be added to the global "All Stocks" pool.
           </div>
         )}
 
-        <div className="modal-actions" style={{ marginTop: "24px" }}>
+        <div className="modal-actions margin-top-24">
           <button className="outline" onClick={onClose}>
             Cancel
           </button>

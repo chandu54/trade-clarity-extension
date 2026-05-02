@@ -34,10 +34,10 @@ Always use the following variables from [styles.css](file:///d:/react-extension/
 
 ## Implementation Workflow
 
-1.  **Analyze**: Identify existing components or styles in `styles.css` that can be reused.
+1.  **Analyze**: Identify existing components or styles in `styles.css` that can be reused. You MUST identify all functional UI elements (links, help text, status banners) and preserve them.
 2.  **Logic**: Implement component logic using React hooks (`useState`, `useEffect`, `useMemo`).
 3.  **Style**: Add necessary CSS to `styles.css` at the end of the file, ensuring you **do not disturb** existing styles.
-4.  **Verify**: Perform manual and automated verification to ensure zero regressions in layout or functionality.
+4.  **Verify**: Perform manual and automated verification to ensure zero regressions in layout or functionality. Preserve all original branding and naming conventions unless explicitly told to change them.
 
 ## Documentation Guidelines
 

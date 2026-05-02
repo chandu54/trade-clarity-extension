@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import Modal from "./Modal";
 import MiniCandlestickChart from "./MiniCandlestickChart";
 import { fetchStockData } from "../utils/yahooFinanceMap";
-import { getSingleStockAnalysis } from "../services/ai";
+import { getSingleStockAnalysis, PROMPT_TEMPLATES } from "../services/ai";
 import { isParamRelevantForCountry } from "../utils/paramUtils";
 
 import MovingAverageRibbon from "./MovingAverageRibbon";
@@ -131,6 +131,15 @@ export default function EditStockModal({
     onClose();
   };
 
+  const [selectedPromptId, setSelectedPromptId] = useState(aiSettings?.promptLibrary?.defaults?.stock || "default");
+
+  // Library Management
+  const stockLibrary = aiSettings?.promptLibrary?.stock || [];
+  const allStrategies = [
+    { id: "default", label: `System Default ${(!aiSettings?.promptLibrary?.defaults?.stock || aiSettings?.promptLibrary?.defaults?.stock === "system") ? "(Active)" : ""}`, text: PROMPT_TEMPLATES.find(t => t.value === 'deep_view').text },
+    ...stockLibrary.map(p => ({ ...p, label: `${p.label} ${aiSettings?.promptLibrary?.defaults?.stock === p.id ? "(Active)" : ""}` }))
+  ];
+
   const handleRunAi = async () => {
     if (!aiSettings?.apiKey) {
       setAiError("API Key not configured in Settings.");
@@ -140,11 +149,13 @@ export default function EditStockModal({
     setLoadingAi(true);
     setAiError(null);
     try {
+      const strategy = allStrategies.find(s => s.id === selectedPromptId) || allStrategies[0];
       const result = await getSingleStockAnalysis(
         aiSettings.apiKey,
         aiSettings.model,
         formData,
-        timeframe
+        timeframe,
+        strategy.text
       );
       setAiAnalysis(result.rawText);
       setAiAnalysisDate(new Date().toLocaleString());
@@ -489,8 +500,11 @@ export default function EditStockModal({
 
             <div
               className={`deep-view-top ${isParamsCollapsed ? 'collapsed' : ''}`}
-              style={!isParamsCollapsed ? { height: `${topHeight}px` } : {}}
             >
+              <style>{`
+                .deep-view-top { --top-section-height: ${!isParamsCollapsed ? `${topHeight}px` : '0px'}; }
+                .deep-view-bottom { --grid-split: ${leftWidth}% 6px 1fr; }
+              `}</style>
               <div className="section-header-row">
                 <button
                   className={`icon-btn-collapse ${isParamsCollapsed ? 'collapsed' : ''}`}
@@ -527,7 +541,6 @@ export default function EditStockModal({
 
             <div
               className="deep-view-bottom"
-              style={{ gridTemplateColumns: `${leftWidth}% 6px 1fr` }}
             >
               <div className="deep-view-left-panel">
                 <div className="panel-header">
@@ -603,22 +616,28 @@ export default function EditStockModal({
                     <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ai-sparkle-icon">
                       <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
                     </svg>
-                    <span className="section-title">AI Quick Analysis</span>
+                    <span className="section-title">AI quick analysis</span>
                   </div>
-                  {aiAnalysisDate && !loadingAi && (
-                    <span className="ai-last-run-timestamp">Last Run: {aiAnalysisDate}</span>
-                  )}
-                  {!loadingAi && (
-                    <button
-                      onClick={handleRunAi}
-                      className="btn-premium-primary btn-premium-primary-sm"
-                    >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                        <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-                      </svg>
-                      Analyze
-                    </button>
-                  )}
+                  <div className="flex items-center gap-2">
+                    {stockLibrary.length > 0 && (
+                      <select 
+                        value={selectedPromptId} 
+                        onChange={e => setSelectedPromptId(e.target.value)}
+                        className="select-control small strategy-select-compact"
+                      >
+                        <option value="default">Default</option>
+                        {stockLibrary.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
+                      </select>
+                    )}
+                    {!loadingAi && (
+                      <button
+                        onClick={handleRunAi}
+                        className="btn-premium-primary btn-premium-primary-sm"
+                      >
+                        Analyze
+                      </button>
+                    )}
+                  </div>
                 </div>
                 <div className="ai-content-area">
                   {loadingAi && (

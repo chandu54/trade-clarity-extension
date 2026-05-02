@@ -83,13 +83,13 @@ export default function GlobalTooltip() {
   if (!tooltip) return null;
 
   return (
-    <div
-      className="global-tooltip"
-      style={{
-        left: tooltip.x,
-        top: tooltip.y,
-      }}
-    >
+    <div className="global-tooltip">
+      <style>{`
+        .global-tooltip {
+          --tooltip-x: ${tooltip.x}px;
+          --tooltip-y: ${tooltip.y}px;
+        }
+      `}</style>
       {tooltip.text}
     </div>
   );

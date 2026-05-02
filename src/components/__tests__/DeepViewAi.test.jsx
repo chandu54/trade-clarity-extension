@@ -6,7 +6,10 @@ import * as aiService from '../../services/ai';
 // Mock the AI service
 vi.mock('../../services/ai', () => ({
   getAiAnalysis: vi.fn(),
-  PROMPT_TEMPLATES: []
+  PROMPT_TEMPLATES: [
+    { value: 'phenomena', text: 'Mock Phenomena Prompt' },
+    { value: 'deep_view', text: 'Mock Deep View Prompt' }
+  ]
 }));
 
 describe('DeepViewAi', () => {
@@ -30,7 +33,7 @@ describe('DeepViewAi', () => {
     aiService.getAiAnalysis.mockReturnValue(new Promise(() => {}));
     
     render(<DeepViewAi {...props} />);
-    expect(screen.getByText(/Generating Research for Tech/i)).toBeDefined();
+    expect(screen.getByText(/Analysing: Tech/i)).toBeDefined();
   });
 
   it('renders analysis text correctly after loading', async () => {
@@ -44,7 +47,7 @@ describe('DeepViewAi', () => {
       expect(screen.getByText('Bold Text')).toBeDefined();
     }, { timeout: 3000 });
     
-    expect(screen.queryByText(/Generating Research/i)).toBeNull();
+    expect(screen.queryByText(/COMPILING INTELLIGENCE/i)).toBeNull();
   });
 
   it('renders error message if AI analysis fails', async () => {
@@ -52,7 +55,7 @@ describe('DeepViewAi', () => {
     render(<DeepViewAi {...props} />);
     
     await waitFor(() => {
-      expect(screen.getByText('Analysis Failed')).toBeDefined();
+      expect(screen.getByText('Institutional Access Interrupted')).toBeDefined();
       expect(screen.getByText('AI overlap error')).toBeDefined();
     }, { timeout: 3000 });
   });

@@ -68,10 +68,10 @@ describe('AnalyzeModal', () => {
 
     renderWithContext(<AnalyzeModal {...props} />);
     
-    const generateBtn = screen.getByRole('button', { name: /Generate Analysis/i });
+    const generateBtn = screen.getByRole('button', { name: /Run Analysis/i });
     fireEvent.click(generateBtn);
 
-    expect(screen.getByText('Generating AI Analysis...')).toBeDefined();
+    expect(screen.getByText('Compiling Market Data...')).toBeDefined();
 
     await waitFor(() => {
       expect(aiService.getAiAnalysis).toHaveBeenCalled();
@@ -84,7 +84,7 @@ describe('AnalyzeModal', () => {
 
     renderWithContext(<AnalyzeModal {...props} />);
     
-    fireEvent.click(screen.getByRole('button', { name: /Generate Analysis/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Run Analysis/i }));
 
     await waitFor(() => {
       expect(mockShowToast).toHaveBeenCalledWith('API Error', 'error');
@@ -97,7 +97,7 @@ describe('AnalyzeModal', () => {
     
     renderWithContext(<AnalyzeModal {...propsWithWl} />);
     
-    fireEvent.click(screen.getByRole('button', { name: /Generate Analysis/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Run Analysis/i }));
 
     await waitFor(() => {
         expect(aiService.getAiAnalysis).toHaveBeenCalled();
@@ -112,11 +112,10 @@ describe('AnalyzeModal', () => {
   it('allows viewing and closing the prompt instructions', () => {
     renderWithContext(<AnalyzeModal {...props} />);
     
-    fireEvent.click(screen.getByTitle('View Prompt Content'));
-    expect(screen.getByText('Prompt Instructions')).toBeDefined();
-    expect(screen.getByText('Swing prompt')).toBeDefined();
+    fireEvent.click(screen.getByText('View Prompt'));
+    expect(screen.getByText('Strategy Instructions')).toBeDefined();
     
-    fireEvent.click(screen.getByText('Dismiss'));
-    expect(screen.queryByText('Prompt Instructions')).toBeNull();
+    fireEvent.click(screen.getByText('Close'));
+    expect(screen.queryByText('Strategy Instructions')).toBeNull();
   });
 });

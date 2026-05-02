@@ -940,44 +940,82 @@ const TradeClarityWidget = () => {
 
   if (!symbol) return null;
 
-  // --- FAB STATE (CLOSED) ---
-  if (!isOpen) {
-    return (
-      <div
-        className="fixed z-[9999] cursor-move backdrop-blur-md rounded-full shadow-2xl p-3 border transition-all flex items-center justify-center gap-2 group bg-slate-900/80 border-slate-700/50 hover:bg-slate-800 text-white"
-        style={{ top: position.top, right: position.right }}
-        onMouseDown={handleMouseDown}
-        onClick={toggleWidget}
-      >
-        <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
-        <span className="text-xs font-bold hidden group-hover:block px-1">TC: {symbol}</span>
-      </div>
-    );
-  }
-
-  // --- WIDGET STATE (OPEN) ---
+  // --- RENDERING ---
   return (
-    <div
-      className="trade-clarity-widget-container fixed z-[9999] backdrop-blur-xl rounded-xl border font-sans text-sm flex flex-col transition-colors duration-200 bg-slate-900/95 text-slate-200 border-slate-700/50 shadow-[0_0_20px_rgba(0,0,0,0.5)]"
-      style={{
-        top: position.top,
-        right: position.right,
-        width: `${size.w}px`,
-        height: `${size.h}px`,
-        maxHeight: '90vh'
-      }}
-      onKeyDown={handleWidgetKeyDown}
-      onKeyUp={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
-      onKeyPress={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
-    >
+    <>
       <style>{`
+        .trade-clarity-fab-fixed {
+          position: fixed;
+          z-index: 9999;
+          cursor: move;
+          backdrop-filter: blur(12px);
+          border-radius: 9999px;
+          padding: 12px;
+          border: 1px solid rgba(51, 65, 85, 0.5);
+          transition: all 0.2s;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          gap: 8px;
+          background-color: rgba(15, 23, 42, 0.8);
+          color: white;
+          top: ${position.top}px;
+          right: ${position.right}px;
+          box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+        }
+        .trade-clarity-fab-fixed:hover {
+           background-color: rgb(30, 41, 59);
+        }
+        .trade-clarity-widget-container {
+          position: fixed;
+          z-index: 9999;
+          backdrop-filter: blur(24px);
+          border-radius: 12px;
+          border: 1px solid rgba(51, 65, 85, 0.5);
+          font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+          font-size: 0.875rem;
+          display: flex;
+          flex-direction: column;
+          transition: background-color 0.2s, border-color 0.2s;
+          background-color: rgba(15, 23, 42, 0.95);
+          color: rgb(226, 232, 240);
+          box-shadow: 0 0 20px rgba(0,0,0,0.5);
+          top: ${position.top}px;
+          right: ${position.right}px;
+          width: ${size.w}px;
+          height: ${size.h}px;
+          max-height: 90vh;
+        }
         .themed-scroll::-webkit-scrollbar { width: 6px; height: 6px; }
         .themed-scroll::-webkit-scrollbar-track { background: transparent; }
         .themed-scroll::-webkit-scrollbar-thumb { background: #475569; border-radius: 4px; }
         .themed-scroll::-webkit-scrollbar-thumb:hover { background: #64748b; }
         .themed-scroll::-webkit-scrollbar-corner { background: transparent; }
         .no-scrollbar::-webkit-scrollbar { display: none; }
+        .is-dark-scheme { color-scheme: dark; }
+        .is-custom-checkbox { -webkit-appearance: checkbox; appearance: checkbox; }
+        .is-saved-btn { background-color: #10b981 !important; }
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.5; }
+        }
       `}</style>
+      {!isOpen ? (
+        <div
+          className="trade-clarity-fab-fixed"
+          onMouseDown={handleMouseDown}
+          onClick={toggleWidget}
+        >
+          <div className="w-2 h-2 rounded-full bg-blue-500 shadow-[0_0_8px_rgba(59,130,246,0.8)]"></div>
+          <span className="text-xs font-bold hidden group-hover:block px-1">TC: {symbol}</span>
+        </div>
+      ) : (
+        <div
+          className="trade-clarity-widget-container"
+          onKeyDown={handleWidgetKeyDown}
+          onKeyUp={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
+          onKeyPress={(e) => { e.stopPropagation(); e.nativeEvent.stopImmediatePropagation(); }}
+        >
 
       {/* Invisible Edge Resize Handles */}
       <div onMouseDown={startResize('n')} className="absolute top-0 left-0 w-full h-1 z-50 cursor-n-resize" />
@@ -992,7 +1030,6 @@ const TradeClarityWidget = () => {
       <div
         className="flex flex-col px-3 pt-3 pb-2 border-b rounded-t-xl cursor-move select-none shrink-0 transition-colors duration-200 border-slate-700/50 bg-slate-800/50"
         onMouseDown={handleMouseDown}
-        onClick={toggleWidget}
       >
         {/* Row 1: App Identity + Global Toolset */}
         <div className="flex items-center justify-between gap-1 mb-1">
@@ -1037,8 +1074,7 @@ const TradeClarityWidget = () => {
               type="date"
               value={targetDate}
               onChange={(e) => setTargetDate(e.target.value)}
-              className="flex-1 text-[10px] border rounded px-1.5 py-1 focus:border-blue-500 outline-none transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200"
-              style={{ colorScheme: "dark" }}
+              className="flex-1 text-[10px] border rounded px-1.5 py-1 focus:border-blue-500 outline-none transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 is-dark-scheme"
             />
           </div>
         </div>
@@ -1106,8 +1142,7 @@ const TradeClarityWidget = () => {
                   <label className="text-[11px] font-bold w-1/3 truncate text-slate-400" title={def.label}>{def.label}</label>
                   <input
                     type="checkbox"
-                    style={{ WebkitAppearance: 'checkbox', appearance: 'checkbox' }}
-                    className="h-4 w-4 cursor-pointer accent-blue-500"
+                    className="h-4 w-4 cursor-pointer accent-blue-500 is-custom-checkbox"
                     checked={stockData?.params?.[key] === true}
                     onChange={(e) => handleParamChange(key, e.target.checked)}
                   />
@@ -1139,8 +1174,7 @@ const TradeClarityWidget = () => {
                   <label className="text-[11px] font-bold w-1/3 truncate text-slate-400" title={def.label}>{def.label}</label>
                   <input
                     type={def.type === 'date' ? 'date' : 'text'}
-                    className="flex-1 border rounded px-1.5 py-1 outline-none text-[11px] shadow-sm focus:border-blue-500 transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500"
-                    style={def.type === 'date' ? { colorScheme: "dark" } : {}}
+                    className={`flex-1 border rounded px-1.5 py-1 outline-none text-[11px] shadow-sm focus:border-blue-500 transition-colors font-medium bg-slate-800 border-slate-600 text-slate-200 placeholder-slate-500 ${def.type === 'date' ? 'is-dark-scheme' : ''}`}
                     value={stockData?.params?.[key] || ''}
                     onChange={(e) => handleParamChange(key, e.target.value)}
                   />
@@ -1217,8 +1251,6 @@ const TradeClarityWidget = () => {
               value={stockData?.notes || ''}
               onChange={(e) => {
                 handleFieldChange('notes', e.target.value);
-                e.target.style.height = 'auto';
-                e.target.style.height = e.target.scrollHeight + 'px';
               }}
               placeholder="Add notes..."
             />
@@ -1230,8 +1262,7 @@ const TradeClarityWidget = () => {
             <input
               type="checkbox"
               id="tradable-check"
-              style={{ WebkitAppearance: 'checkbox', appearance: 'checkbox' }}
-              className="h-4 w-4 cursor-pointer accent-emerald-500"
+              className="h-4 w-4 cursor-pointer accent-emerald-500 is-custom-checkbox"
               checked={stockData?.tradable || false}
               onChange={(e) => handleFieldChange('tradable', e.target.checked)}
             />
@@ -1246,9 +1277,8 @@ const TradeClarityWidget = () => {
             onClick={() => handleSave(false)}
             aria-label="Save current stock data"
             title="Save changes and keep widget open"
-            style={saveStatus === 'saved' ? { backgroundColor: '#10b981' } : {}}
             className={`flex-1 font-bold py-2 rounded text-[11px] transition-all flex justify-center items-center gap-1.5 ${saveStatus === 'saved'
-                ? 'text-white shadow-[0_0_10px_rgba(22,163,74,0.4)]'
+                ? 'text-white shadow-[0_0_10px_rgba(22,163,74,0.4)] is-saved-btn'
                 : 'bg-slate-700 hover:bg-slate-600 text-slate-200 border border-slate-600'
               }`}
           >
@@ -1263,9 +1293,8 @@ const TradeClarityWidget = () => {
             onClick={() => handleSave(true)}
             aria-label="Save and close widget"
             title="Save changes and close the widget"
-            style={saveStatus === 'closing' ? { backgroundColor: '#10b981' } : {}}
             className={`flex-1 font-bold py-2 rounded text-[11px] transition-all flex justify-center items-center gap-1.5 ${saveStatus === 'closing'
-                ? 'text-white shadow-[0_0_10px_rgba(22,163,74,0.4)]'
+                ? 'text-white shadow-[0_0_10px_rgba(22,163,74,0.4)] is-saved-btn'
                 : 'bg-indigo-600 hover:bg-indigo-500 shadow-[0_0_10px_rgba(79,70,229,0.3)] text-white'
               }`}
           >
@@ -1290,6 +1319,8 @@ const TradeClarityWidget = () => {
         </div>
       </div>
     </div>
+  )}
+    </>
   );
 }
 

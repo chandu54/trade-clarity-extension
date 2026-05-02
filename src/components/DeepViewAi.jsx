@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { getAiAnalysis } from '../services/ai';
+import { useState, useEffect } from 'react';
+import { getAiAnalysis, PROMPT_TEMPLATES } from '../services/ai';
 
 // Safe markdown-lite parser to avoid dangerouslySetInnerHTML and external dependencies
 const FormattedText = ({ text }) => {
@@ -9,21 +9,33 @@ const FormattedText = ({ text }) => {
   const blocks = text.split(/\n\n/);
 
   return (
-    <>
+    <div className="intelligence-body">
       {blocks.map((block, bIdx) => {
         const trimmed = block.trim();
         if (!trimmed) return null;
 
         // Header parsing
-        if (trimmed.startsWith('### ')) return <h3 key={bIdx}>{trimmed.replace('### ', '')}</h3>;
-        if (trimmed.startsWith('## ')) return <h2 key={bIdx}>{trimmed.replace('## ', '')}</h2>;
-        if (trimmed.startsWith('# ')) return <h1 key={bIdx}>{trimmed.replace('# ', '')}</h1>;
+        if (trimmed.startsWith('### ')) return <h3 key={bIdx}>{renderInline(trimmed.replace('### ', ''))}</h3>;
+        if (trimmed.startsWith('## ')) return <h2 key={bIdx}>{renderInline(trimmed.replace('## ', ''))}</h2>;
+        if (trimmed.startsWith('# ')) return <h1 key={bIdx}>{renderInline(trimmed.replace('# ', ''))}</h1>;
+
+        // Special Section Detector (e.g., Executive Summary, Actionable Setups)
+        const isSpecialHeader = trimmed.match(/^(Executive Summary|The Leadership Tier|Execution Decision Matrix|Group Anomalies|Technical Thesis|Actionable Takeaways):/i);
+        if (isSpecialHeader) {
+          const [header, ...rest] = trimmed.split(':');
+          return (
+            <div key={bIdx} className="special-intelligence-block">
+              <h4 className="special-header">{header}</h4>
+              <p className="special-body">{renderInline(rest.join(':').trim())}</p>
+            </div>
+          );
+        }
 
         // List parsing (detecting bullet points)
         if (trimmed.includes('\n- ') || trimmed.includes('\n* ') || trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
           const items = trimmed.split(/\n[-*]\s/).filter(i => i.trim());
           return (
-            <ul key={bIdx}>
+            <ul key={bIdx} className="intelligence-list">
               {items.map((item, iIdx) => (
                 <li key={iIdx}>{renderInline(item.replace(/^[-*]\s/, ''))}</li>
               ))}
@@ -31,31 +43,22 @@ const FormattedText = ({ text }) => {
           );
         }
 
-        // Ordered list parsing
-        if (trimmed.match(/^\d+\.\s/m)) {
-          const items = trimmed.split(/\n\d+\.\s/).filter(i => i.trim());
-          return (
-            <ol key={bIdx}>
-              {items.map((item, iIdx) => (
-                <li key={iIdx}>{renderInline(item.replace(/^\d+\.\s/, ''))}</li>
-              ))}
-            </ol>
-          );
-        }
-
         // Standard paragraph
-        return <p key={bIdx}>{renderInline(trimmed)}</p>;
+        return <p key={bIdx} className="intelligence-p">{renderInline(trimmed)}</p>;
       })}
-    </>
+    </div>
   );
 };
 
 // Helper to handle bold/inline styles safely
 const renderInline = (text) => {
+  if (typeof text !== 'string') return text;
+  
+  // Handle bold (**text**)
   const parts = text.split(/(\*\*.*?\*\*)/g);
   return parts.map((part, i) => {
     if (part.startsWith('**') && part.endsWith('**')) {
-      return <strong key={i}>{part.slice(2, -2)}</strong>;
+      return <strong key={i} className="intel-bold">{part.slice(2, -2)}</strong>;
     }
     return part;
   });
@@ -65,6 +68,16 @@ export default function DeepViewAi({ categoryName, symbols, weekData, aiSettings
   const [analysisText, setAnalysisText] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+  const [selectedPromptId, setSelectedPromptId] = useState(aiSettings?.promptLibrary?.defaults?.phenomena || "default");
+
+  // Library Management
+  const phenomenaLibrary = aiSettings?.promptLibrary?.phenomena || [];
+  const allStrategies = [
+    { id: "default", label: "Market Phenomena (Default)", text: PROMPT_TEMPLATES.find(t => t.value === 'phenomena')?.text || "" },
+    ...phenomenaLibrary
+  ];
+
+  const activeStrategy = allStrategies.find(s => s.id === selectedPromptId) || allStrategies[0];
 
   useEffect(() => {
     let isMounted = true;
@@ -73,7 +86,7 @@ export default function DeepViewAi({ categoryName, symbols, weekData, aiSettings
       if (!symbols || symbols.length === 0) {
         if (isMounted) {
           setLoading(false);
-          setError("No stocks available for analysis in this category.");
+          setError("No stocks available for analysis.");
         }
         return;
       }
@@ -81,7 +94,6 @@ export default function DeepViewAi({ categoryName, symbols, weekData, aiSettings
       setLoading(true);
       setError(null);
 
-      // Map the performance metrics for the AI
       const stockMetrics = {};
       (stockData || []).forEach(s => {
         stockMetrics[s.symbol] = {
@@ -90,64 +102,42 @@ export default function DeepViewAi({ categoryName, symbols, weekData, aiSettings
         };
       });
 
-      // Destructure to separate the apiKey from visual/prompt settings.
-      // This ensures the key is NOT included in the payload that might be logged or processed elsewhere.
       const { apiKey, model, ...safeAiSettings } = aiSettings || {};
-
-      const aiDataPayload = {
-        ...weekData,
-        ...safeAiSettings,
-        category: categoryName,
-        stockMetrics: stockMetrics
-      };
-
-      const prompt = `Act as a Lead Institutional Research Analyst specialized in Tactical Basket Trading.
-Analyze the constituent group of the "${categoryName}" sector.
-
-Your Mission: Filter through this group and provide a high-conviction "Execution Report" that directs a trader toward the most high-probability entry setups.
-
-Research Structure & Requirements:
-- STRUCTURE: Use clear ### headers and bullet points. DO NOT USE TABLES.
-- TONE: Professional, skeptical, and decision-driven. 
-
-Required Sections:
-1. **Executive Summary**: 2-3 sentences on the group's health and collective alpha.
-2. **The Leadership Tier (Highest Conviction)**: Identify 1-2 stocks with the best relative strength. Explain why they are currently leading the basket.
-3. **Execution Decision Matrix**: For each pick in the Leadership Tier, provide:
-   - **Technical Verdict**: A data-driven reason for entry.
-   - **Entry Trigger**: The specific catalyst or level to watch.
-   - **Risk Parameter**: Where the bullish narrative fails for this stock.
-4. **Group Anomalies**: Any stocks decoupling significantly from the group trend.
-
-Identify: ${symbols.join(", ")}. Use their provided performance numbers for the analysis.
-Start directly with the report.`;
+      const aiDataPayload = { ...weekData, ...safeAiSettings, category: categoryName, stockMetrics: stockMetrics };
 
       try {
-        const result = await getAiAnalysis(apiKey, model, aiDataPayload, null, prompt, true);
+        const result = await getAiAnalysis(
+          apiKey, 
+          model, 
+          aiDataPayload, 
+          null, 
+          activeStrategy.text, 
+          true,
+          { category: categoryName }
+        );
+        
         if (isMounted) {
-          setAnalysisText(result.rawText || result.text || result.content || "Analysis completed but no text was returned.");
+          setAnalysisText(result.rawText || result.text || result.content || "No analysis returned.");
           setLoading(false);
         }
       } catch (err) {
         if (isMounted) {
-          console.error("Deep View AI Error:", err);
-          setError(err.message || "Failed to generate deep view analysis.");
+          setError(err.message);
           setLoading(false);
         }
       }
     }
 
     fetchAnalysis();
-
     return () => { isMounted = false; };
-  }, [categoryName, symbols, weekData, aiSettings, stockData]);
+  }, [categoryName, symbols, weekData, aiSettings, stockData, selectedPromptId]);
 
   if (loading) {
     return (
       <div className="deep-view-container">
         <div className="ai-loading-state">
           <div className="spinner" />
-          <span>Generating Research for {categoryName}...</span>
+          <span>Analysing: {categoryName}...</span>
         </div>
       </div>
     );
@@ -157,7 +147,7 @@ Start directly with the report.`;
     return (
       <div className="deep-view-container">
         <div className="deep-view-report deep-view-error">
-          <h3>Analysis Failed</h3>
+          <div className="error-badge">Institutional Access Interrupted</div>
           <p>{error}</p>
         </div>
       </div>
@@ -166,27 +156,51 @@ Start directly with the report.`;
 
   return (
     <div className="deep-view-container">
-      <div className="deep-view-report">
-        <div className="phenomena-report-header">
-          <div className="ca-category-chip">
-            <span className="ca-category-type">Phenomena Research</span>
-            <span className="ca-category-name">{categoryName}</span>
+      <div className="phenomena-report-v3">
+        {/* Simplified Header */}
+        <div className="phenomena-top-bar">
+          <div className="phenomena-header-left">
+            <span className="phenomena-title-pill">Phenomena Research: <strong>{categoryName}</strong></span>
           </div>
-          <div className="phenomena-date">Report Date: {new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
-        </div>
-        
-        <div className="phenomena-content">
-          <FormattedText text={analysisText} />
+          
+          <div className="phenomena-meta-group">
+            <div className="phenomena-timestamp">
+              <span className="meta-label">Issued</span>
+              <span className="meta-value">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</span>
+            </div>
+            
+            {phenomenaLibrary.length > 0 && (
+              <div className="phenomena-strategy-picker">
+                <span className="meta-label">Strategy</span>
+                <select 
+                  value={selectedPromptId} 
+                  onChange={e => setSelectedPromptId(e.target.value)}
+                  className="phenomena-select"
+                >
+                  <option value="default">System Default {(aiSettings?.promptLibrary?.defaults?.phenomena === "default" || aiSettings?.promptLibrary?.defaults?.phenomena === "system" || !aiSettings?.promptLibrary?.defaults?.phenomena) ? "(Active)" : ""}</option>
+                  {phenomenaLibrary.map(p => <option key={p.id} value={p.id}>{p.label} {aiSettings?.promptLibrary?.defaults?.phenomena === p.id ? "(Active)" : ""}</option>)}
+                </select>
+              </div>
+            )}
+          </div>
         </div>
 
-        <div className="phenomena-report-footer">
-          <div className="footer-line" />
-          <div className="footer-text">
-            <strong>Decision Disclosure:</strong> Tiers and triggers are derived from current group performance divergence. Standard risk management is recommended.<br />
-            <span className="ai-disclaimer-v2 ai-disclaimer-deepview">
-              AI can make mistakes. Verify with your own research. For informational purposes only.
-            </span>
+        {/* Full-width Intelligence Content */}
+        <div className="phenomena-main-content themed-scroll">
+          <div className="phenomena-content-inner">
+            <FormattedText text={analysisText} />
           </div>
+
+          {/* Disclaimer & Footer */}
+          <footer className="phenomena-institutional-footer">
+            <div className="methodology-box">
+              <strong>Methodology:</strong> Insights are synthesized using divergence analysis of constituent price discovery, 
+              institutional flow signals, and sector-relative strength metrics.
+            </div>
+            <div className="legal-disclaimer">
+              Proprietary AI synthesis. This report is for professional informational purposes only.
+            </div>
+          </footer>
         </div>
       </div>
     </div>

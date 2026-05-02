@@ -7,7 +7,11 @@ import MiniCandlestickChart from '../MiniCandlestickChart';
 
 // Mock the AI service
 vi.mock('../../services/ai', () => ({
-  getAiAnalysis: vi.fn(() => Promise.resolve({ rawText: "Mock Analysis Report" }))
+  getAiAnalysis: vi.fn(() => Promise.resolve({ rawText: "Mock Analysis Report" })),
+  PROMPT_TEMPLATES: [
+    { value: 'phenomena', text: 'Mock Phenomena Prompt: DO NOT USE TABLES. Leadership Tier.' },
+    { value: 'deep_view', text: 'Mock Deep View Prompt' }
+  ]
 }));
 
 const mockStockData = [
@@ -131,14 +135,16 @@ describe('Category Intelligence Suite', () => {
         expect.objectContaining({
           category: 'Infrastructure',
           stockMetrics: expect.objectContaining({
-            ABB: expect.objectContaining({ performance: '12.5%' }),
-            NTPC: expect.objectContaining({ performance: '-4.2%' })
+            'ABB': expect.objectContaining({ performance: '12.5%' }),
+            'NTPC': expect.objectContaining({ performance: '-4.2%' }),
           })
         }),
         null,
-        expect.stringContaining('Lead Institutional Research Analyst'),
-        true
+        expect.stringContaining('Mock Phenomena Prompt'),
+        true,
+        expect.objectContaining({ category: 'Infrastructure' })
       );
+
     });
 
     it('enforces "No Tables" instruction in the prompt', async () => {

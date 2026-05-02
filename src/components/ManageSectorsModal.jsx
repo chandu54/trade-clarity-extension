@@ -143,7 +143,7 @@ export default function ManageSectorsModal({
         ))}
 
         {sectors.length === 0 && (
-          <div style={{ padding: '40px', textAlign: 'center', opacity: 0.5, fontSize: '13px' }}>
+          <div className="sectors-empty-state">
             No sectors defined. Use the button below to add one.
           </div>
         )}

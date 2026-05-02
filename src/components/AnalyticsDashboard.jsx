@@ -163,8 +163,7 @@ const SimplePieChart = ({ data, onSliceClick, isExpanded }) => {
             onClick={(e) => onSliceClick && onSliceClick(item, e)}
           >
             <span
-              className="legend-color"
-              style={{ background: COLORS[index % COLORS.length] }}
+              className={`legend-color color-idx-${index % COLORS.length}`}
             />
             <span className="legend-label" title={item.name}>
               {item.name}
@@ -201,7 +200,7 @@ const SimpleBarChart = ({ data, onBarClick, isExpanded }) => {
     <div className="chart-container bar-chart-container">
       <div className="bar-chart-grid">
         {/* Y-Axis lines could go here if we wanted complex CSS grid */}
-        <div className="bar-chart-bars" style={{ gap: dynamicGap }}>
+        <div className={`bar-chart-bars ${data.length > 10 ? 'gap-2' : 'gap-8'}`}>
           {data.map((item, index) => {
             const height = (item.value / max) * 100;
             const color = COLORS[index % COLORS.length];
@@ -214,12 +213,7 @@ const SimpleBarChart = ({ data, onBarClick, isExpanded }) => {
                 <div className="bar-wrapper" title={getTooltip(item)}>
                   <div className="bar-value">{item.value}</div>
                   <div
-                    className="bar"
-                    style={{
-                      height: `${Math.max(height, 1)}%`,
-                      backgroundColor: color,
-                      color: color, // support for currentColor print hack
-                    }}
+                    className={`bar hp-${Math.max(Math.round(height), 1)} color-idx-${index % COLORS.length}`}
                   />
                 </div>
                 <div className="bar-label" title={item.name}>
@@ -329,14 +323,12 @@ const MASummaryWidget = ({ data, onBarClick, isExpanded, totalStocks = 0 }) => {
                   <div className="ma-progress-container-expanded">
                     <div className="ma-progress-track">
                       <div 
-                        className="ma-progress-fill bullish" 
-                        style={{ width: `${abovePct}%` }}
+                        className={`ma-progress-fill bullish wp-${abovePct}`}
                         onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Above ${ma} SMA`, counts.above, counts.aboveStocks), e)}
                         title={`Above ${ma} SMA: ${abovePct}%`}
                       />
                       <div 
-                        className="ma-progress-fill bearish" 
-                        style={{ flex: 1 }}
+                        className="ma-progress-fill bearish flex-1"
                         onClick={(e) => onBarClick && onBarClick(generateStatusGroup(`Below ${ma} SMA`, counts.below, counts.belowStocks), e)}
                         title={`Below ${ma} SMA: ${100 - abovePct}%`}
                       />
@@ -496,8 +488,7 @@ const DotPlot = ({ data, onPointClick, isExpanded }) => {
         {ticks.map((t, i) => (
           <div
             key={i}
-            className="dot-plot-yaxis-label"
-            style={{ bottom: `${t.percent}%` }}
+            className={`dot-plot-yaxis-label bp-${Math.round(t.percent)}`}
           >
             {t.value.toLocaleString(undefined, { maximumFractionDigits: 0 })}
           </div>
@@ -509,8 +500,7 @@ const DotPlot = ({ data, onPointClick, isExpanded }) => {
         {[0, 25, 50, 75, 100].map((p) => (
           <div
             key={p}
-            className="dot-plot-gridline"
-            style={{ bottom: `${p}%` }}
+            className={`dot-plot-gridline bp-${p}`}
           />
         ))}
 
@@ -519,7 +509,7 @@ const DotPlot = ({ data, onPointClick, isExpanded }) => {
           return (
             <div
               key={item.symbol || i}
-              className="dot-plot-dot"
+              className={`dot-plot-dot lp-${Math.round(item.xPercent)} bp-${Math.round(item.yPercent)} ${isHovered ? 'scale-180 opacity-100 z-20' : 'scale-100 opacity-70 z-10'}`}
               onMouseEnter={() => setHoveredDot(i)}
               onMouseLeave={() => setHoveredDot(null)}
               onClick={(e) => onPointClick && onPointClick(item, e)}
@@ -528,15 +518,6 @@ const DotPlot = ({ data, onPointClick, isExpanded }) => {
                   ? `${item.symbol}: ${item.value}`
                   : `Value: ${item.value}`
               }
-              style={{
-                left: `${item.xPercent}%`,
-                bottom: `${item.yPercent}%`,
-                transform: isHovered
-                  ? "translate(-50%, 50%) scale(1.8)"
-                  : "translate(-50%, 50%)",
-                opacity: isHovered ? 1 : 0.7,
-                zIndex: isHovered ? 20 : 10,
-              }}
             />
           );
         })}
@@ -703,27 +684,14 @@ const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
 
   return (
     <div
-      className="chart-container heatmap-container"
-      style={{ position: "relative" }}
+      className="chart-container heatmap-container relative"
     >
       {isMultiYear && (
-        <div
-          style={{
-            position: "absolute",
-            top: "-46px",
-            right: "40px",
-            zIndex: 10,
-          }}
-        >
+        <div className="heatmap-year-selector-v2">
           <select
-            className="select-control compact"
+            className="select-control compact heatmap-year-select"
             value={activeYear}
             onChange={(e) => setSelectedYear(e.target.value)}
-            style={{
-              padding: "2px 20px 2px 8px",
-              fontSize: "11px",
-              height: "24px",
-            }}
           >
             {validYears.map((y) => (
               <option key={y} value={y}>
@@ -738,14 +706,12 @@ const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
       <div className="heatmap-wrapper">
         {/* Month Labels */}
         <div
-          className="heatmap-months"
-          style={{ minWidth: `${columns.length * 15}px` }}
+          className={`heatmap-months hw-cols-${columns.length}`}
         >
           {monthLabels.map((lbl, i) => (
             <span
               key={i}
-              className="heatmap-month-label"
-              style={{ left: `${lbl.x * 15}px`, transform: "translateX(-50%)" }}
+              className={`heatmap-month-label lp-${Math.round((lbl.x * 15) / (columns.length * 15) * 100)}`}
             >
               {lbl.name}
             </span>
@@ -767,10 +733,11 @@ const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
             <div key={colIdx} className="heatmap-column">
               {col.map((cell, rowIdx) => {
                 const count = cell.data ? cell.data.count : 0;
+                const ratio = maxCount > 0 ? count / maxCount : 0;
                 return (
                   <div
                     key={rowIdx}
-                    className="heatmap-cell"
+                    className={`heatmap-cell ${count === 0 ? 'intensity-0' : ratio <= 0.25 ? 'intensity-25' : ratio <= 0.5 ? 'intensity-50' : ratio <= 0.75 ? 'intensity-75' : 'intensity-100'} ${count > 0 ? 'cursor-pointer opacity-90' : 'cursor-default opacity-100'}`}
                     onClick={(e) => {
                       if (count > 0 && onPointClick) {
                         // Transform into PieChart data shape { name, value, stocks }
@@ -784,17 +751,6 @@ const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
                     title={
                       count > 0 ? `${cell.date}: ${count} stocks` : cell.date
                     }
-                    style={{
-                      backgroundColor: getColor(count),
-                      cursor: count > 0 ? "pointer" : "default",
-                      opacity: count > 0 ? 0.9 : 1, // Non active cells stay solid
-                    }}
-                    onMouseEnter={(e) => {
-                      if (count > 0) e.currentTarget.style.opacity = "1";
-                    }}
-                    onMouseLeave={(e) => {
-                      if (count > 0) e.currentTarget.style.opacity = "0.9";
-                    }}
                   />
                 );
               })}
@@ -907,12 +863,9 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
             return (
               <div
                 key={group.name}
-                className={`detail-group ${isPeak ? "cluster-peak" : ""}`}
-                onClick={(e) => onChartClick(group, e)}
-                title="Click to see stocks on this date"
-                style={{ padding: '12px', marginBottom: '12px' }}
+                className={`detail-group p-3 mb-3 ${isPeak ? "cluster-peak" : ""}`}
               >
-                <div className="detail-group-header" style={{ alignItems: 'center' }}>
+                <div className="detail-group-header items-center">
                   <div className="flex items-center gap-2">
                     <span className="font-mono text-[13px] font-bold text-slate-700 bg-slate-100 px-2 py-0.5 rounded">
                       {displayDate}

@@ -77,7 +77,7 @@ export default function ManageWatchlistsModal({ data, setData, isOpen, onClose }
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Manage Watchlists" subtitle="Create and manage custom watchlists">
       <div className="manage-params-modal">
-        <div style={{ display: 'flex', gap: '8px', marginBottom: '16px' }}>
+        <div className="flex gap-2 mb-4">
           <input
             type="text"
             className="input-control flex-1"
@@ -85,15 +85,14 @@ export default function ManageWatchlistsModal({ data, setData, isOpen, onClose }
             value={newName}
             onChange={(e) => setNewName(e.target.value)}
             onKeyDown={(e) => e.key === "Enter" && handleAdd()}
-            style={{ flex: 1 }}
           />
           <button className="btn-primary" onClick={handleAdd}>Add</button>
         </div>
 
         <div className="filter-config-list mt-4">
            {/* All Stocks Option */}
-           <div className="filter-config-row">
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+           <div className="filter-config-row mb-4">
+                 <div className="flex items-center gap-2 flex-1">
                     <input 
                       type="radio" 
                       name="defaultWatchlist" 
@@ -101,13 +100,13 @@ export default function ManageWatchlistsModal({ data, setData, isOpen, onClose }
                       onChange={() => handleSetDefault('all')}
                       title="Set All Stocks as Default"
                     />
-                    <span style={{ fontWeight: 600 }}>All Stocks (System Default)</span>
+                    <span className="font-semibold">All Stocks (System Default)</span>
                  </div>
             </div>
 
            {watchlists.map(w => (
                <div key={w.id} className="filter-config-row">
-                 <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flex: 1 }}>
+                 <div className="flex items-center gap-2 flex-1">
                     <input 
                       type="radio" 
                       name="defaultWatchlist" 
@@ -117,13 +116,12 @@ export default function ManageWatchlistsModal({ data, setData, isOpen, onClose }
                     />
                     <input 
                       type="text" 
-                      className="input-control" 
+                      className="input-control watchlist-rename-input"
                       value={w.name} 
                       onChange={(e) => handleRename(w.id, e.target.value)}
-                      style={{ padding: '4px 8px', width: '100%', maxWidth: '200px' }}
                     />
                  </div>
-                 <button className="ghost-danger-btn" onClick={() => handleDelete(w.id)} title="Delete Watchlist" style={{ padding: '4px' }}>
+                 <button className="ghost-danger-btn p-1" onClick={() => handleDelete(w.id)} title="Delete Watchlist">
                     <TrashIcon />
                  </button>
                </div>

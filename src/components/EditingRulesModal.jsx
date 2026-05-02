@@ -46,8 +46,8 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
         </label>
       </div>
 
-      <div className="param-row-group" style={{ marginTop: "16px", border: "1px solid var(--border)", borderRadius: "10px", overflow: "hidden" }}>
-        <div className="param-row" style={{ border: "none", borderRadius: "0" }}>
+      <div className="param-row-group margin-top-16 rules-group-border">
+        <div className="param-row no-border no-radius">
           <div>
             <strong>Enable Background Auto-Fetch (ADR & Liquidity)</strong>
             <div className="muted small">
@@ -66,33 +66,33 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
         </div>
 
         {enableApiHydration && (
-          <div style={{ padding: "0 16px 16px", background: "rgba(15, 23, 42, 0.02)", display: "flex", alignItems: "center", gap: "24px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)" }}>ADR:</span>
+          <div className="hydration-settings-panel">
+            <div className="flex-row-center-gap-2">
+              <span className="label-small-muted">ADR:</span>
               <input 
                 type="number" 
                 value={adrDays}
                 onChange={(e) => handleDaysChange("adrDays", e.target.value)}
                 min="1" max="100"
-                style={{ width: "50px", padding: "4px 6px", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "12px" }}
+                className="compact-number-input"
               />
             </div>
-            <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-              <span style={{ fontSize: "12px", fontWeight: "600", color: "var(--text-muted)" }}>Liquidity:</span>
+            <div className="flex-row-center-gap-2">
+              <span className="label-small-muted">Liquidity:</span>
               <input 
                 type="number" 
                 value={liquidityDays}
                 onChange={(e) => handleDaysChange("liquidityDays", e.target.value)}
                 min="1" max="100"
-                style={{ width: "50px", padding: "4px 6px", borderRadius: "6px", border: "1px solid var(--border)", background: "var(--panel)", color: "var(--text)", fontSize: "12px" }}
+                className="compact-number-input"
               />
-              <span className="info-icon" style={{ marginLeft: "4px" }} title="Number of trading days to use when calculating averages. Defaults to 20 days." />
+              <span className="info-icon ml-1" title="Number of trading days to use when calculating averages. Defaults to 20 days." />
             </div>
           </div>
         )}
       </div>
 
-      <div className="param-row" style={{ marginTop: "16px" }}>
+      <div className="param-row margin-top-16">
         <div>
           <strong>Auto-Refresh Metrics Daily</strong>
           <div className="muted small">

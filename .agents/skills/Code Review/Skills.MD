@@ -12,8 +12,8 @@ This skill defines the strict security and stability protocols implemented in th
 ### API Key Isolation
 The most critical security requirement is the strict separation of AI API keys from data payloads.
 
-### Sanitization
-Ensure any logs or error messages do not leak sensitive information. Always use placeholder data when writing unit tests.
+### UI & Logic Preservation
+Before any modification, identify all existing UI components and business logic in the target file. You MUST NOT remove functional UI elements (e.g., links, help text, status banners) or change established naming conventions (branding) unless explicitly instructed. Any enhancement must be additive and seamless, preserving the "Premium Institutional" user experience.
 
 ## Stability Standards
 

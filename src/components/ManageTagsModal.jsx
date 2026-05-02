@@ -83,7 +83,7 @@ export default function ManageTagsModal({ data, setData, onClose, isOpen }) {
 
   return (
     <Modal isOpen={isOpen} onClose={onClose} title="Manage Tags" subtitle="Manage global tags for stocks">
-      <div className="filter-config-row" style={{ marginBottom: "16px" }}>
+      <div className="filter-config-row margin-bottom-16">
         <div>
           <strong>Enable Tags</strong>
           <div className="muted">Show tags on stock grid</div>
@@ -98,7 +98,7 @@ export default function ManageTagsModal({ data, setData, onClose, isOpen }) {
         </label>
       </div>
 
-      <div className="form-field" style={{ display: "flex", gap: "8px" }}>
+      <div className="form-field flex-row-center-gap-2">
         <input
           value={newTag}
           onChange={(e) => setNewTag(e.target.value)}

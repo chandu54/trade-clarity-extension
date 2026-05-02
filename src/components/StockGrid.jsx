@@ -201,11 +201,27 @@ function parseTradingViewData(content, sectorList) {
   return parsedStocks;
 }
 
+const cleanNumeric = (val) => {
+  if (val === undefined || val === null || val === "") return NaN;
+  if (typeof val === "number") return val;
+  const s = String(val).toLowerCase();
+  
+  // Check for units before stripping non-numeric chars
+  let multiplier = 1;
+  if (s.includes("cr")) multiplier = 10000000;
+  else if (s.includes("m")) multiplier = 1000000;
+  else if (s.includes("k")) multiplier = 1000;
+
+  // Remove everything except digits, dots, and negative signs
+  const cleaned = s.replace(/[^0-9.-]/g, "");
+  const num = parseFloat(cleaned);
+  return isNaN(num) ? NaN : num * multiplier;
+};
+
 const ClearButton = ({ onClick, isSelect }) => (
   <button
-    className="clear-filter-btn"
+    className={`clear-filter-btn ${isSelect ? 'is-select' : 'is-default'}`}
     onClick={onClick}
-    style={{ right: isSelect ? "22px" : "6px" }}
     title="Clear"
   >
     <svg
@@ -220,8 +236,9 @@ const ClearButton = ({ onClick, isSelect }) => (
 );
 
 function checkCondition(value, filter, type) {
-  if (filter === undefined || filter === "") return true;
+  if (filter === undefined || filter === "" || filter === null) return true;
   const strFilter = String(filter).trim();
+  if (strFilter === "") return true;
 
   // Handle Range (e.g. 10-20)
   if (
@@ -235,11 +252,11 @@ function checkCondition(value, filter, type) {
     if (parts.length === 2) {
       const minStr = parts[0].trim();
       const maxStr = parts[1].trim();
-      if (minStr && maxStr) {
+      if (minStr !== "" && maxStr !== "") {
         if (type === "number") {
-          const min = parseFloat(minStr);
-          const max = parseFloat(maxStr);
-          const numVal = parseFloat(value);
+          const min = cleanNumeric(minStr);
+          const max = cleanNumeric(maxStr);
+          const numVal = cleanNumeric(value);
           if (!isNaN(min) && !isNaN(max) && !isNaN(numVal)) {
             return numVal >= min && numVal <= max;
           }
@@ -264,8 +281,8 @@ function checkCondition(value, filter, type) {
       if (targetVal === "") return true;
 
       if (type === "number") {
-        const numStock = parseFloat(value);
-        const numTarget = parseFloat(targetVal);
+        const numStock = cleanNumeric(value);
+        const numTarget = cleanNumeric(targetVal);
         if (isNaN(numStock) || isNaN(numTarget)) return false;
         if (op === ">=") return numStock >= numTarget;
         if (op === "<=") return numStock <= numTarget;
@@ -286,6 +303,17 @@ function checkCondition(value, filter, type) {
     }
   }
 
+  // Plain Numeric check (no operator)
+  if (type === "number") {
+    const numFilter = cleanNumeric(strFilter);
+    if (!isNaN(numFilter)) {
+      const numStock = cleanNumeric(value);
+      if (!isNaN(numStock)) return numStock === numFilter;
+      return false;
+    }
+  }
+
+  // Fallback: String Includes
   return String(value || "")
     .toLowerCase()
     .includes(strFilter.toLowerCase());
@@ -336,6 +364,7 @@ export default function StockGrid({
   const importTypeRef = useRef("stocks"); // 'stocks', 'backup', or 'tv'
   const [copiedStocks, setCopiedStocks] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
+  const isFiltering = searchQuery.length > 0 || Object.keys(filters).length > 0;
 
   // --- AUTOMATED DAILY REFRESH ---
   useEffect(() => {
@@ -713,6 +742,12 @@ export default function StockGrid({
     selectedWatchlistId,
   ]);
 
+  const clearAllFilters = () => {
+    setSearchQuery("");
+    setFilters({});
+    setCurrentPage(1);
+  };
+
   /* =====================
      SORT LOGIC (FULL FILTERED DATA)
   ===================== */
@@ -734,11 +769,13 @@ export default function StockGrid({
       if (aVal == null) return 1;
       if (bVal == null) return -1;
 
+
+
       // Numeric Sort
       const paramDef = params[sortBy];
       if (paramDef?.type === "number") {
-        const aNum = parseFloat(aVal);
-        const bNum = parseFloat(bVal);
+        const aNum = cleanNumeric(aVal);
+        const bNum = cleanNumeric(bVal);
         if (isNaN(aNum) && isNaN(bNum)) return 0;
         if (isNaN(aNum)) return 1;
         if (isNaN(bNum)) return -1;
@@ -1279,7 +1316,21 @@ export default function StockGrid({
      RENDER
   ===================== */
   return (
-    <div className="grid-wrapper">
+    <div 
+      className="grid-wrapper stock-grid-container"
+      style={{
+        "--progress-width": `${(fetchProgress.completed / Math.max(1, fetchProgress.total)) * 100}%`,
+        "--cw-symbol": colWidths["symbol"] ? `${colWidths["symbol"]}px` : "auto",
+        "--cw-sector": colWidths["sector"] ? `${colWidths["sector"]}px` : "auto",
+        "--cw-checks": colWidths["__checks__"] ? `${colWidths["__checks__"]}px` : "auto",
+        "--cw-tradable": colWidths["tradable"] ? `${colWidths["tradable"]}px` : "auto",
+        "--cw-notes": colWidths["__notes__"] ? `${colWidths["__notes__"]}px` : "auto",
+        ...visibleParams.reduce((acc, [key]) => {
+          acc[`--cw-${key}`] = colWidths[key] ? `${colWidths[key]}px` : "auto";
+          return acc;
+        }, {})
+      }}
+    >
       {/* FILTER BAR */}
       {(filterableParams.length > 0 ||
         isSectorFilterable ||
@@ -1591,17 +1642,10 @@ export default function StockGrid({
                             <input
                               id={`filter-param-${key}`}
                               type="text"
-                              className="filter-input"
+                              className="filter-input input-with-icon-padding"
                               value={filters[key] || ""}
                               onChange={(e) => setFilter(key, e.target.value)}
-                              placeholder={
-                                p.type === "date"
-                                  ? "YYYY-MM-DD or >..."
-                                  : p.type === "number"
-                                    ? "e.g. >10 or 10-20"
-                                    : ""
-                              }
-                              style={{ width: "100%", paddingRight: "24px" }}
+                              placeholder="Filter.."
                             />
                             {filters[key] !== undefined && filters[key] !== "" && (
                               <ClearButton onClick={() => setFilter(key, "")} />
@@ -1617,9 +1661,9 @@ export default function StockGrid({
               {isTradableFilterable && (
                 <div className="filter-item">
                   <label>Tradable</label>
-                  <div style={{ position: "relative", width: "100%" }}>
+                  <div className="grid-full-width-relative">
                     <select
-                      className="select-control"
+                      className="select-control input-with-icon-padding"
                       value={filters.__tradable__ ?? ""}
                       onChange={(e) =>
                         setFilter(
@@ -1629,7 +1673,6 @@ export default function StockGrid({
                             : e.target.value === "true",
                         )
                       }
-                      style={{ width: "100%", paddingRight: "24px" }}
                     >
                       <option value="">All</option>
                       <option value="true">Yes</option>
@@ -1713,7 +1756,7 @@ export default function StockGrid({
                 viewBox="0 0 24 24"
                 strokeWidth={2}
                 stroke="currentColor"
-                style={{ width: "14px", height: "14px" }}
+                className="icon-14"
               >
                 <path
                   strokeLinecap="round"
@@ -1757,7 +1800,7 @@ export default function StockGrid({
                 viewBox="0 0 24 24"
                 strokeWidth={2}
                 stroke="currentColor"
-                style={{ width: "14px", height: "14px" }}
+                className="icon-14"
               >
                 <path
                   strokeLinecap="round"
@@ -1851,29 +1894,26 @@ export default function StockGrid({
         />
       )}
 
-      <div className="grid-scroll" style={{ position: "relative" }}>
+
+
+
+
+
+
+      <div className="grid-scroll relative">
+        {/* GRID SYNC PROGRESS BAR */}
         {fetchProgress.total > 0 && (
           <div className={`grid-sync-progress ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
-            <div 
-              className="grid-sync-progress-bar" 
-              style={{ "--progress-width": `${(fetchProgress.completed / fetchProgress.total) * 100}%` }}
-            />
+            <div className="grid-sync-progress-bar"></div>
           </div>
         )}
+
         <table className="grid-table">
           <thead>
             <tr>
               <th
-                className="sticky-col stock-col resizable-th"
+                className="sticky-col stock-col resizable-th cw-symbol"
                 onClick={() => toggleSort("symbol")}
-                style={
-                  colWidths["symbol"]
-                    ? {
-                        width: `${colWidths["symbol"]}px`,
-                        minWidth: `${colWidths["symbol"]}px`,
-                      }
-                    : {}
-                }
               >
                 <div className="copy-stocks-wrapper">
                   <span>Stock{renderSortIndicator("symbol")}</span>
@@ -1919,15 +1959,7 @@ export default function StockGrid({
                 />
               </th>
               <th
-                className="sector-col resizable-th"
-                style={
-                  colWidths["sector"]
-                    ? {
-                        width: `${colWidths["sector"]}px`,
-                        minWidth: `${colWidths["sector"]}px`,
-                      }
-                    : {}
-                }
+                className="sector-col resizable-th cw-sector"
               >
                 Sector
                 <div
@@ -1946,17 +1978,8 @@ export default function StockGrid({
                 return (
                   <th
                     key={key}
-                    className="resizable-th"
+                    className={`resizable-th ${isSortable ? "cursor-pointer" : "cursor-default"} cw-${key}`}
                     onClick={isSortable ? () => toggleSort(key) : undefined}
-                    style={{
-                      ...(colWidths[key]
-                        ? {
-                            width: `${colWidths[key]}px`,
-                            minWidth: `${colWidths[key]}px`,
-                          }
-                        : {}),
-                      cursor: isSortable ? "pointer" : "default",
-                    }}
                   >
                     {p.label}
                     {isSortable && renderSortIndicator(key)}
@@ -1972,16 +1995,8 @@ export default function StockGrid({
 
 
               <th
-                className="resizable-th"
+                className="resizable-th cw-checks"
                 onClick={() => toggleSort("__checks__")}
-                style={
-                  colWidths["__checks__"]
-                    ? {
-                        width: `${colWidths["__checks__"]}px`,
-                        minWidth: `${colWidths["__checks__"]}px`,
-                      }
-                    : {}
-                }
               >
                 Checks Passed{renderSortIndicator("__checks__")}
                 <div
@@ -1992,16 +2007,8 @@ export default function StockGrid({
                 />
               </th>
               <th
-                className="resizable-th"
+                className="resizable-th cw-tradable"
                 onClick={() => toggleSort("tradable")}
-                style={
-                  colWidths["tradable"]
-                    ? {
-                        width: `${colWidths["tradable"]}px`,
-                        minWidth: `${colWidths["tradable"]}px`,
-                      }
-                    : {}
-                }
               >
                 Tradable {renderSortIndicator("tradable")}
                 <div
@@ -2013,15 +2020,7 @@ export default function StockGrid({
               </th>
               {showNotes && (
                 <th
-                  className="resizable-th notes-col"
-                  style={
-                    colWidths["__notes__"]
-                      ? {
-                          width: `${colWidths["__notes__"]}px`,
-                          minWidth: `${colWidths["__notes__"]}px`,
-                        }
-                      : {}
-                  }
+                  className="resizable-th notes-col cw-notes"
                 >
                   Notes
                   <div
@@ -2053,7 +2052,6 @@ export default function StockGrid({
                           onClick={() => {
                             if (!isReadOnly) {
                               setEditingStock(stock);
-                              setIsEditModalOpen(true);
                             }
                           }}
                           title={!isReadOnly ? "Click to edit details" : ""}
@@ -2137,7 +2135,7 @@ export default function StockGrid({
                     )}
                   </div>
                 </td>
-                <td className="sector-col">
+                <td className="sector-col cw-sector">
                   <div className="input-clear-wrapper type-select">
                     <select
                       className="select-control compact input-with-clear"
@@ -2169,7 +2167,7 @@ export default function StockGrid({
                 </td>
 
                 {visibleParams.map(([key, p]) => (
-                  <td key={key}>
+                  <td key={key} className={`cw-${key}`}>
                     {key === "movingAverages" && stock.params[key] ? (
                       <MovingAverageRibbon value={stock.params[key]} />
                     ) : (
@@ -2297,9 +2295,9 @@ export default function StockGrid({
                 ))}
 
 
-                <td className="checks-cell">{renderChecksBadge(stock)}</td>
+                <td className="checks-cell cw-checks">{renderChecksBadge(stock)}</td>
 
-                <td>
+                <td className="cw-tradable">
                   <input
                     type="checkbox"
                     className="grid-checkbox"
@@ -2313,7 +2311,7 @@ export default function StockGrid({
                   />
                 </td>
                 {showNotes && (
-                  <td className="notes-col">
+                  <td className="notes-col cw-notes">
                     <div className="input-clear-wrapper">
                       <input
                         className="grid-notes-input input-with-clear"
@@ -2352,7 +2350,9 @@ export default function StockGrid({
             ))}
             {stocks.length === 0 && (
               <tr>
-                <td colSpan={colCount}>No data matches filters</td>
+                <td colSpan={colCount} className="empty-grid-row">
+                  {isFiltering ? "No stocks found matching your filters" : "No stocks added to this week yet"}
+                </td>
               </tr>
             )}
           </tbody>

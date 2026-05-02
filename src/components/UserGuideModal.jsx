@@ -79,7 +79,7 @@ export default function UserGuideModal({
               for each region.
             </li>
             <li>
-              <strong>Theme (🌗):</strong> Toggle the Sun/Moon icon to switch
+              <strong>Theme (🌗):</strong> Toggle the Sun/Moon icon or press <strong>Alt + T</strong> to switch
               between Light and Dark modes.
             </li>
           </ul>
@@ -121,7 +121,7 @@ export default function UserGuideModal({
               <strong>TradingView Import:</strong> In the Add Stock popup,
               switch to the "TradingView Import" tab to paste exported watchlist
               data directly.
-              <div className="guide-tip mt-2" style={{ marginBottom: "8px" }}>
+              <div className="guide-tip mt-2 mb-2">
                 <strong>💡 Pro Tip:</strong> In TradingView, use sections (e.g.
                 '###Technology') to group stocks. If a section name matches a Sector
                 defined here, the app will automatically assign that sector to the
@@ -436,6 +436,7 @@ export default function UserGuideModal({
             <li><strong>Alt + S:</strong> Open Settings</li>
             <li><strong>Alt + A:</strong> Open Analytics Dashboard</li>
             <li><strong>Alt + I:</strong> Generate AI Insights</li>
+            <li><strong>Alt + T:</strong> Toggle Light/Dark Theme</li>
             <li><strong>Escape:</strong> Close active modal</li>
           </ul>
         </Section>

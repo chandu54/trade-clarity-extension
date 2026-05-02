@@ -142,11 +142,15 @@ function AppContent() {
         e.preventDefault();
         modals.setShowAnalyze(true);
       }
+      if (e.altKey && e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        toggleTheme();
+      }
     };
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [modals]);
+  }, [modals, toggleTheme]);
 
   /* =========================
      HANDLERS

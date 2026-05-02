@@ -40,11 +40,23 @@ TradeClarity.market is a powerful React-based application designed for swing tra
   - **Watchlist Export**: Export current week's stocks to CSV or JSON for external analysis.
   - **TradingView Import**: Import watchlists directly from TradingView text exports.
   - **Full App Backup**: Export/Import the entire application data (all weeks, settings, parameters) to a JSON file for safekeeping or migration.
-- **Dark / Light Mode**: Toggle themes for comfortable viewing in any environment.
+- **Dark / Light Mode**: Toggle themes for comfortable viewing in any environment using the header icon or the **Alt + T** shortcut.
 - **Configurable UI**:
   - Manage Sectors.
   - Toggle Column Visibility.
   - Set Editing Rules (e.g., Lock previous weeks, configure Auto-Fetch Lookback days to fetch ADR and Liquidity).
+
+## ⌨️ Keyboard Shortcuts
+
+| Shortcut | Action |
+| :--- | :--- |
+| **Alt + N** | Add New Stock |
+| **Ctrl + K** | Focus Search Bar |
+| **Alt + S** | Open Global Settings |
+| **Alt + A** | Open Analytics Dashboard |
+| **Alt + I** | Generate AI Insights |
+| **Alt + T** | Toggle Light/Dark Theme |
+| **Esc** | Close Active Modal |
 
 ** Weekly Summary Info**:
 <img width="485" height="705" alt="image" src="https://github.com/user-attachments/assets/281214c2-63bf-48a9-aa14-95bf9d82dd7e" />

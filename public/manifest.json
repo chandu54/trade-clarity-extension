@@ -2,9 +2,12 @@
   "name": "TradeClarity.market",
   "description": "Professional swing trading research terminal. Organize watchlists weekly, quantify setups, and get AI insights.",
   "author": "TradeClarity Team",
-  "version": "1.0.0",
+  "version": "1.0.1",
   "manifest_version": 3,
-  "permissions": ["storage", "activeTab"],
+  "permissions": [
+    "storage",
+    "activeTab"
+  ],
   "host_permissions": [
     "https://query1.finance.yahoo.com/*",
     "https://generativelanguage.googleapis.com/*"

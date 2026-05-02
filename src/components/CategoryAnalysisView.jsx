@@ -183,13 +183,14 @@ export default function CategoryAnalysisView({
             >
               Phenomena
             </button>
-            <div
-              className="ca-tab-indicator"
-              style={{
-                width: indicatorStyle.width,
-                transform: `translateX(${indicatorStyle.left}px)`
-              }}
-            />
+            <div className="ca-tab-indicator">
+              <style>{`
+                .ca-tab-indicator {
+                  --indicator-width: ${indicatorStyle.width}px;
+                  --indicator-offset: ${indicatorStyle.left}px;
+                }
+              `}</style>
+            </div>
           </div>
         </div>
 
