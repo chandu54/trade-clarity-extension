@@ -236,7 +236,23 @@ export async function testConnection(apiKey, model) {
   return await fetchGemini(apiKey, prompt, modelToUse);
 }
 
-async function fetchGemini(apiKey, prompt, model, isCustom = false) {
+/**
+ * Parse the "retry in Xs" seconds value from a Gemini rate-limit error message.
+ * Returns the number of milliseconds to wait, or a default fallback.
+ */
+function parseRetryAfterMs(errorMessage, fallbackMs = 65000) {
+  if (!errorMessage) return fallbackMs;
+  // Gemini typically says: "Please retry in 58.925631445s"
+  const match = errorMessage.match(/retry in ([\d.]+)s/i);
+  if (match) {
+    const secs = parseFloat(match[1]);
+    // Add a small buffer of 2 seconds to be safe
+    return Math.ceil(secs * 1000) + 2000;
+  }
+  return fallbackMs;
+}
+
+async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3) {
   // 1. Clean the model ID (ensure no redundant prefix)
   const cleanModel = (model || CONFIG.DEFAULT_AI_MODEL).replace(
     /^models\//,
@@ -246,48 +262,66 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false) {
   // 2. Base URL for v1beta (Required for verified 2.5 / 3.0 models)
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
 
-  const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), 600000); // 10 minute timeout per batch to accommodate models with 'thinking' phases
+  for (let attempt = 1; attempt <= retries; attempt++) {
+    const controller = new AbortController();
+    // 10 minute timeout per request to accommodate models with 'thinking' phases
+    const timeoutId = setTimeout(() => controller.abort(), 600000);
 
-  try {
-    const response = await fetch(url, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-goog-api-key": apiKey,
-      },
-      signal: controller.signal,
-      body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: isCustom ? undefined : {
-          responseMimeType: "application/json"
+    try {
+      const response = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": apiKey,
+        },
+        signal: controller.signal,
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: isCustom ? undefined : {
+            responseMimeType: "application/json"
+          }
+        }),
+      });
+
+      clearTimeout(timeoutId);
+
+      if (!response.ok) {
+        const err = await response.json().catch(() => ({}));
+        const errMessage =
+          err.error?.message ||
+          `Gemini API Error: ${response.status} ${response.statusText} (${cleanModel})`;
+
+        // Handle rate-limit (429) with smart retry
+        if (response.status === 429 && attempt < retries) {
+          const waitMs = Math.min(parseRetryAfterMs(errMessage), 120000); // cap at 2 minutes
+          console.warn(
+            `[AI] Rate limit hit (attempt ${attempt}/${retries}). Waiting ${Math.round(waitMs / 1000)}s before retry...`
+          );
+          await new Promise(r => setTimeout(r, waitMs));
+          continue; // retry
         }
-      }),
-    });
 
-    clearTimeout(timeoutId);
+        throw new Error(errMessage);
+      }
 
-    if (!response.ok) {
-      const err = await response.json().catch(() => ({}));
-      throw new Error(
-        err.error?.message ||
-          `Gemini API Error: ${response.status} ${response.statusText} (${cleanModel})`,
-      );
+      const data = await response.json();
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+
+      if (!text) throw new Error("Empty response from Gemini");
+
+      return parseResponse(text, isCustom);
+    } catch (error) {
+      clearTimeout(timeoutId);
+      if (error.name === 'AbortError') {
+        throw new Error("The AI request timed out. Please try again.");
+      }
+      // Re-throw non-rate-limit errors immediately
+      throw error;
     }
-
-    const data = await response.json();
-    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-
-    if (!text) throw new Error("Empty response from Gemini");
-
-    return parseResponse(text, isCustom);
-  } catch (error) {
-    clearTimeout(timeoutId);
-    if (error.name === 'AbortError') {
-      throw new Error("The AI request timed out. Please try again.");
-    }
-    throw error;
   }
+
+  // Should not reach here, but guard anyway
+  throw new Error("Gemini API request failed after all retries.");
 }
 
 function parseResponse(text, isCustom = false) {

@@ -252,6 +252,23 @@ export async function fetchMarketPulseData(country = "US", timeframe = "1y") {
     if (finalRes.symbol === "HEALTHIETF.NS") finalRes.longName = "Nifty Healthcare";
     if (finalRes.symbol === "OILIETF.NS") finalRes.longName = "Nifty Oil & Gas";
 
+    // Friendly names for US Sector ETFs
+    if (finalRes.symbol === "XLK") finalRes.longName = "Technology";
+    if (finalRes.symbol === "XLF") finalRes.longName = "Financials";
+    if (finalRes.symbol === "XLV") finalRes.longName = "Health Care";
+    if (finalRes.symbol === "XLE") finalRes.longName = "Energy";
+    if (finalRes.symbol === "XLI") finalRes.longName = "Industrials";
+    if (finalRes.symbol === "XLB") finalRes.longName = "Materials";
+    if (finalRes.symbol === "XLU") finalRes.longName = "Utilities";
+    if (finalRes.symbol === "XLY") finalRes.longName = "Consumer Discretionary";
+    if (finalRes.symbol === "XLP") finalRes.longName = "Consumer Staples";
+
+    // Friendly names for US Major Indices
+    if (finalRes.symbol === "^GSPC") finalRes.longName = "S&P 500";
+    if (finalRes.symbol === "^IXIC") finalRes.longName = "Nasdaq";
+    if (finalRes.symbol === "^DJI") finalRes.longName = "Dow 30";
+    if (finalRes.symbol === "^RUT") finalRes.longName = "Russell 2000";
+
     return {
       ...finalRes,
       healthScore: score,

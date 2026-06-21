@@ -414,6 +414,7 @@ export default function StockGrid({
     total: 0,
     completed: 0,
   });
+  const [rateLimitWait, setRateLimitWait] = useState(null); // { waitSeconds, completed, total }
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef(null);
 
@@ -613,11 +614,17 @@ export default function StockGrid({
         }
       } else if (req.action === "BULK_AI_PROGRESS") {
         setAiProgress(req.payload);
+        setRateLimitWait(null); // clear rate-limit status when new progress arrives
+      } else if (req.action === "BULK_AI_RATE_LIMIT_WAIT") {
+        setRateLimitWait(req.payload);
+        setAiProgress(p => ({ ...p, completed: req.payload.completed, total: req.payload.total }));
       } else if (req.action === "BULK_AI_ANALYSIS_COMPLETE") {
         setAiProgress({ total: 0, completed: 0 });
+        setRateLimitWait(null);
         showToast(`Background Bulk AI Analysis completed for ${req.payload.updatedCount} stocks!`, "success");
       } else if (req.action === "BULK_AI_ANALYSIS_FAILED") {
         setAiProgress({ total: 0, completed: 0 });
+        setRateLimitWait(null);
         showToast(`AI Analysis Failed: ${req.payload.error}`, "error");
       }
     };
@@ -1769,9 +1776,7 @@ export default function StockGrid({
                       <span
                         className="info-help-icon"
                         title="Supports operators: > < >= <= = and ranges (e.g. 10-20)"
-                      >
-                        ℹ️
-                      </span>
+                      />
                     )}
                   </label>
 
@@ -1957,12 +1962,23 @@ export default function StockGrid({
             {aiProgress.total > 0 && (
               <div 
                 className={`sync-activity-badge ai-badge ${aiProgress.completed >= aiProgress.total ? "sync-finished" : ""}`} 
-                style={{ color: "var(--color-primary)", borderColor: "var(--color-primary-light)", cursor: "help" }}
-                title={aiProgress.startTime && aiProgress.estimatedEndTime ? `Triggered: ${new Date(aiProgress.startTime).toLocaleTimeString()}\nEstimated Completion: ${new Date(aiProgress.estimatedEndTime).toLocaleTimeString()}` : "AI Analysis in progress..."}
+                style={{ 
+                  color: rateLimitWait ? "var(--color-warning, #f59e0b)" : "var(--color-primary)", 
+                  borderColor: rateLimitWait ? "var(--color-warning, #f59e0b)" : "var(--color-primary-light)", 
+                  cursor: "help" 
+                }}
+                title={rateLimitWait 
+                  ? `Rate limit hit. Resuming in ~${rateLimitWait.waitSeconds}s... (${rateLimitWait.completed}/${rateLimitWait.total} stocks done)`
+                  : (aiProgress.startTime && aiProgress.estimatedEndTime 
+                    ? `Triggered: ${new Date(aiProgress.startTime).toLocaleTimeString()}\nEstimated Completion: ${new Date(aiProgress.estimatedEndTime).toLocaleTimeString()}` 
+                    : "AI Analysis in progress...")}
               >
-                <div className="status-dot" style={{ backgroundColor: "var(--color-primary)", boxShadow: "0 0 8px var(--color-primary)" }} />
-                <span>AI Deep Analysis running...</span>
-                <span style={{ fontSize: "0.85em", opacity: 0.8, marginLeft: "-4px" }}>(Hover for ETA)</span>
+                <div className="status-dot" style={{ backgroundColor: rateLimitWait ? "var(--color-warning, #f59e0b)" : "var(--color-primary)", boxShadow: `0 0 8px ${rateLimitWait ? "var(--color-warning, #f59e0b)" : "var(--color-primary)"}` }} />
+                {rateLimitWait 
+                  ? <span>⏳ Rate limit – waiting {rateLimitWait.waitSeconds}s...</span>
+                  : <span>AI Deep Analysis running...</span>
+                }
+                {!rateLimitWait && <span style={{ fontSize: "0.85em", opacity: 0.8, marginLeft: "-4px" }}>(Hover for ETA)</span>}
                 <span className="percent">
                   {Math.round((aiProgress.completed / aiProgress.total) * 100)}%
                 </span>

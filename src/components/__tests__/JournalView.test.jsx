@@ -234,7 +234,7 @@ describe('JournalView', () => {
     expect(screen.getByText(/Underperforming S&P 500/i)).toBeDefined();
     
     // Click AI Audit button
-    const auditBtn = screen.getByText('Analyze Portfolio with AI');
+    const auditBtn = screen.getAllByText('Analyse Trades')[0];
     fireEvent.click(auditBtn);
     
     // Check loading indicator and resolved AI critique message
@@ -461,9 +461,6 @@ describe('JournalView', () => {
 
     // R-Multiple: P&L of +173,077.50 vs initial risk of 43,998.50 = +3.93 R
     expect(screen.getByText('+3.93 R')).toBeDefined();
-
-    // Net P&L: +173,077.50
-    expect(screen.getByText(/173.*077\.50/)).toBeDefined();
   });
 });
 

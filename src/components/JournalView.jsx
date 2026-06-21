@@ -1069,7 +1069,7 @@ export default function JournalView({ country, data, setData }) {
     });
 
     const winRate = closed.length > 0 ? Math.round((wins / closed.length) * 100) : 0;
-    const profitFactor = grossLosses > 0 ? (grossGains / grossLosses).toFixed(2) : grossGains > 0 ? grossGains.toFixed(2) : "0.00";
+    const profitFactor = grossLosses > 0 ? (grossGains / grossLosses).toFixed(2) : grossGains > 0 ? "∞" : "0.00";
     const avgWin = wins > 0 ? (grossGains / wins).toFixed(2) : "0";
     const avgLoss = losses > 0 ? (grossLosses / losses).toFixed(2) : "0";
 
@@ -1280,8 +1280,9 @@ export default function JournalView({ country, data, setData }) {
         color: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400'
       });
     }
-    const pf = Number(metrics.profitFactor);
-    if (pf >= 2.0 && metrics.closed >= 3) {
+    const pf = metrics.profitFactor;
+    const pfNum = Number(pf);
+    if (((!isNaN(pfNum) && pfNum >= 2.0) || (pf === "∞" && metrics.losses === 0 && metrics.wins > 0)) && metrics.closed >= 3) {
       badges.push({
         id: 'profit-factor-master',
         title: 'Process Master',
@@ -1367,7 +1368,7 @@ export default function JournalView({ country, data, setData }) {
     });
 
     const winRate = closed.length > 0 ? Math.round((wins / closed.length) * 100) : 0;
-    const profitFactor = grossLosses > 0 ? (grossGains / grossLosses).toFixed(2) : grossGains > 0 ? grossGains.toFixed(2) : "0.00";
+    const profitFactor = grossLosses > 0 ? (grossGains / grossLosses).toFixed(2) : grossGains > 0 ? "∞" : "0.00";
     const avgWin = wins > 0 ? (grossGains / wins).toFixed(2) : "0";
     const avgLoss = losses > 0 ? (grossLosses / losses).toFixed(2) : "0";
 
@@ -1562,8 +1563,9 @@ export default function JournalView({ country, data, setData }) {
         color: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400'
       });
     }
-    const pf = Number(analyticsMetrics.profitFactor);
-    if (pf >= 2.0 && analyticsMetrics.closed >= 3) {
+    const pf = analyticsMetrics.profitFactor;
+    const pfNum = Number(pf);
+    if (((!isNaN(pfNum) && pfNum >= 2.0) || (pf === "∞" && analyticsMetrics.losses === 0 && analyticsMetrics.wins > 0)) && analyticsMetrics.closed >= 3) {
       badges.push({
         id: 'profit-factor-master',
         title: 'Process Master',
@@ -2917,7 +2919,22 @@ export default function JournalView({ country, data, setData }) {
                   <span className="text-emerald-500 dark:text-emerald-400 font-mono font-black">{analyticsMetrics.winRate}%</span>
                 </div>
                 <div className="flex justify-between items-center text-xs font-bold">
-                  <span className="text-slate-500 dark:text-slate-400">Profit Factor</span>
+                  <span className="text-slate-500 dark:text-slate-400 flex items-center gap-1">
+                    Profit Factor
+                    <span
+                      className="group relative cursor-default"
+                      title=""
+                    >
+                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3 h-3 text-slate-400 hover:text-indigo-500 transition-colors">
+                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm.75 3.31a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0v-2.5z" clipRule="evenodd" />
+                      </svg>
+                      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 w-52 bg-slate-900 dark:bg-slate-800 text-white text-[10px] font-semibold leading-snug rounded-lg px-2.5 py-2 opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-xl border border-slate-700/50 text-center">
+                        <span className="block font-black text-indigo-400 mb-0.5">Profit Factor</span>
+                        Total gross profit ÷ Total gross loss. A value &gt;1 means the system is profitable. &gt;2 is excellent, &gt;3 is exceptional.
+                        <span className="absolute top-full left-1/2 -translate-x-1/2 border-4 border-transparent border-t-slate-900 dark:border-t-slate-800" />
+                      </span>
+                    </span>
+                  </span>
                   <span className="text-indigo-600 dark:text-indigo-400 font-mono font-black">{analyticsMetrics.profitFactor}</span>
                 </div>
                 <div className="flex justify-between items-center text-xs font-bold">
@@ -3212,44 +3229,74 @@ export default function JournalView({ country, data, setData }) {
             </div>
 
             {/* Column 2: AI Insights */}
-            <div className="bg-[var(--panel)] p-5 rounded-xl border border-[var(--border)] flex flex-col gap-4 shadow-sm">
-              <h3 className="text-xs font-black text-slate-500 dark:text-slate-400 border-b border-[var(--border)] pb-2 flex items-center gap-1.5">
-                <IconBookOpen className="w-4 h-4" /> AI Insights
-              </h3>
-
-              <div className="flex-1 flex flex-col justify-between gap-4 min-h-[220px]">
-                {aiInsights ? (
-                  <div className="text-xs text-slate-700 dark:text-slate-300 font-semibold leading-relaxed bg-slate-50/50 dark:bg-slate-950/20 border border-[var(--border)] p-4 rounded-xl max-h-[280px] overflow-y-auto themed-scroll shadow-inner whitespace-pre-wrap">
-                    {aiInsights}
-                  </div>
-                ) : (
-                  <div className="flex-1 flex flex-col items-center justify-center text-center p-4">
-                    <span className="text-slate-400 text-xs font-bold">AI Performance Audit</span>
-                    <p className="text-[10px] text-slate-400/80 mt-1.5 font-semibold max-w-[200px]">Click below to run a Gemini powered analysis on your setups and risk adherence.</p>
-                  </div>
-                )}
-
+            <div className="bg-[var(--panel)] p-5 rounded-xl border border-[var(--border)] flex flex-col gap-3 shadow-sm">
+              {/* Header row: title left, button right */}
+              <div className="flex items-center justify-between border-b border-[var(--border)] pb-2">
+                <h3 className="text-xs font-black text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+                  <IconBookOpen className="w-4 h-4" /> AI Insights
+                </h3>
                 <div
                   role="button"
                   onClick={!(aiInsightsLoading || analyticsPositions.length === 0) ? handleFetchAiInsights : undefined}
-                  className={`w-full py-2 px-4 font-extrabold text-xs rounded-md transition-all flex items-center justify-center gap-2 cursor-pointer ${
+                  className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-extrabold rounded-md transition-all cursor-pointer ${
                     aiInsightsLoading || analyticsPositions.length === 0
-                      ? 'bg-slate-200 dark:bg-slate-800 text-slate-400 dark:text-slate-600 cursor-not-allowed border border-[var(--border)]'
-                      : 'bg-gradient-to-r from-sky-500 to-indigo-500 hover:brightness-110 text-white shadow-lg hover:shadow-indigo-500/15'
+                      ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                      : 'bg-gradient-to-r from-sky-500 to-indigo-500 hover:brightness-110 text-white shadow-md hover:shadow-indigo-500/20'
                   }`}
                 >
                   {aiInsightsLoading ? (
-                    <span className="flex items-center gap-1.5 animate-pulse">
-                      <svg className="animate-spin h-3.5 w-3.5 text-slate-400" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" strokeWidth="4" className="opacity-25" /><path fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" className="opacity-75" /></svg>
-                      Auditing Portfolio...
+                    <span className="flex items-center gap-1 animate-pulse">
+                      <svg className="animate-spin h-3 w-3" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10" strokeWidth="4" className="opacity-25" /><path fill="currentColor" d="M4 12a8 8 0 018-8v8H4z" className="opacity-75" /></svg>
+                      Analysing…
                     </span>
                   ) : (
                     <>
-                      <svg className="w-3.5 h-3.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 21l8.988-8.102a.5.5 0 00-.707-.707L12 15.658V3a1 1 0 00-2 0v12.904z" /></svg>
-                      Analyze Portfolio with AI
+                      <svg className="w-3 h-3" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="2.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 21l8.988-8.102a.5.5 0 00-.707-.707L12 15.658V3a1 1 0 00-2 0v12.904z" /></svg>
+                      Analyse Trades
                     </>
                   )}
                 </div>
+              </div>
+
+              {/* Content area — fills remaining height */}
+              <div className="flex-1 min-h-[220px]">
+                {aiInsights ? (
+                  <div className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed bg-slate-50/50 dark:bg-slate-950/20 border border-[var(--border)] p-4 rounded-xl h-full max-h-[320px] overflow-y-auto themed-scroll shadow-inner">
+                    {aiInsights.split('\n').map((line, i) => {
+                      // H3 / H4 headers
+                      if (/^#{1,4}\s/.test(line)) {
+                        const text = line.replace(/^#{1,4}\s+/, '');
+                        return <p key={i} className="text-[10px] font-black text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mt-3 mb-1 first:mt-0">{text}</p>;
+                      }
+                      // Horizontal rule
+                      if (/^---+$/.test(line.trim())) {
+                        return <hr key={i} className="border-slate-200 dark:border-slate-800 my-2" />;
+                      }
+                      // Empty line → spacer
+                      if (line.trim() === '') return <div key={i} className="h-1.5" />;
+                      // Bullet points
+                      const isBullet = /^[\*\-]\s/.test(line);
+                      const content = (isBullet ? line.slice(2) : line)
+                        .split(/\*\*(.+?)\*\*/g)
+                        .map((part, j) => j % 2 === 1
+                          ? <strong key={j} className="font-extrabold text-slate-800 dark:text-slate-100">{part}</strong>
+                          : part.split(/\*(.+?)\*/g).map((p, k) => k % 2 === 1
+                            ? <em key={k} className="italic text-slate-600 dark:text-slate-300">{p}</em>
+                            : p
+                          )
+                        );
+                      return isBullet
+                        ? <div key={i} className="flex gap-1.5 items-start mb-0.5"><span className="mt-1 w-1 h-1 rounded-full bg-indigo-400 shrink-0" /><p className="font-semibold">{content}</p></div>
+                        : <p key={i} className="font-semibold mb-0.5">{content}</p>;
+                    })}
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center text-center h-full min-h-[200px] rounded-xl border border-dashed border-slate-200 dark:border-slate-800/60 bg-slate-50/30 dark:bg-slate-950/10">
+                    <svg className="w-7 h-7 text-slate-300 dark:text-slate-700 mb-2" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5"><path strokeLinecap="round" strokeLinejoin="round" d="M9.813 15.904L9 21l8.988-8.102a.5.5 0 00-.707-.707L12 15.658V3a1 1 0 00-2 0v12.904z" /></svg>
+                    <span className="text-slate-400 dark:text-slate-600 text-xs font-bold">No analysis yet</span>
+                    <p className="text-[10px] text-slate-400/70 dark:text-slate-600/80 mt-1 font-semibold max-w-[180px] leading-snug">Hit <span className="text-indigo-400 font-black">Analyse Trades</span> above to run a Gemini-powered audit of your setups &amp; risk.</p>
+                  </div>
+                )}
               </div>
             </div>
 

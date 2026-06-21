@@ -93,7 +93,7 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
           <div className="settings-card">
             <label className="settings-label-v2 settings-label-mb">
               Select Weeks to Delete
-              <span className="info-icon" title="Check weeks you want to purge permanently">ℹ️</span>
+              <span className="info-icon" title="Check weeks you want to purge permanently" />
             </label>
 
             <div className="data-management-list">

@@ -224,9 +224,7 @@ export default function WeekSummary({ data, weekKey, country }) {
         className="summary-icon"
         onClick={() => setOpen((o) => !o)}
         title="Weekly Summary"
-      >
-        ⓘ
-      </span>
+      />
 
       {open && (
         <div className="summary-popup" ref={popupRef}>
@@ -258,9 +256,7 @@ export default function WeekSummary({ data, weekKey, country }) {
               <span
                 className="info-icon"
                 title="Number of stocks that passed 80% or more of the checks"
-              >
-                ⓘ
-              </span>
+              />
             </div>
 
             <div className="check-card warn">
@@ -270,9 +266,7 @@ export default function WeekSummary({ data, weekKey, country }) {
               <span
                 className="info-icon"
                 title="Number of stocks that passed between 60% and 79% of the checks"
-              >
-                ⓘ
-              </span>
+              />
             </div>
 
             <div className="check-card bad">
@@ -282,9 +276,7 @@ export default function WeekSummary({ data, weekKey, country }) {
               <span
                 className="info-icon"
                 title="Number of stocks that passed less than 60% of the checks"
-              >
-                ⓘ
-              </span>
+              />
             </div>
           </div>
 
@@ -311,9 +303,7 @@ export default function WeekSummary({ data, weekKey, country }) {
                   <span
                     className="info-icon"
                     title="Change in total number of stocks compared to the previous week"
-                  >
-                    ⓘ
-                  </span>
+                  />
                 </div>
 
                 {/* ≥ 80% */}
@@ -334,9 +324,7 @@ export default function WeekSummary({ data, weekKey, country }) {
                   <span
                     className="info-icon"
                     title="Week-on-week change in number of stocks that passed 80% or more of the checks"
-                  >
-                    ⓘ
-                  </span>
+                  />
                 </div>
 
                 {/* 60–79% */}
@@ -357,9 +345,7 @@ export default function WeekSummary({ data, weekKey, country }) {
                   <span
                     className="info-icon"
                     title="Week-on-week change in number of stocks that passed between 60% and 79% of the checks"
-                  >
-                    ⓘ
-                  </span>
+                  />
                 </div>
               </div>
             </div>

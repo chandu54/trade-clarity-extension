@@ -69,6 +69,19 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   return true;
 });
 
+/**
+ * Parse the "retry in Xs" wait from a Gemini rate-limit error message.
+ * Returns milliseconds, defaulting to 65s if not found.
+ */
+function parseRetryAfterMs(errorMessage, fallbackMs = 65000) {
+  if (!errorMessage) return fallbackMs;
+  const match = errorMessage.match(/retry in ([\d.]+)s/i);
+  if (match) {
+    return Math.ceil(parseFloat(match[1]) * 1000) + 2000; // +2s safety buffer
+  }
+  return fallbackMs;
+}
+
 async function processAiQueue() {
   if (bulkAiQueue.length === 0) {
     isAiProcessing = false;
@@ -82,23 +95,58 @@ async function processAiQueue() {
   const chunkSize = 7;
   const results = {};
   
-  // Estimate ~1 minute per stock based on Gemini "Thinking" time (6.8m per 7 stocks)
   const startTime = Date.now();
   const estimatedEndTime = startTime + (total * 60 * 1000);
-  
+
   try {
     for (let i = 0; i < total; i += chunkSize) {
       chrome.runtime.sendMessage({
         action: "BULK_AI_PROGRESS",
         payload: { completed: i, total, startTime, estimatedEndTime }
       }).catch(() => {});
-      
+
       const chunk = stocks.slice(i, i + chunkSize);
-      const chunkResults = await getBulkStockVerdicts(apiKey, model, chunk);
-      Object.assign(results, chunkResults);
-      // Brief pause to respect API rate limits slightly
+
+      // Retry loop for this chunk — handles per-chunk 429s not caught inside ai.js
+      let chunkResults = null;
+      let chunkAttempt = 0;
+      const maxChunkRetries = 3;
+      while (chunkAttempt < maxChunkRetries) {
+        try {
+          chunkResults = await getBulkStockVerdicts(apiKey, model, chunk);
+          break; // success
+        } catch (chunkErr) {
+          const errMsg = chunkErr.message || "";
+          const isRateLimit = errMsg.includes("quota") || errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("RESOURCE_EXHAUSTED");
+          if (isRateLimit && chunkAttempt < maxChunkRetries - 1) {
+            const waitMs = Math.min(parseRetryAfterMs(errMsg), 120000);
+            console.warn(`[BG] Rate limit on chunk ${i}–${i + chunkSize}. Waiting ${Math.round(waitMs / 1000)}s (attempt ${chunkAttempt + 1}/${maxChunkRetries})...`);
+            // Notify UI so spinner shows a helpful message instead of hanging
+            chrome.runtime.sendMessage({
+              action: "BULK_AI_RATE_LIMIT_WAIT",
+              payload: { waitSeconds: Math.round(waitMs / 1000), completed: i, total }
+            }).catch(() => {});
+            await new Promise(r => setTimeout(r, waitMs));
+            chunkAttempt++;
+          } else {
+            throw chunkErr; // non-rate-limit error, or exhausted retries
+          }
+        }
+      }
+
+      if (chunkResults) {
+        Object.assign(results, chunkResults);
+      }
+
+      // Respect free-tier 20 RPM limit: wait ~65s between chunks so we never
+      // exceed 1 request/minute (each chunk = 1 Gemini API call).
       if (i + chunkSize < total) {
-        await new Promise(r => setTimeout(r, 2000));
+        const interChunkDelay = 65000; // 65 seconds — safely under 20 RPM
+        chrome.runtime.sendMessage({
+          action: "BULK_AI_RATE_LIMIT_WAIT",
+          payload: { waitSeconds: Math.round(interChunkDelay / 1000), completed: i + chunkSize, total }
+        }).catch(() => {});
+        await new Promise(r => setTimeout(r, interChunkDelay));
       }
     }
 

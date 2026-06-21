@@ -232,9 +232,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
               <span
                 className="info-icon"
                 title="Marks this parameter as a validation check used to decide whether a stock is favorable or not."
-              >
-                ℹ️
-              </span>
+              />
             </span>
           </label>
         </div>
@@ -246,9 +244,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
               <span
                 className="info-icon"
                 title="Define the value(s) that indicate a passing condition. Stocks meeting these values will pass this check. For numbers/dates, use >, <, >=, <=, or range (10-20)."
-              >
-                ℹ️
-              </span>
+              />
             </label>
 
             <input
@@ -265,9 +261,7 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
             <span
               className="info-icon"
               title="Select which countries this parameter applies to. Leave both unchecked to make it Global."
-            >
-              ℹ️
-            </span>
+            />
           </label>
           <div className="countries-flex-group">
             <label className="checkbox-label checkbox-no-margin">

@@ -197,7 +197,7 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
               <div className="form-field">
                 <label htmlFor="apiKey" className="settings-label-v2">
                   API Key
-                  <span className="info-icon" title="Your API key is stored locally in your browser.">ℹ️</span>
+                  <span className="info-icon" title="Your API key is stored locally in your browser." />
                 </label>
                 <div className="settings-input-group">
                   <input id="apiKey" type="password" value={apiKey} onChange={(e) => setApiKey(e.target.value)} placeholder="Paste your Gemini API key here..." className="settings-input-v2" />
@@ -214,7 +214,7 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
               <div className="form-field mt-4">
                 <label htmlFor="modelSelect" className="settings-label-v2">
                   AI Model
-                  <span className="info-icon" title="Select the model architecture. Gemini 1.5 Pro is recommended for complex reasoning.">ℹ️</span>
+                  <span className="info-icon" title="Select the model architecture. Gemini 1.5 Pro is recommended for complex reasoning." />
                 </label>
                 
                 {!isCustomModel ? (
