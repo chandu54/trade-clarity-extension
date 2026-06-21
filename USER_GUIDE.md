@@ -254,3 +254,83 @@ Once the correct symbol is detected, you can input your trade plan:
   - The widget relies on the document title. Wait for the chart to fully load.
 - **Data not saving?**
   - Ensure you have initialized the main Dashboard at least once to set up the data structure.
+
+---
+
+## 9. Market Pulse Guide
+
+The **Market Pulse** dashboard acts as your bird's-eye view of indices and sector performance. Rather than evaluating tickers in isolation, you should first look here to understand the broader market trend, momentum strength, and system risk levels.
+
+### 🖼️ Snapshot (Indices Grid)
+A real-time overview of the indices, sector ETFs, or breadth indicators.
+- **Mini Candlestick Charts**: Small charts displaying the historical price action of each index. Hover or check the fullscreen layout for details.
+- **52-Week Range Bar**: Shows the current position of the index between its yearly low (L) and yearly high (H). A fill ratio near 100% signifies it is trading at or near new yearly highs, indicating potential breakouts.
+- **MAs Bar (Moving Averages)**: Five small blocks displaying whether the current price is above (Green/Bullish) or below (Red/Bearish) the **5MA, 10MA, 21MA, 50MA, and 200MA**.
+- **Drag and Drop ordering**: Rearrange cards by dragging the drag handle in the upper left corner to sort them based on your monitoring needs.
+- **Favorites**: Click the star icon to save indices as favorites. You can sort the screen to show favorites first.
+- **Fullscreen Charting**: Click the expand icon to view an interactive chart, switch timeframes from 1d to 5y, see exact moving average values, or click *Analyze ↗* to open it directly in TradingView.
+
+### 🧠 Intelligence (Market Matrix)
+An institutional-grade, detailed breakdown of all index metrics.
+- **RS Rating (Relative Strength)**: Measures how strongly the index is outperforming (+) or underperforming (-) the primary benchmark (Nifty 50 in India, S&P 500 in the US) on a rolling timeframe.
+- **52W High %**: Distance of the current index price from its 52-week high. 0.0% means it is currently trading at a yearly high.
+- **RSI (14)**: Relative Strength Index. Values above 70 indicate an overbought market (vulnerable to consolidation/pullbacks), while values below 30 indicate oversold conditions (potential reversal candidates).
+- **Moving Average Deviations (21MA, 50MA, 200MA)**: Percentage distance of the current price from its short, medium, and long-term trendlines. Large deviations highlight overextended markets.
+- **Market Phase / Verdict**: The color-coded badge displays the structural phase (e.g. Bullish, Consolidation, Bearish, or Distribution) determined by the alignment of the moving averages and price behavior.
+
+### 🔥 Heatmap (Sector Relative Strength)
+A visual relative strength grid of sectors to identify where institutions are rotating capital.
+- **Intensity Shading**: Tiled sectors are sorted by daily percent change. Strong gainers are colored in deep green, while strong decliners are shaded deep red.
+- **Sector Breadth**: If most tiles are green, it signals strong market-wide participation. If only a few defensive sectors are green, it suggests market caution.
+
+### 📝 Technical Thesis
+At the bottom of the Snapshot page, the system displays the **Technical Thesis**. This is an automated analysis summarizing the daily tape, structural trends, leading sectors, and key tactical action plans based on the current matrix data.
+
+---
+
+## 10. Trading Journal Guide
+
+A professional trading journal enforces discipline. Recording your setups, risk-reward parameters, and scaling points prevents impulsive decisions, provides audit trails, and lets you calculate performance stats objectively. Treating trading as a business requires tracking every unit of risk and analyzing your performance parameters over time.
+
+### 📝 Position Ledger (Standard Tab)
+The position ledger is your central trade database. It displays all open, closed, scaled, and planned positions in a custom table view.
+- **Table Customization**: Click the gear icon next to table columns to customize column visibility, adjust width, and change sorting priority. You can sort by columns to analyze specific trades.
+- **Real-time P&L**: Computes floating profit/loss for open positions based on live index price ticks, and locks in realized P&L when a trade status is changed to "Closed".
+- **Search & Filter**: Search for trades instantly by symbol or text in notes, and filter trades by status (Open, Closed, Scaled, Planned) or strategies (e.g. Pullback, Breakout).
+
+### 📝 Creating & Editing Trades (Form Fields)
+When you add a trade or click the edit icon in the ledger, a comprehensive detail form opens:
+- **Ticker Symbol**: The stock ticker code representing your trade (e.g. AAPL or RELIANCE).
+- **Strategy / Setup**: Select the technical setup or strategy used. Select "Other" to input a custom strategy name.
+- **Entry Price & Quantity**: The initial execution price and number of shares/units purchased.
+- **Entry Date**: The execution date and time.
+- **Stop Loss & Target Price**: Define your defensive exit point (Stop Loss Price or %) and profit goal (Target Price or %).
+- **Current / Trailing Stop Loss**: Adjust this field to trace a trailing stop as the stock price moves in your direction, ensuring you lock in profits and protect capital.
+- **Position Status**: Define the current state of the trade (Planned, Open, Scaled, Closed).
+- **Exit Price & Date**: Input the average exit price and date when closing the position to calculate finalized returns.
+- **Entry Thesis & Chart Snapshot**: Document your setup rationale and paste a TradingView chart screenshot URL to log visual technical entry points.
+- **Post-Mortem & Reflections**: For closed trades, record key psychological lessons, execution notes, or mistakes to improve future decisions.
+
+### ⚖️ Advanced Position Sizing Calculator
+Enforces risk discipline before you click buy. The form contains an automatic sizing calculator:
+- **Account Capital & Risk %**: Enter your total trading capital and select the capital risk percentage you want to allocate to this trade (e.g., 0.5%, 1%, 2%, or a custom amount).
+- **Quantity & Max Risk Calculation**: Based on the distance between your Entry Price and Stop Loss, the calculator automatically suggests the optimal share quantity to buy, ensuring that if you get stopped out, your loss is strictly limited to your risk percentage (Max Cash Risk).
+
+### ➕ Scale-In & Pyramiding (Multi-Transaction Support)
+Professional traders scale their trades. The journal supports managing multiple entries or partial exits under a single position:
+- **Scaling Log**: Under the scaling form, log each subsequent addition (scale-in buy) or partial exit (scale-out sell).
+- **Average Cost Basis**: The system automatically computes the weighted average entry price and updates the total quantity of active shares in real-time, preventing messy duplicate logs.
+
+### 🖼️ Visual Candlesticks (Snapshot Tab)
+A visual overview gallery of all open positions.
+- **Price Chart Overlays**: Displays active positions as mini candlestick charts.
+- **Technical Reference Levels**: Plots three key horizontal lines representing your trade parameters: **Entry Price (Blue)**, **Stop Loss (Red)**, and **Target Price (Green)**.
+- **Distance Stats**: Displays real-time percentages indicating how far the current price is from your stop-loss or target, giving you a clear visual of trade progression.
+
+### 📈 Auditing Performance Edge (Analytics Tab)
+An analytical dashboard to audit your system edge.
+- **Win Rate & Profit Factor**: Win Rate calculates the percentage of closed positions that resulted in profits. Profit Factor is the ratio of gross gains to gross losses. A value above 1.5 indicates a highly profitable strategy.
+- **R-Multiple Metrics**: Measures your returns in units of risk (R). A trade that returns 2R means your gain was 2 times your initial dollar risk. The analytics tab aggregates total R-Multiple returns to measure the efficiency of your risk management.
+- **Performance Curve**: A line graph charting your account equity over time.
+- **Benchmark Comparison**: Plots your equity curve directly against indices (Nifty 50 or S&P 500) to confirm if you are outperforming the market index.
+

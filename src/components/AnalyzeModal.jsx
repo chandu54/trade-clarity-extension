@@ -159,7 +159,7 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
                   type="button"
                   onClick={handleGenerateAnalysis}
                   disabled={isGenerating}
-                  className="primary-btn ai-run-btn"
+                  className="btn-ai-gradient ai-run-btn"
                 >
                   {isGenerating ? "Analyzing..." : (analysisToDisplay ? "Regenerate" : "Run Analysis")}
                 </button>

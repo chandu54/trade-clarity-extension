@@ -102,14 +102,15 @@ export async function fetchMarketPulseData(country = "US", timeframe = "1y") {
   
   /**
    * PROXY_MAP: Deep history proxies for indices that Yahoo often truncates or lacks completely.
-   * SMALLCAP.NS (Edelweiss) is the gold standard for Smallcap history.
-   * MIDCAP.NS (Motilal Oswal) is the backup for Midcap history.
+   * HDFCSML250.NS is the robust, split-adjusted proxy for Smallcap history.
+   * MOM100.NS is the clean, split-adjusted proxy for Midcap history.
+   * MONIFTY500.NS is the clean, split-adjusted proxy for Nifty 500 history.
    * HEALTHIETF.NS and OILIETF.NS serve as highly active direct proxies for sectoral indices.
    */
   const PROXY_MAP = {
-    "^CNXSC": { symbol: "SMALLCAP.NS", ratio: 400, isSelfETF: false }, 
-    "NIFTY_MIDCAP_100.NS": { symbol: "MIDCAP.NS", ratio: 3425, isSelfETF: false },
-    "^CRSLDX": { symbol: "NIFTY_500.NS", ratio: 2.03, isSelfETF: false },
+    "^CNXSC": { symbol: "HDFCSML250.NS", ratio: 105, isSelfETF: false }, 
+    "NIFTY_MIDCAP_100.NS": { symbol: "MOM100.NS", ratio: 925, isSelfETF: false },
+    "^CRSLDX": { symbol: "MONIFTY500.NS", ratio: 980, isSelfETF: false },
     "HEALTHIETF.NS": { symbol: "HEALTHIETF.NS", ratio: 1000, isSelfETF: true },
     "OILIETF.NS": { symbol: "OILIETF.NS", ratio: 1000, isSelfETF: true }
   };
@@ -215,21 +216,30 @@ export async function fetchMarketPulseData(country = "US", timeframe = "1y") {
     finalRes.sma200 = calculateSMA(maCandles, 200) ? calculateSMA(maCandles, 200) * scaleFactor : null;
     finalRes.rsi = calculateRSI(maCandles, 14);
 
-    // 3. 52-WEEK HIGH / LOW (Prioritize Proxy Metadata to bypass broken Yahoo Index data)
+    // 3. 52-WEEK HIGH / LOW (Calculate from 1-year candle history to bypass broken/split Yahoo metadata)
     let h52 = null;
     let l52 = null;
 
-    if (technicalSource?.high52w) {
-      h52 = technicalSource.high52w * scaleFactor;
-      l52 = technicalSource.low52w * scaleFactor;
-    } else {
-      h52 = finalRes.high52w;
-      l52 = finalRes.low52w;
+    const candlesFor52w = technicalSource?.candlesticks || finalRes.candlesticks || [];
+    if (candlesFor52w.length > 0) {
+      const latestTime = candlesFor52w[candlesFor52w.length - 1].time;
+      const oneYearAgo = latestTime - 365 * 24 * 60 * 60;
+      const oneYearCandles = candlesFor52w.filter(c => c.time >= oneYearAgo);
+      if (oneYearCandles.length > 0) {
+        h52 = Math.max(...oneYearCandles.map(c => c.high)) * scaleFactor;
+        l52 = Math.min(...oneYearCandles.map(c => c.low)) * scaleFactor;
+      }
     }
 
-    if (!h52 && maCandles.length > 0) {
-      h52 = Math.max(...maCandles.map(c => c.high)) * scaleFactor;
-      l52 = Math.min(...maCandles.map(c => c.low)) * scaleFactor;
+    // Fallback to metadata if candle calculations are unavailable
+    if (h52 === null || l52 === null) {
+      if (technicalSource?.high52w) {
+        h52 = technicalSource.high52w * scaleFactor;
+        l52 = technicalSource.low52w * scaleFactor;
+      } else {
+        h52 = finalRes.high52w;
+        l52 = finalRes.low52w;
+      }
     }
 
     finalRes.high52w = h52;

@@ -205,15 +205,15 @@ export default function MiniCandlestickChart({
         },
       },
       handleScroll: {
-        mouseWheel: !disableZoom,
-        pressedMouseMove: true,
-        horzTouchDrag: true,
-        vertTouchDrag: true,
+        mouseWheel: interactive && !disableZoom,
+        pressedMouseMove: interactive,
+        horzTouchDrag: interactive,
+        vertTouchDrag: interactive,
       },
       handleScale: {
-        mouseWheel: !disableZoom,
-        pinch: !disableZoom,
-        axisPressedMouseMove: true,
+        mouseWheel: interactive && !disableZoom,
+        pinch: interactive && !disableZoom,
+        axisPressedMouseMove: interactive,
       },
     });
 
@@ -329,11 +329,20 @@ export default function MiniCandlestickChart({
     chartRef.current = chart;
     seriesRef.current = series;
 
+    let lastWidth = 0;
+    let lastHeight = 0;
     const resizeObserver = new ResizeObserver((entries) => {
       if (entries.length === 0 || !chartRef.current) return;
       const { width, height: observedHeight } = entries[0].contentRect;
-      chartRef.current.applyOptions({ width, height: observedHeight });
-      chartRef.current.timeScale().fitContent();
+      const roundedWidth = Math.round(width);
+      const roundedHeight = Math.round(observedHeight);
+      
+      if (roundedWidth !== lastWidth || roundedHeight !== lastHeight) {
+        lastWidth = roundedWidth;
+        lastHeight = roundedHeight;
+        chartRef.current.applyOptions({ width: roundedWidth, height: roundedHeight });
+        chartRef.current.timeScale().fitContent();
+      }
     });
 
     if (chartContainerRef.current) {

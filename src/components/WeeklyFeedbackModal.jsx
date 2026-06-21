@@ -145,7 +145,7 @@ export default function WeeklyFeedbackModal({ isOpen, onClose, data, setData, co
             <div 
               role="button"
               onClick={handleGenerateAI}
-              className={`text-[9px] font-bold px-2 py-1 rounded bg-indigo-50 dark:bg-indigo-500/10 text-indigo-600 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-all ${isGenerating ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
+              className={`btn-ai-gradient text-[9.5px] font-extrabold px-2.5 py-1 rounded shadow-md transition-all ${isGenerating ? 'opacity-50 cursor-wait' : 'cursor-pointer'}`}
             >
               {isGenerating ? 'Generating...' : '✨ Generate AI Notes'}
             </div>
@@ -168,7 +168,7 @@ export default function WeeklyFeedbackModal({ isOpen, onClose, data, setData, co
           </div>
           <div 
             role="button"
-            className="px-6 py-2.5 text-xs font-extrabold rounded-lg bg-[var(--primary)] text-white hover:brightness-110 shadow-lg hover:shadow-[var(--primary)]/20 transition-all cursor-pointer"
+            className="px-6 py-2.5 text-xs font-extrabold rounded-lg bg-gradient-to-br from-[var(--primary-light)] to-[var(--primary)] text-white hover:brightness-110 shadow-lg hover:shadow-[var(--primary)]/20 transition-all cursor-pointer"
             onClick={handleSave}
           >
             Save Weekly Journal

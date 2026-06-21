@@ -924,8 +924,8 @@ export default function JournalView({ country, data, setData }) {
     setBenchmarkLoading(true);
     try {
       const PROXY_MAP = {
-        "^CNXSC": { symbol: "SMALLCAP.NS", ratio: 400 },
-        "^CRSMID": { symbol: "MIDCAP.NS", ratio: 3425 },
+        "^CNXSC": { symbol: "HDFCSML250.NS", ratio: 105 },
+        "^CRSMID": { symbol: "MOM100.NS", ratio: 925 },
         "NIFTYMIDSML400.NS": { symbol: "MIDSMALL.NS", ratio: 392 }
       };
 
@@ -2259,7 +2259,7 @@ export default function JournalView({ country, data, setData }) {
           {/* Log Position Custom Div Button */}
           <div 
             role="button"
-            className="px-3.5 py-1.5 font-extrabold text-xs rounded-md bg-[var(--primary)] text-white hover:brightness-110 flex items-center gap-1.5 cursor-pointer shadow-lg transition-all"
+            className="px-3.5 py-1.5 font-extrabold text-xs rounded-md bg-gradient-to-br from-[var(--primary-light)] to-[var(--primary)] text-white hover:brightness-110 flex items-center gap-1.5 cursor-pointer shadow-lg transition-all"
             onClick={() => {
               setFormData(initialFormState);
               setEditingTradeId(null);
@@ -4035,7 +4035,7 @@ export default function JournalView({ country, data, setData }) {
                             ? (newExecution.type === 'Buy'
                                 ? 'bg-emerald-600 dark:bg-emerald-500 hover:brightness-110 shadow-lg animate-[pulse_1.2s_ease-in-out_3]'
                                 : 'bg-rose-600 dark:bg-rose-500 hover:brightness-110 shadow-lg animate-[pulse_1.2s_ease-in-out_3]')
-                            : 'bg-[var(--primary)] hover:brightness-110'
+                            : 'bg-gradient-to-br from-[var(--primary-light)] to-[var(--primary)] hover:brightness-110'
                         }`}
                         onClick={handleAddExecution}
                       >
@@ -4100,7 +4100,7 @@ export default function JournalView({ country, data, setData }) {
               <span className="text-[10px] text-slate-400 dark:text-slate-500 font-mono hidden sm:inline">(Ctrl + S to save)</span>
               <div 
                 role="button"
-                className="px-5 py-2.5 text-xs font-extrabold rounded-lg bg-[var(--primary)] text-white hover:brightness-110 shadow-lg hover:shadow-sky-500/10 transition-all cursor-pointer"
+                className="px-5 py-2.5 text-xs font-extrabold rounded-lg bg-gradient-to-br from-[var(--primary-light)] to-[var(--primary)] text-white hover:brightness-110 shadow-lg hover:shadow-sky-500/10 transition-all cursor-pointer"
                 onClick={handleSavePosition}
               >
                 {editingTradeId ? 'Save Changes' : 'Log Trade Position'}
@@ -4235,7 +4235,7 @@ export default function JournalView({ country, data, setData }) {
             </div>
             <div 
               role="button"
-              className="px-5 py-2 font-black text-xs rounded-lg bg-[var(--primary)] text-white hover:brightness-110 cursor-pointer shadow transition-all"
+              className="px-5 py-2 font-black text-xs rounded-lg bg-gradient-to-br from-[var(--primary-light)] to-[var(--primary)] text-white hover:brightness-110 cursor-pointer shadow transition-all"
               onClick={() => setShowConfigModal(false)}
             >
               Save & Apply
