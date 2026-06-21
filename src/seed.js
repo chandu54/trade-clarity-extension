@@ -172,4 +172,8 @@ export const DEFAULT_DATA = {
   isPro: false,
   theme: "dark",
   analyticsLayout: {},
+  journals: {
+    IN: [],
+    US: []
+  }
 };

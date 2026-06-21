@@ -1,6 +1,8 @@
 import WeekSummary from "./WeekSummary";
 import { useEffect, useState, useRef } from "react";
 import { getLocalDateString, getSundayOfWeek, getWeekRangeLabel } from "../utils/weekHelpers";
+import { useConfirm } from "./ConfirmContext";
+import { useToast } from "./ToastContext";
 
 export default function WeekSelector({
   data,
@@ -12,12 +14,36 @@ export default function WeekSelector({
   setSelectedWatchlistId,
   onClearWeek,
   onAnalyze,
+  onBulkAnalyze,
   onShowAnalytics,
+  onShowWeeklyFeedback,
 }) {
   // Initialize with weekKey or today's date
   const [selectedDate, setSelectedDate] = useState(() => getLocalDateString(new Date()));
 
   const mounted = useRef(false);
+  const { confirm } = useConfirm();
+  const { showToast } = useToast();
+
+  const activeWatchlist = (data.watchlists || []).find(
+    (w) => w.id === selectedWatchlistId
+  );
+
+  const handleClearWatchlist = async () => {
+    if (!activeWatchlist) return;
+    if (!(await confirm(`Remove all stocks from watchlist "${activeWatchlist.name}" for this week?`))) return;
+
+    const newData = structuredClone(data);
+    const stocks = newData.weeks?.[country]?.[weekKey]?.stocks || {};
+    Object.values(stocks).forEach((stock) => {
+      if (stock.watchlists && stock.watchlists.includes(selectedWatchlistId)) {
+        stock.watchlists = stock.watchlists.filter((id) => id !== selectedWatchlistId);
+      }
+    });
+
+    setData(newData);
+    showToast(`Watchlist "${activeWatchlist.name}" cleared for this week`, "success");
+  };
 
   // Sync internal date state if weekKey changes externally (e.g. app load)
   useEffect(() => {
@@ -160,6 +186,16 @@ export default function WeekSelector({
         </button>
 
         <button
+          className="nav-icon-btn-v2"
+          onClick={onBulkAnalyze}
+          title="Background Bulk AI Analysis"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M2 12h4l2 8 4-16 2 8h4"/>
+          </svg>
+        </button>
+
+        <button
           onClick={onShowAnalytics}
           title="Analytics Dashboard (Alt + A)"
           className="nav-icon-btn-v2"
@@ -168,9 +204,33 @@ export default function WeekSelector({
             <line x1="18" y1="20" x2="18" y2="10" /><line x1="12" y1="20" x2="12" y2="4" /><line x1="6" y1="20" x2="6" y2="14" />
           </svg>
         </button>
+
+        <button
+          onClick={onShowWeeklyFeedback}
+          title="Weekly Journal & Reflection"
+          className="nav-icon-btn-v2"
+        >
+          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1-2.5-2.5Z" />
+            <path d="M8 7h6" />
+            <path d="M8 11h8" />
+          </svg>
+        </button>
       </div>
 
       <div className="week-right">
+        {selectedWatchlistId !== "all" && (
+          <button
+            className="ghost-danger-btn small"
+            onClick={handleClearWatchlist}
+            title="Remove all stocks from this watchlist for the current week"
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M18 6 6 18M6 6l12 12" />
+            </svg>
+            Clear Watchlist
+          </button>
+        )}
         <button
           className="ghost-danger-btn small"
           onClick={onClearWeek}

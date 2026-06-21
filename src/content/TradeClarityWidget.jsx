@@ -336,6 +336,10 @@ const TradeClarityWidget = () => {
   const handleCreateTag = () => {
     if (!newTag.trim()) return;
     const tag = newTag.trim();
+    if (tag.toUpperCase().startsWith("AI:")) {
+      alert("Cannot create tags starting with 'AI:'");
+      return;
+    }
     handleAddTag(tag);
     setAppData(prev => {
       const uiConfig = prev.uiConfig || {};
@@ -1207,12 +1211,12 @@ const TradeClarityWidget = () => {
               ))}
 
               {/* Vertical Divider */}
-              {((stockData?.tags || []).length > 0 && appData?.uiConfig?.tags?.filter(t => !(stockData?.tags || []).includes(t)).length > 0) && (
+              {((stockData?.tags || []).length > 0 && appData?.uiConfig?.tags?.filter(t => !t.toUpperCase().startsWith("AI:") && !(stockData?.tags || []).includes(t)).length > 0) && (
                 <div className="w-[1px] h-3.5 mx-0.5 bg-slate-600"></div>
               )}
 
               {/* Available Tags */}
-              {appData?.uiConfig?.tags?.filter(t => !(stockData?.tags || []).includes(t)).map(t => (
+              {appData?.uiConfig?.tags?.filter(t => !t.toUpperCase().startsWith("AI:") && !(stockData?.tags || []).includes(t)).map(t => (
                 <button
                   key={t}
                   type="button"

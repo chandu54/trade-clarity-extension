@@ -1,6 +1,12 @@
 import { describe, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import EditStockModal from '../EditStockModal';
+import * as yahooFinanceMap from '../../utils/yahooFinanceMap';
+
+vi.mock('../../utils/yahooFinanceMap', () => ({
+  fetchStockData: vi.fn().mockResolvedValue([]),
+  fetchStockQuotes: vi.fn().mockResolvedValue([])
+}));
 
 describe('EditStockModal', () => {
   const mockStock = {
@@ -138,5 +144,327 @@ describe('EditStockModal', () => {
     // IN stock should have NSE prefix
     expect(tvLink.getAttribute('href')).toContain('NSE:AAPL');
     expect(screenerLink.getAttribute('href')).toContain('screener.in/company/AAPL');
+  });
+
+  describe('Watchlist Workspace Navigation', () => {
+    const sortedStocks = [
+      { symbol: 'AAPL', longName: 'Apple Inc.', periodChangePct: 1.5, isAdvancing: true },
+      { symbol: 'MSFT', longName: 'Microsoft Corp.', periodChangePct: -0.8, isAdvancing: false },
+      { symbol: 'GOOGL', longName: 'Alphabet Inc.', periodChangePct: 2.3, isAdvancing: true }
+    ];
+
+    it('renders the watchlist sidebar and navigation controls', () => {
+      const onSelectStock = vi.fn();
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+          onSelectStock={onSelectStock}
+        />
+      );
+
+      // Verify sidebar title and items
+      expect(screen.getByText('Watchlist')).toBeDefined();
+      expect(screen.getByText('MSFT')).toBeDefined();
+      expect(screen.getByText('GOOGL')).toBeDefined();
+
+      // Verify counter
+      expect(screen.getByText('1 / 3')).toBeDefined();
+
+      // Verify search input
+      expect(screen.getByPlaceholderText('Search stock... (Ctrl+K)')).toBeDefined();
+    });
+
+    it('triggers onSelectStock and saves changes when a sidebar item is clicked and data is dirty', () => {
+      const onSelectStock = vi.fn();
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+          onSelectStock={onSelectStock}
+        />
+      );
+
+      // Expand parameters first in Deep View
+      fireEvent.click(screen.getByTitle('Expand Parameters'));
+
+      // Make data dirty first
+      const notesArea = screen.getByPlaceholderText(/Technical triggers, conviction level/i);
+      fireEvent.change(notesArea, { target: { value: 'New dirty notes value' } });
+
+      // Click the MSFT item
+      fireEvent.click(screen.getByText('MSFT'));
+
+      // Verify onSave was called with current AAPL data (auto-save)
+      expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        symbol: 'AAPL',
+        notes: 'New dirty notes value'
+      }));
+
+      // Verify onSelectStock was called with MSFT stock
+      expect(onSelectStock).toHaveBeenCalledWith(sortedStocks[1]);
+    });
+
+    it('does not call onSave when a sidebar item is clicked if no changes were made', () => {
+      const onSelectStock = vi.fn();
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+          onSelectStock={onSelectStock}
+        />
+      );
+
+      // Click the MSFT item
+      fireEvent.click(screen.getByText('MSFT'));
+
+      // Verify onSave was not called because data is not dirty
+      expect(props.onSave).not.toHaveBeenCalled();
+
+      // Verify onSelectStock was still called with MSFT stock
+      expect(onSelectStock).toHaveBeenCalledWith(sortedStocks[1]);
+    });
+
+    it('navigates to next/prev stock using header arrows and saves if dirty', () => {
+      const onSelectStock = vi.fn();
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+          onSelectStock={onSelectStock}
+        />
+      );
+
+      // Expand parameters first in Deep View
+      fireEvent.click(screen.getByTitle('Expand Parameters'));
+
+      // Make data dirty first
+      const notesArea = screen.getByPlaceholderText(/Technical triggers, conviction level/i);
+      fireEvent.change(notesArea, { target: { value: 'New dirty notes value' } });
+
+      // Find next arrow button (Right arrow icon in header)
+      const nextBtn = screen.getByTitle('Next Stock (Right Arrow)');
+      fireEvent.click(nextBtn);
+
+      // Auto-saves AAPL
+      expect(props.onSave).toHaveBeenCalled();
+      // Selects MSFT
+      expect(onSelectStock).toHaveBeenCalledWith(sortedStocks[1]);
+    });
+
+    it('supports keyboard ArrowUp/ArrowDown and ArrowLeft/ArrowRight navigation when input is not focused', () => {
+      const onSelectStock = vi.fn();
+      const { unmount } = render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+          onSelectStock={onSelectStock}
+        />
+      );
+
+      // Trigger ArrowDown keydown on window -> MSFT
+      fireEvent.keyDown(window, { key: 'ArrowDown' });
+      expect(onSelectStock).toHaveBeenLastCalledWith(sortedStocks[1]);
+
+      // Trigger ArrowRight keydown on window -> MSFT
+      fireEvent.keyDown(window, { key: 'ArrowRight' });
+      expect(onSelectStock).toHaveBeenLastCalledWith(sortedStocks[1]);
+
+      unmount();
+      
+      // Test ArrowUp / ArrowLeft starting from index 1 (MSFT)
+      const onSelectStock2 = vi.fn();
+      render(
+        <EditStockModal
+          {...props}
+          stock={sortedStocks[1]}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+          onSelectStock={onSelectStock2}
+        />
+      );
+
+      // Trigger ArrowUp keydown on window -> AAPL
+      fireEvent.keyDown(window, { key: 'ArrowUp' });
+      expect(onSelectStock2).toHaveBeenLastCalledWith(sortedStocks[0]);
+
+      // Trigger ArrowLeft keydown on window -> AAPL
+      fireEvent.keyDown(window, { key: 'ArrowLeft' });
+      expect(onSelectStock2).toHaveBeenLastCalledWith(sortedStocks[0]);
+    });
+
+    it('filters stock list in search dropdown and switches on click', () => {
+      const onSelectStock = vi.fn();
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+          onSelectStock={onSelectStock}
+        />
+      );
+
+      const searchInput = screen.getByPlaceholderText('Search stock... (Ctrl+K)');
+      fireEvent.change(searchInput, { target: { value: 'goog' } });
+
+      // Click the GOOGL dropdown item
+      fireEvent.click(screen.getByText('Alphabet Inc.', { selector: '.nav-search-item-name' }));
+
+      expect(onSelectStock).toHaveBeenCalledWith(sortedStocks[2]);
+    });
+
+    it('focuses the search input when Ctrl+K is pressed', () => {
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+        />
+      );
+
+      const searchInput = screen.getByPlaceholderText('Search stock... (Ctrl+K)');
+      expect(document.activeElement).not.toBe(searchInput);
+
+      // Press Ctrl+K
+      fireEvent.keyDown(window, { key: 'k', ctrlKey: true });
+
+      expect(document.activeElement).toBe(searchInput);
+    });
+
+    it('collapses and expands the sidebar', () => {
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+        />
+      );
+
+      // Initially open
+      expect(screen.getByText('Watchlist')).toBeDefined();
+
+      // Click collapse button
+      const toggleBtn = screen.getByTitle('Collapse Sidebar');
+      fireEvent.click(toggleBtn);
+
+      // Sidebar content should be gone/hidden
+      expect(screen.queryByText('Watchlist')).toBeNull();
+
+      // Expand sidebar
+      const expandBtn = screen.getByTitle('Expand Watchlist Sidebar');
+      fireEvent.click(expandBtn);
+
+      // Sidebar content should be back
+      expect(screen.getByText('Watchlist')).toBeDefined();
+    });
+
+    it('renders a custom watchlistName and displays stock prices in the sidebar', () => {
+      const stocksWithPrice = [
+        { symbol: 'AAPL', longName: 'Apple Inc.', currentPrice: 150.25, periodChangePct: 1.5, isAdvancing: true },
+        { symbol: 'MSFT', longName: 'Microsoft Corp.', currentPrice: 320.50, periodChangePct: -0.8, isAdvancing: false }
+      ];
+
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          watchlistName="My Premium Watchlist"
+          sortedStocks={stocksWithPrice}
+        />
+      );
+
+      // Custom title is rendered
+      expect(screen.getByText('My Premium Watchlist')).toBeDefined();
+
+      // Prices are formatted and rendered ($150.25 and $320.50)
+      expect(screen.getByText('$150.25')).toBeDefined();
+      expect(screen.getByText('$320.50')).toBeDefined();
+    });
+
+    it('displays loading indicator while quotes are fetching', async () => {
+      let resolveQuotes;
+      const promise = new Promise((resolve) => {
+        resolveQuotes = resolve;
+      });
+      const spy = vi.spyOn(yahooFinanceMap, 'fetchStockQuotes').mockReturnValue(promise);
+
+      const stocks = [
+        { symbol: 'AAPL', longName: 'Apple Inc.' }
+      ];
+
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={stocks}
+        />
+      );
+
+      // Loader is displayed
+      expect(screen.getByTitle('Updating quotes...')).toBeDefined();
+
+      // Resolve the mock promise
+      resolveQuotes([
+        { symbol: 'AAPL', currentPrice: 150.25, dailyChangePct: 1.52 }
+      ]);
+      await promise;
+
+      // Loader is gone after resolve
+      await screen.findByText('$150.25');
+      expect(screen.queryByTitle('Updating quotes...')).toBeNull();
+
+      spy.mockRestore();
+    });
+
+    it('displays loading overlay while chart data is loading', async () => {
+      let resolveChart;
+      const promise = new Promise((resolve) => {
+        resolveChart = resolve;
+      });
+      const spy = vi.spyOn(yahooFinanceMap, 'fetchStockData').mockReturnValue(promise);
+
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+        />
+      );
+
+      // Loader is displayed
+      expect(screen.getByTitle('Chart loading...')).toBeDefined();
+      expect(screen.getByText('Loading chart...')).toBeDefined();
+
+      // Resolve the mock promise
+      resolveChart([]);
+      await promise;
+
+      // Loader is gone after resolve
+      await waitFor(() => {
+        expect(screen.queryByTitle('Chart loading...')).toBeNull();
+      });
+
+      spy.mockRestore();
+    });
+
+    it('filters out AI tags from the rendered selectable tag list', () => {
+      const customProps = {
+        ...props,
+        availableTags: ['Growth', 'Value', 'AI: BUY', 'ai: exit']
+      };
+      render(<EditStockModal {...customProps} />);
+      
+      // Selectable tags Growth and Value should be visible
+      expect(screen.getByText('Growth')).toBeDefined();
+      expect(screen.getByText('Value')).toBeDefined();
+
+      // AI tags should not be visible as selectable pills
+      expect(screen.queryByText('AI: BUY')).toBeNull();
+      expect(screen.queryByText('ai: exit')).toBeNull();
+    });
   });
 });

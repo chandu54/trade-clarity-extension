@@ -1,11 +1,97 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import Modal from "./Modal";
 import MiniCandlestickChart from "./MiniCandlestickChart";
-import { fetchStockData } from "../utils/yahooFinanceMap";
+import { fetchStockData, fetchStockQuotes } from "../utils/yahooFinanceMap";
 import { getSingleStockAnalysis, PROMPT_TEMPLATES } from "../services/ai";
 import { isParamRelevantForCountry } from "../utils/paramUtils";
 
 import MovingAverageRibbon from "./MovingAverageRibbon";
+
+const hasUserModified = (original, updated, paramDefinitions) => {
+  if (!original || !updated) return false;
+
+  const normalize = (val) => {
+    if (val === undefined || val === null || val === false || val === "") return "";
+    return String(val);
+  };
+
+  // Sector
+  if ((original.sector || "") !== (updated.sector || "")) {
+    console.log("[hasUserModified] Sector changed:", original.sector, "->", updated.sector);
+    return true;
+  }
+
+  // Tradable
+  if (Boolean(original.tradable) !== Boolean(updated.tradable)) {
+    console.log("[hasUserModified] Tradable changed:", original.tradable, "->", updated.tradable);
+    return true;
+  }
+
+  // Notes
+  if ((original.notes || "") !== (updated.notes || "")) {
+    console.log("[hasUserModified] Notes changed:", original.notes, "->", updated.notes);
+    return true;
+  }
+
+  // AI Analysis
+  if ((original.aiAnalysis || "") !== (updated.aiAnalysis || "")) {
+    console.log("[hasUserModified] AI Analysis changed");
+    return true;
+  }
+  if ((original.aiAnalysisDate || "") !== (updated.aiAnalysisDate || "")) {
+    console.log("[hasUserModified] AI Analysis Date changed");
+    return true;
+  }
+
+  // Params - only compare checklist keys defined in paramDefinitions
+  const origParams = original.params || {};
+  const updParams = updated.params || {};
+  const checklistKeys = Object.keys(paramDefinitions || {});
+  for (const key of checklistKeys) {
+    const v1 = origParams[key];
+    const v2 = updParams[key];
+    const norm1 = normalize(v1);
+    const norm2 = normalize(v2);
+    if (norm1 !== norm2) {
+      console.log(`[hasUserModified] Param [${key}] changed:`, v1, "->", v2);
+      return true;
+    }
+  }
+
+  // Tags
+  const origTags = original.tags || [];
+  const updTags = updated.tags || [];
+  if (origTags.length !== updTags.length) {
+    console.log("[hasUserModified] Tags length changed:", origTags.length, "->", updTags.length);
+    return true;
+  }
+  const sortedOrigTags = [...origTags].sort();
+  const sortedUpdTags = [...updTags].sort();
+  for (let i = 0; i < sortedOrigTags.length; i++) {
+    if (sortedOrigTags[i] !== sortedUpdTags[i]) {
+      console.log("[hasUserModified] Tag value changed:", sortedOrigTags[i], "->", sortedUpdTags[i]);
+      return true;
+    }
+  }
+
+  // Watchlists
+  const origWls = original.watchlists || [];
+  const updWls = updated.watchlists || [];
+  if (origWls.length !== updWls.length) {
+    console.log("[hasUserModified] Watchlists length changed:", origWls.length, "->", updWls.length);
+    return true;
+  }
+  const sortedOrigWls = [...origWls].sort();
+  const sortedUpdWls = [...updWls].sort();
+  for (let i = 0; i < sortedOrigWls.length; i++) {
+    if (sortedOrigWls[i] !== sortedUpdWls[i]) {
+      console.log("[hasUserModified] Watchlist ID changed:", sortedOrigWls[i], "->", sortedUpdWls[i]);
+      return true;
+    }
+  }
+
+  return false;
+};
 
 export default function EditStockModal({
   isOpen,
@@ -21,7 +107,10 @@ export default function EditStockModal({
   aiSettings = {},
   isDeepView = false,
   onUpdateStock = null,
-  watchlists = []
+  watchlists = [],
+  sortedStocks = [],
+  onSelectStock = null,
+  watchlistName = "Watchlist"
 }) {
   const [formData, setFormData] = useState(null);
   const [isParamsCollapsed, setIsParamsCollapsed] = useState(true);
@@ -41,42 +130,158 @@ export default function EditStockModal({
   const [loadingAi, setLoadingAi] = useState(false);
   const [aiError, setAiError] = useState(null);
 
+  // Watchlist Navigation & Workspace State
+  const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
+  const [navSearchQuery, setNavSearchQuery] = useState("");
+  const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
+  const [sidebarStockData, setSidebarStockData] = useState({});
+  const [loadingQuotes, setLoadingQuotes] = useState(false);
+  const searchRef = useRef(null);
+  const searchInputRef = useRef(null);
+
+  const prevSymbolRef = useRef(null);
+  const sidebarListRef = useRef(null);
+
+  const userSelectableTags = (availableTags || []).filter(
+    (tag) => !tag.toUpperCase().startsWith("AI:")
+  );
+
+  useEffect(() => {
+    if (!isOpen || !formData?.symbol) return;
+    requestAnimationFrame(() => {
+      if (sidebarListRef.current) {
+        const activeEl = sidebarListRef.current.querySelector('.sidebar-item-premium.active');
+        if (activeEl && typeof activeEl.scrollIntoView === 'function') {
+          activeEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        }
+      }
+    });
+  }, [formData?.symbol, isOpen]);
+
   useEffect(() => {
     if (stock) {
-      setFormData(structuredClone(stock));
-      setAiAnalysis(stock.aiAnalysis || null);
-      setAiAnalysisDate(stock.aiAnalysisDate || null);
-      setAiError(null);
+      if (prevSymbolRef.current !== stock.symbol) {
+        setFormData(structuredClone(stock));
+        setAiAnalysis(stock.aiAnalysis || null);
+        setAiAnalysisDate(stock.aiAnalysisDate || null);
+        setAiError(null);
+        prevSymbolRef.current = stock.symbol;
+      } else {
+        // Same symbol, merge updates while preserving user modifications
+        setFormData(prev => {
+          if (!prev) return structuredClone(stock);
+          
+          // Merge params: start with the updated stock params from prop
+          const mergedParams = { ...(stock.params || {}) };
+          // For each checklist parameter key from definitions, preserve local changes
+          if (prev.params) {
+            Object.keys(paramDefinitions || {}).forEach(key => {
+              if (key in prev.params) {
+                mergedParams[key] = prev.params[key];
+              }
+            });
+          }
+
+          return {
+            ...structuredClone(stock),
+            sector: prev.sector,
+            tradable: prev.tradable,
+            notes: prev.notes,
+            params: mergedParams,
+            tags: prev.tags,
+            watchlists: prev.watchlists
+          };
+        });
+        setAiAnalysis(prev => prev || stock.aiAnalysis || null);
+        setAiAnalysisDate(prev => prev || stock.aiAnalysisDate || null);
+      }
+    } else {
+      prevSymbolRef.current = null;
     }
-  }, [stock]);
+  }, [stock, paramDefinitions]);
+
+  // Fetch 1d daily quotes in background for all stocks in the watchlist sidebar
+  useEffect(() => {
+    if (!isOpen || !sortedStocks || sortedStocks.length === 0) return;
+    let active = true;
+
+    const fetchSidebarQuotes = async () => {
+      setLoadingQuotes(true);
+      try {
+        const symbols = sortedStocks.map(s => s.symbol);
+        const results = await fetchStockQuotes(symbols, country);
+        if (!active) return;
+        if (results && results.length > 0) {
+          const mapping = {};
+          results.forEach(r => {
+            mapping[r.symbol] = {
+              dailyChangePct: r.dailyChangePct,
+              isAdvancing: r.isAdvancing,
+              currentPrice: r.currentPrice
+            };
+          });
+          setSidebarStockData(mapping);
+        }
+      } catch (err) {
+        console.error("Failed to fetch sidebar quote data:", err);
+      } finally {
+        if (active) {
+          setLoadingQuotes(false);
+        }
+      }
+    };
+
+    fetchSidebarQuotes();
+    return () => {
+      active = false;
+    };
+  }, [isOpen, sortedStocks, country]);
 
   // On-demand data loading for Chart (e.g. when clicked from Stock Grid or duration changed)
   useEffect(() => {
     if (!isOpen || !formData || !formData.symbol) return;
 
+    let isCurrent = true;
+
     const loadChartData = async () => {
       setLoadingChart(true);
       try {
-        const results = await fetchStockData([formData.symbol], country, timeframe, interval);
-        if (results && results.length > 0) {
-          setFormData(prev => ({
-            ...prev,
-            ...results[0],
-            // Ensure we don't overwrite user changes to params/notes if they already exist
-            params: prev.params || results[0].params,
-            notes: prev.notes || results[0].notes
-          }));
+        const symbolToFetch = formData.symbol;
+        const results = await fetchStockData([symbolToFetch], country, timeframe, interval);
+        if (isCurrent && results && results.length > 0) {
+          // Double check that the symbol fetched matches the current stock prop
+          if (symbolToFetch === stock.symbol) {
+            setFormData(prev => {
+              // Only apply if the symbol in prev still matches the fetched symbol
+              if (prev && prev.symbol === symbolToFetch) {
+                return {
+                  ...prev,
+                  ...results[0],
+                  // Ensure we don't overwrite user changes to params/notes if they already exist
+                  params: prev.params || results[0].params,
+                  notes: prev.notes || results[0].notes
+                };
+              }
+              return prev;
+            });
+          }
         }
       } catch (err) {
         console.error("Failed to fetch candlestick data:", err);
       } finally {
-        setLoadingChart(false);
+        if (isCurrent) {
+          setLoadingChart(false);
+        }
       }
     };
 
     // Refetch if missing data OR if this is being triggered by a timeframe/interval change
     loadChartData();
-  }, [isOpen, formData?.symbol, country, timeframe, interval]);
+
+    return () => {
+      isCurrent = false;
+    };
+  }, [isOpen, formData?.symbol, country, timeframe, interval, stock.symbol]);
 
   // Reset interval to 'auto' when timeframe changes to ensure compatible range/interval defaults
   useEffect(() => {
@@ -111,6 +316,96 @@ export default function EditStockModal({
       window.removeEventListener("mouseup", handleMouseUp);
     };
   }, [isResizingV, isResizingH]);
+
+  const currentIndex = (sortedStocks || []).findIndex(s => s.symbol === stock?.symbol);
+
+  const handleSelectStock = (targetStock) => {
+    if (formData) {
+      const finalData = {
+        ...formData,
+        aiAnalysis,
+        aiAnalysisDate
+      };
+      if (hasUserModified(stock, finalData, paramDefinitions)) {
+        if (onUpdateStock) {
+          onUpdateStock(finalData);
+        } else if (onSave) {
+          onSave(finalData);
+        }
+      }
+    }
+    if (onSelectStock) {
+      onSelectStock(targetStock);
+    }
+  };
+
+  const handleNavigate = (direction) => {
+    if (!sortedStocks || sortedStocks.length <= 1 || currentIndex === -1) return;
+    let nextIndex = currentIndex;
+    if (direction === 'next') {
+      nextIndex = currentIndex + 1;
+    } else if (direction === 'prev') {
+      nextIndex = currentIndex - 1;
+    }
+
+    if (nextIndex >= 0 && nextIndex < sortedStocks.length) {
+      handleSelectStock(sortedStocks[nextIndex]);
+    }
+  };
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (searchRef.current && !searchRef.current.contains(event.target)) {
+        setIsNavDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // Focus on search input when Ctrl+K or Cmd+K is pressed
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+        if (isOpen && searchInputRef.current) {
+          e.preventDefault();
+          searchInputRef.current.focus();
+          searchInputRef.current.select();
+          return;
+        }
+      }
+
+      const activeEl = document.activeElement;
+      if (activeEl) {
+        const tagName = activeEl.tagName.toLowerCase();
+        if (tagName === 'input' || tagName === 'textarea' || tagName === 'select' || activeEl.isContentEditable) {
+          return;
+        }
+      }
+
+      if (e.key === 'ArrowUp' || e.key === 'ArrowLeft') {
+        e.preventDefault();
+        handleNavigate('prev');
+      } else if (e.key === 'ArrowDown' || e.key === 'ArrowRight') {
+        e.preventDefault();
+        handleNavigate('next');
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [currentIndex, sortedStocks, formData, aiAnalysis, aiAnalysisDate, isOpen]);
+
+  const filteredNavStocks = (sortedStocks || []).filter(s => {
+    const q = navSearchQuery.toLowerCase().trim();
+    if (!q) return false;
+    const name = s.longName || s.name || '';
+    return s.symbol.toLowerCase().includes(q) || name.toLowerCase().includes(q);
+  });
 
   // Note: We MUST NOT return null early if we want the Modal's ESC listener to function.
   // The Modal itself handles its own null rendering via the isOpen prop.
@@ -372,15 +667,15 @@ export default function EditStockModal({
         )}
 
         {/* Dynamic Separator 1 */}
-        {watchlists.length > 0 && (showTags && availableTags.length > 0) && (
+        {watchlists.length > 0 && (showTags && userSelectableTags.length > 0) && (
           <div className="separator-v2-premium" />
         )}
 
         {/* Column 2: Tags */}
-        {showTags && availableTags.length > 0 && (
+        {showTags && userSelectableTags.length > 0 && (
           <div className="research-col-tags-v2">
             <div className="pill-group-wrapper-v2">
-              {availableTags.map((tag) => {
+              {userSelectableTags.map((tag) => {
                 const isSelected = formData.tags?.includes(tag);
                 return (
                   <div
@@ -410,7 +705,7 @@ export default function EditStockModal({
         )}
 
         {/* Dynamic Separator 2 */}
-        {(watchlists.length > 0 || (showTags && availableTags.length > 0)) && (
+        {(watchlists.length > 0 || (showTags && userSelectableTags.length > 0)) && (
           <div className="separator-v2-premium" />
         )}
 
@@ -454,7 +749,7 @@ export default function EditStockModal({
                   )}
                 </div>
                 <div className="flex items-center gap-3">
-                  <p className="modal-subtitle-hero">{formData.longName}</p>
+                  <p className="modal-subtitle-hero">{formData.longName || formData.name || ''}</p>
                   {formData.params?.movingAverages && (
                     <div className="self-center">
                       <MovingAverageRibbon value={formData.params.movingAverages} variant="compact" />
@@ -463,9 +758,89 @@ export default function EditStockModal({
                 </div>
               </div>
 
-
               <div className="terminal-header-actions-wrapper">
-                
+                {/* Previous / Next Navigation Arrows */}
+                {sortedStocks && sortedStocks.length > 1 && currentIndex !== -1 && (
+                  <div className="nav-arrows-group-premium">
+                    <button
+                      type="button"
+                      className="nav-arrow-btn-premium"
+                      onClick={() => handleNavigate('prev')}
+                      title="Previous Stock (Left Arrow)"
+                      disabled={currentIndex <= 0}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="15 18 9 12 15 6" />
+                      </svg>
+                    </button>
+                    <span className="nav-counter-premium">
+                      {currentIndex + 1} / {sortedStocks.length}
+                    </span>
+                    <button
+                      type="button"
+                      className="nav-arrow-btn-premium"
+                      onClick={() => handleNavigate('next')}
+                      title="Next Stock (Right Arrow)"
+                      disabled={currentIndex >= sortedStocks.length - 1}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="9 18 15 12 9 6" />
+                      </svg>
+                    </button>
+                  </div>
+                )}
+
+                {/* Search Bar */}
+                {sortedStocks && sortedStocks.length > 0 && (
+                  <div className="nav-search-container-premium" ref={searchRef}>
+                    <div className="nav-search-input-wrapper-premium">
+                      <input
+                        ref={searchInputRef}
+                        type="text"
+                        placeholder="Search stock... (Ctrl+K)"
+                        value={navSearchQuery}
+                        onChange={(e) => {
+                          setNavSearchQuery(e.target.value);
+                          setIsNavDropdownOpen(true);
+                        }}
+                        onFocus={() => setIsNavDropdownOpen(true)}
+                        className="nav-search-input-premium"
+                      />
+                      <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className="nav-search-icon-premium">
+                        <circle cx="11" cy="11" r="8" />
+                        <line x1="21" y1="21" x2="16.65" y2="16.65" />
+                      </svg>
+                      {navSearchQuery && (
+                        <button
+                          type="button"
+                          className="nav-search-clear-btn-premium"
+                          onClick={() => setNavSearchQuery('')}
+                        >
+                          ×
+                        </button>
+                      )}
+                    </div>
+                    {isNavDropdownOpen && filteredNavStocks.length > 0 && (
+                      <div className="nav-search-dropdown-premium themed-scroll">
+                        {filteredNavStocks.map((s) => (
+                          <div
+                            key={s.symbol}
+                            className={`nav-search-item-premium ${s.symbol === formData.symbol ? 'active' : ''}`}
+                            onClick={() => {
+                              handleSelectStock(s);
+                              setNavSearchQuery('');
+                              setIsNavDropdownOpen(false);
+                            }}
+                          >
+                            <span className="nav-search-item-symbol">{s.symbol}</span>
+                            <span className="nav-search-item-name">{s.longName || s.name || ''}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
+
                 <div className="header-utility-icons-premium">
                   <a
                     href={country === 'IN' ? `https://www.tradingview.com/chart/?symbol=NSE:${formData.symbol}` : `https://www.tradingview.com/chart/?symbol=${formData.symbol}`}
@@ -498,9 +873,92 @@ export default function EditStockModal({
               </div>
             </div>
 
-            <div
-              className={`deep-view-top ${isParamsCollapsed ? 'collapsed' : ''}`}
-            >
+            <div className="workspace-main-wrapper">
+              {sortedStocks && sortedStocks.length > 0 && isSidebarCollapsed && (
+                <div
+                  className="watchlist-sidebar-collapsed-trigger-premium"
+                  onClick={() => setIsSidebarCollapsed(false)}
+                >
+                  <div className="sidebar-collapsed-icon-wrapper-premium" title="Expand Watchlist Sidebar">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="13 17 18 12 13 7" />
+                      <polyline points="6 17 11 12 6 7" />
+                    </svg>
+                  </div>
+                </div>
+              )}
+
+              {sortedStocks && sortedStocks.length > 0 && !isSidebarCollapsed && (
+                <div className="watchlist-sidebar-premium">
+                  <div className="sidebar-header-premium">
+                    <span className="sidebar-title-premium">{watchlistName}</span>
+                    <div className="sidebar-header-actions-premium">
+                      {loadingQuotes && (
+                        <div className="sidebar-loader-premium" title="Updating quotes...">
+                          <div className="sidebar-loader-dot" />
+                        </div>
+                      )}
+                      <span className="sidebar-count-premium">{sortedStocks.length}</span>
+                      <button
+                        type="button"
+                        className="sidebar-close-btn-premium"
+                        onClick={() => setIsSidebarCollapsed(true)}
+                        title="Collapse Sidebar"
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="11 17 6 12 11 7" />
+                          <polyline points="18 17 13 12 18 7" />
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                  <div className="sidebar-list-premium themed-scroll" ref={sidebarListRef}>
+                    {sortedStocks.map((s) => {
+                      const isActive = s.symbol === formData.symbol;
+                      const sidebarData = sidebarStockData[s.symbol] || {};
+                      const hasChange = sidebarData.dailyChangePct !== undefined;
+                      const changeVal = hasChange ? sidebarData.dailyChangePct : (s.dailyChangePct || 0);
+                      const changeText = hasChange ? `${changeVal >= 0 ? '+' : ''}${changeVal.toFixed(2)}%` : '';
+                      const isAdv = sidebarData.isAdvancing ?? s.isAdvancing ?? (changeVal >= 0);
+                      
+                      const priceVal = sidebarData.currentPrice !== undefined ? sidebarData.currentPrice : (s.currentPrice || 0);
+                      const currencySymbol = country === 'US' ? '$' : '₹';
+                      const locale = country === 'US' ? 'en-US' : 'en-IN';
+                      const priceText = priceVal > 0 
+                        ? `${currencySymbol}${priceVal.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                        : '';
+
+                      return (
+                        <div
+                          key={s.symbol}
+                          className={`sidebar-item-premium ${isActive ? 'active' : ''}`}
+                          onClick={() => handleSelectStock(s)}
+                          title={`${s.symbol} - ${priceText || 'No price available'}`}
+                        >
+                          <div className="sidebar-item-left-premium">
+                            <span className="sidebar-item-symbol-premium">{s.symbol}</span>
+                            {priceText && (
+                              <span className="sidebar-item-price-premium">{priceText}</span>
+                            )}
+                          </div>
+                          {hasChange ? (
+                            <span className={`sidebar-item-change-premium ${isAdv ? 'adv' : 'dec'}`}>
+                              {changeText}
+                            </span>
+                          ) : (
+                            <span className="sidebar-item-change-placeholder-premium">—</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <div className="workspace-content-premium">
+                <div
+                  className={`deep-view-top ${isParamsCollapsed ? 'collapsed' : ''}`}
+                >
               <style>{`
                 .deep-view-top { --top-section-height: ${!isParamsCollapsed ? `${topHeight}px` : '0px'}; }
                 .deep-view-bottom { --grid-split: ${leftWidth}% 6px 1fr; }
@@ -594,12 +1052,19 @@ export default function EditStockModal({
                   </div>
                 </div>
                 <div className="chart-wrapper-large">
+                  {loadingChart && (
+                    <div className="chart-loading-overlay-premium" title="Chart loading...">
+                      <div className="chart-loading-spinner-premium" />
+                      <span className="chart-loading-text-premium">Loading chart...</span>
+                    </div>
+                  )}
                   <MiniCandlestickChart
                     data={formData}
                     country={country}
                     hideHeaders={true}
                     interactive={true}
                     disableZoom={false}
+                    height="100%"
                   />
                 </div>
               </div>
@@ -673,7 +1138,9 @@ export default function EditStockModal({
                   )}
                 </div>
               </div>
+              </div>
             </div>
+          </div>
 
             <div className="modal-pinned-footer">
               <div className="footer-context-hub">
@@ -687,7 +1154,7 @@ export default function EditStockModal({
           </>
         ) : (
           <div className="standard-modal-interior-v2">
-            <h2 className="standard-modal-title-v2">Edit {formData.symbol} ({formData.longName})</h2>
+            <h2 className="standard-modal-title-v2">Edit {formData.symbol} ({formData.longName || formData.name || ''})</h2>
             <div className="standard-modal-body-v2 themed-scroll">
               {renderFormContent()}
             </div>

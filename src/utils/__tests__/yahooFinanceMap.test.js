@@ -1,5 +1,5 @@
 import { describe, it, vi, beforeEach } from 'vitest';
-import { fetchStockData } from '../yahooFinanceMap';
+import { fetchStockData, fetchStockQuotes } from '../yahooFinanceMap';
 
 // Mock fetch
 global.fetch = vi.fn();
@@ -90,7 +90,7 @@ describe('fetchStockData', () => {
   });
 
   it('should process in batches and respect delay', async () => {
-    const symbols = ['S1', 'S2', 'S3', 'S4', 'S5', 'S6']; // 6 symbols, Batch size is 5
+    const symbols = Array.from({ length: 16 }, (_, i) => `S${i + 1}`); // 16 symbols, Batch size is 15
     const mockData = {
       chart: {
         result: [{
@@ -105,15 +105,128 @@ describe('fetchStockData', () => {
 
     const resultPromise = fetchStockData(symbols, 'US');
     
-    // First batch of 5 should call fetch
+    // First batch of 15 should call fetch
     await vi.advanceTimersByTimeAsync(0); 
-    expect(fetch).toHaveBeenCalledTimes(5);
+    expect(fetch).toHaveBeenCalledTimes(15);
 
-    // After 500ms, the next batch should start
-    await vi.advanceTimersByTimeAsync(600);
-    expect(fetch).toHaveBeenCalledTimes(6);
+    // After 100ms, the next batch should start
+    await vi.advanceTimersByTimeAsync(150);
+    expect(fetch).toHaveBeenCalledTimes(16);
 
     const result = await resultPromise;
-    expect(result.length).toBe(6);
+    expect(result.length).toBe(16);
+  });
+});
+
+describe('fetchStockQuotes', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  const mockResponse = (ok, data) => ({
+    ok,
+    json: async () => data,
+    status: ok ? 200 : 404,
+  });
+
+  it('should return empty array if no symbols provided', async () => {
+    const result = await fetchStockQuotes([], 'US');
+    expect(result).toEqual([]);
+  });
+
+  it('should fetch quotes for multiple US symbols via chart API', async () => {
+    const symbols = ['AAPL', 'MSFT'];
+    const aaplMock = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 150.25, previousClose: 148.0, longName: 'Apple Inc.' },
+          indicators: { quote: [{ close: [148, 150.25] }] },
+          timestamp: [1625000000, 1625086400]
+        }]
+      }
+    };
+    const msftMock = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 320.50, previousClose: 322.0, longName: 'Microsoft Corp.' },
+          indicators: { quote: [{ close: [322, 320.50] }] },
+          timestamp: [1625000000, 1625086400]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, aaplMock))
+         .mockResolvedValueOnce(mockResponse(true, msftMock));
+
+    const result = await fetchStockQuotes(symbols, 'US');
+
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('AAPL'),
+      expect.any(Object)
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('MSFT'),
+      expect.any(Object)
+    );
+
+    expect(result.length).toBe(2);
+    expect(result[0].symbol).toBe('AAPL');
+    expect(result[0].currentPrice).toBe(150.25);
+    expect(result[0].prevClose).toBe(148);
+    expect(result[0].isAdvancing).toBe(true);
+
+    expect(result[1].symbol).toBe('MSFT');
+    expect(result[1].currentPrice).toBe(320.50);
+    expect(result[1].prevClose).toBe(322);
+    expect(result[1].isAdvancing).toBe(false);
+  });
+
+  it('should append .NS for Indian symbols and map back to original symbols', async () => {
+    const symbols = ['RELIANCE', 'TCS'];
+    const relianceMock = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 2400, previousClose: 2350, longName: 'Reliance Industries' },
+          indicators: { quote: [{ close: [2350, 2400] }] },
+          timestamp: [1625000000, 1625086400]
+        }]
+      }
+    };
+    const tcsMock = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 3400, previousClose: 3420, longName: 'Tata Consultancy Services' },
+          indicators: { quote: [{ close: [3420, 3400] }] },
+          timestamp: [1625000000, 1625086400]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, relianceMock))
+         .mockResolvedValueOnce(mockResponse(true, tcsMock));
+
+    const result = await fetchStockQuotes(symbols, 'IN');
+
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('RELIANCE.NS'),
+      expect.any(Object)
+    );
+    expect(fetch).toHaveBeenCalledWith(
+      expect.stringContaining('TCS.NS'),
+      expect.any(Object)
+    );
+
+    expect(result.length).toBe(2);
+    expect(result[0].symbol).toBe('RELIANCE');
+    expect(result[0].isAdvancing).toBe(true);
+    expect(result[1].symbol).toBe('TCS');
+    expect(result[1].isAdvancing).toBe(false);
+  });
+
+  it('should handle API errors gracefully', async () => {
+    fetch.mockResolvedValueOnce(mockResponse(false, {}));
+    const result = await fetchStockQuotes(['AAPL'], 'US');
+    expect(result).toEqual([]);
   });
 });

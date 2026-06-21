@@ -14,6 +14,7 @@ import { getLocalDateString } from "../utils/weekHelpers";
 
 import { parseInstitutionalDate } from "../utils/dateUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
+import { fetchStockQuotes } from "../utils/yahooFinanceMap";
 
 
 function getWeekRangeLabel(sundayDateStr) {
@@ -335,6 +336,60 @@ export default function StockGrid({
   const params = data.paramDefinitions;
   const { showToast } = useToast();
   const { confirm } = useConfirm();
+
+  const allStocks = useMemo(() => Object.values(week?.stocks || {}), [week]);
+
+  const [quotes, setQuotes] = useState({});
+  const [loadingQuotes, setLoadingQuotes] = useState(false);
+  const fetchQuotesCountRef = useRef(0);
+
+  const fetchQuotesForGrid = async () => {
+    if (!allStocks || allStocks.length === 0) {
+      setQuotes({});
+      return;
+    }
+
+    fetchQuotesCountRef.current += 1;
+    const currentFetchId = fetchQuotesCountRef.current;
+
+    setLoadingQuotes(true);
+    try {
+      const symbols = allStocks.map((s) => s.symbol);
+      const results = await fetchStockQuotes(symbols, country);
+      if (currentFetchId !== fetchQuotesCountRef.current) return;
+
+      if (results && results.length > 0) {
+        const mapping = {};
+        results.forEach((r) => {
+          mapping[r.symbol] = {
+            currentPrice: r.currentPrice,
+            dailyChangePct: r.dailyChangePct,
+            isAdvancing: r.isAdvancing,
+            longName: r.longName || r.name,
+          };
+        });
+        setQuotes(mapping);
+      }
+    } catch (err) {
+      console.error("Failed to fetch stock quotes for grid:", err);
+    } finally {
+      if (currentFetchId === fetchQuotesCountRef.current) {
+        setLoadingQuotes(false);
+      }
+    }
+  };
+
+  const symbolsSerialized = useMemo(() => {
+    return allStocks.map((s) => s.symbol).sort().join(",");
+  }, [allStocks]);
+
+  useEffect(() => {
+    fetchQuotesForGrid();
+    return () => {
+      fetchQuotesCountRef.current += 1;
+    };
+  }, [symbolsSerialized, country, weekKey]);
+
   const [showManageParams, setShowManageParams] = useState(false);
   const [showManageSectors, setShowManageSectors] = useState(false);
 
@@ -355,6 +410,10 @@ export default function StockGrid({
     total: 0,
     completed: 0,
   });
+  const [aiProgress, setAiProgress] = useState({
+    total: 0,
+    completed: 0,
+  });
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef(null);
 
@@ -365,6 +424,63 @@ export default function StockGrid({
   const [copiedStocks, setCopiedStocks] = useState(false);
   const [showFilters, setShowFilters] = useState(false);
   const isFiltering = searchQuery.length > 0 || Object.keys(filters).length > 0;
+
+  const updateStockField = (symbol, field, value) => {
+    setData((prev) => {
+      const prevWeek = prev.weeks?.[country]?.[weekKey];
+      if (!prevWeek) return prev;
+      const newStocks = { ...prevWeek.stocks };
+      if (newStocks[symbol]) {
+        newStocks[symbol] = {
+          ...newStocks[symbol],
+          [field]: value,
+        };
+      }
+      return {
+        ...prev,
+        weeks: {
+          ...prev.weeks,
+          [country]: {
+            ...prev.weeks[country],
+            [weekKey]: {
+              ...prevWeek,
+              stocks: newStocks,
+            },
+          },
+        },
+      };
+    });
+  };
+
+  const updateStockParam = (symbol, paramKey, value) => {
+    setData((prev) => {
+      const prevWeek = prev.weeks?.[country]?.[weekKey];
+      if (!prevWeek) return prev;
+      const newStocks = { ...prevWeek.stocks };
+      if (newStocks[symbol]) {
+        newStocks[symbol] = {
+          ...newStocks[symbol],
+          params: {
+            ...(newStocks[symbol].params || {}),
+            [paramKey]: value,
+          },
+        };
+      }
+      return {
+        ...prev,
+        weeks: {
+          ...prev.weeks,
+          [country]: {
+            ...prev.weeks[country],
+            [weekKey]: {
+              ...prevWeek,
+              stocks: newStocks,
+            },
+          },
+        },
+      };
+    });
+  };
 
   // --- AUTOMATED DAILY REFRESH ---
   useEffect(() => {
@@ -383,7 +499,7 @@ export default function StockGrid({
       
       // Update week-level lastSyncDate
       setData(prev => {
-        const newData = { ...prev };
+        const newData = structuredClone(prev);
         if (newData.weeks?.[country]?.[weekKey]) {
           newData.weeks[country][weekKey].lastSyncDate = todayStr;
         }
@@ -411,13 +527,16 @@ export default function StockGrid({
 
       // Update local timestamp immediately to show activity
       setData(prev => {
-        const newData = { ...prev };
+        const newData = structuredClone(prev);
         if (newData.weeks?.[country]?.[weekKey]) {
           newData.weeks[country][weekKey].lastUpdatedTime = Date.now();
         }
         return newData;
       });
     }
+
+    // Refresh quotes simultaneously
+    fetchQuotesForGrid();
   };
 
   const searchInputRef = useRef(null);
@@ -492,6 +611,14 @@ export default function StockGrid({
             showToast("Metrics updated successfully!", "success");
           }, 1500);
         }
+      } else if (req.action === "BULK_AI_PROGRESS") {
+        setAiProgress(req.payload);
+      } else if (req.action === "BULK_AI_ANALYSIS_COMPLETE") {
+        setAiProgress({ total: 0, completed: 0 });
+        showToast(`Background Bulk AI Analysis completed for ${req.payload.updatedCount} stocks!`, "success");
+      } else if (req.action === "BULK_AI_ANALYSIS_FAILED") {
+        setAiProgress({ total: 0, completed: 0 });
+        showToast(`AI Analysis Failed: ${req.payload.error}`, "error");
       }
     };
 
@@ -502,13 +629,13 @@ export default function StockGrid({
   /* =====================
      BASE DATASET
   ===================== */
-  const allStocks = useMemo(() => Object.values(week?.stocks || {}), [week]);
 
   /* =====================
      COLUMN CONFIG
   ===================== */
   const columnConfig = data.uiConfig?.columnVisibility || {};
   const showNotes = columnConfig["__notes__"] !== false;
+  const showLivePrice = columnConfig["__livePrice__"] !== false;
 
 
   const activeWatchlist = (data.watchlists || []).find(
@@ -527,6 +654,7 @@ export default function StockGrid({
 
   const colCount =
     1 + // Stock
+    (showLivePrice ? 1 : 0) + // Live Price
     1 + // Sector
     visibleParams.length +
     1 + // Checks Passed
@@ -770,7 +898,10 @@ export default function StockGrid({
       if (sortBy === "__checks__") {
         aVal = getChecksCount(a);
         bVal = getChecksCount(b);
-
+      } else if (sortBy === "__livePrice__") {
+        const aNum = quotes[a.symbol]?.currentPrice ?? 0;
+        const bNum = quotes[b.symbol]?.currentPrice ?? 0;
+        return sortDir === "asc" ? aNum - bNum : bNum - aNum;
       } else {
         aVal = a[sortBy] ?? a.params?.[sortBy];
         bVal = b[sortBy] ?? b.params?.[sortBy];
@@ -818,7 +949,7 @@ export default function StockGrid({
         ? String(aVal).localeCompare(String(bVal))
         : String(bVal).localeCompare(String(aVal));
     });
-  }, [filteredStocks, sortBy, sortDir]);
+  }, [filteredStocks, sortBy, sortDir, quotes]);
 
   const totalPages = Math.max(1, Math.ceil(sortedStocks.length / pageSize));
 
@@ -995,11 +1126,30 @@ export default function StockGrid({
   }
 
   async function deleteStock(symbol) {
-    if (!(await confirm(`Delete ${symbol}?`, { confirmSettingsKey: 'skipDeleteConfirm' }))) return;
+    const isWatchlistSpecific = selectedWatchlistId && selectedWatchlistId !== "all" && activeWatchlist;
+    const confirmMessage = isWatchlistSpecific
+      ? `Remove ${symbol} from watchlist "${activeWatchlist.name}"?`
+      : `Delete ${symbol}?`;
+
+    if (!(await confirm(confirmMessage, { confirmSettingsKey: 'skipDeleteConfirm' }))) return;
+
     setData((prev) => {
       const prevWeek = prev.weeks[country][weekKey];
       const newStocks = { ...prevWeek.stocks };
-      delete newStocks[symbol];
+
+      if (isWatchlistSpecific) {
+        const stock = newStocks[symbol];
+        if (stock) {
+          const updatedWatchlists = (stock.watchlists || []).filter((id) => id !== selectedWatchlistId);
+          newStocks[symbol] = {
+            ...stock,
+            watchlists: updatedWatchlists,
+          };
+        }
+      } else {
+        delete newStocks[symbol];
+      }
+
       return {
         ...prev,
         weeks: {
@@ -1019,15 +1169,57 @@ export default function StockGrid({
   function addTag(stock, tag) {
     if (!tag || stock.tags?.includes(tag)) return;
 
-    const newTags = [...(stock.tags || []), tag];
-    stock.tags = newTags;
-    setData({ ...data });
+    setData((prev) => {
+      const prevWeek = prev.weeks?.[country]?.[weekKey];
+      if (!prevWeek) return prev;
+      const newStocks = { ...prevWeek.stocks };
+      if (newStocks[stock.symbol]) {
+        newStocks[stock.symbol] = {
+          ...newStocks[stock.symbol],
+          tags: [...(newStocks[stock.symbol].tags || []), tag],
+        };
+      }
+      return {
+        ...prev,
+        weeks: {
+          ...prev.weeks,
+          [country]: {
+            ...prev.weeks[country],
+            [weekKey]: {
+              ...prevWeek,
+              stocks: newStocks,
+            },
+          },
+        },
+      };
+    });
   }
 
   function removeTag(stock, tagToRemove) {
-    if (!stock.tags) return;
-    stock.tags = stock.tags.filter((t) => t !== tagToRemove);
-    setData({ ...data });
+    setData((prev) => {
+      const prevWeek = prev.weeks?.[country]?.[weekKey];
+      if (!prevWeek) return prev;
+      const newStocks = { ...prevWeek.stocks };
+      if (newStocks[stock.symbol]) {
+        newStocks[stock.symbol] = {
+          ...newStocks[stock.symbol],
+          tags: (newStocks[stock.symbol].tags || []).filter((t) => t !== tagToRemove),
+        };
+      }
+      return {
+        ...prev,
+        weeks: {
+          ...prev.weeks,
+          [country]: {
+            ...prev.weeks[country],
+            [weekKey]: {
+              ...prevWeek,
+              stocks: newStocks,
+            },
+          },
+        },
+      };
+    });
   }
 
   function renderSortIndicator(col) {
@@ -1330,7 +1522,9 @@ export default function StockGrid({
       className="grid-wrapper stock-grid-container"
       style={{
         "--progress-width": `${(fetchProgress.completed / Math.max(1, fetchProgress.total)) * 100}%`,
+        "--ai-progress-width": `${(aiProgress.completed / Math.max(1, aiProgress.total)) * 100}%`,
         "--cw-symbol": colWidths["symbol"] ? `${colWidths["symbol"]}px` : "auto",
+        "--cw-livePrice": colWidths["__livePrice__"] ? `${colWidths["__livePrice__"]}px` : "auto",
         "--cw-sector": colWidths["sector"] ? `${colWidths["sector"]}px` : "auto",
         "--cw-checks": colWidths["__checks__"] ? `${colWidths["__checks__"]}px` : "auto",
         "--cw-tradable": colWidths["tradable"] ? `${colWidths["tradable"]}px` : "auto",
@@ -1724,10 +1918,10 @@ export default function StockGrid({
               
               {!isReadOnly && (
                 <button 
-                  className={`force-sync-btn ${fetchProgress.total > 0 ? 'is-syncing' : ''}`}
+                  className={`force-sync-btn ${(fetchProgress.total > 0 || loadingQuotes) ? 'is-syncing' : ''}`}
                   onClick={triggerFullSync}
                   title="Force refresh all stock metrics"
-                  disabled={fetchProgress.total > 0}
+                  disabled={fetchProgress.total > 0 || loadingQuotes}
                 >
                   <svg 
                     xmlns="http://www.w3.org/2000/svg" 
@@ -1748,13 +1942,32 @@ export default function StockGrid({
           )}
         </div>
 
-        {fetchProgress.total > 0 && (
-          <div className={`sync-activity-badge ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
-            <div className="status-dot" />
-            <span>Fetching metrics in background..</span>
-            <span className="percent">
-              {Math.round((fetchProgress.completed / fetchProgress.total) * 100)}%
-            </span>
+        {(fetchProgress.total > 0 || aiProgress.total > 0) && (
+          <div className="sync-badges-container">
+            {fetchProgress.total > 0 && (
+              <div className={`sync-activity-badge ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
+                <div className="status-dot" />
+                <span>Fetching metrics in background..</span>
+                <span className="percent">
+                  {Math.round((fetchProgress.completed / fetchProgress.total) * 100)}%
+                </span>
+              </div>
+            )}
+
+            {aiProgress.total > 0 && (
+              <div 
+                className={`sync-activity-badge ai-badge ${aiProgress.completed >= aiProgress.total ? "sync-finished" : ""}`} 
+                style={{ color: "var(--color-primary)", borderColor: "var(--color-primary-light)", cursor: "help" }}
+                title={aiProgress.startTime && aiProgress.estimatedEndTime ? `Triggered: ${new Date(aiProgress.startTime).toLocaleTimeString()}\nEstimated Completion: ${new Date(aiProgress.estimatedEndTime).toLocaleTimeString()}` : "AI Analysis in progress..."}
+              >
+                <div className="status-dot" style={{ backgroundColor: "var(--color-primary)", boxShadow: "0 0 8px var(--color-primary)" }} />
+                <span>AI Deep Analysis running...</span>
+                <span style={{ fontSize: "0.85em", opacity: 0.8, marginLeft: "-4px" }}>(Hover for ETA)</span>
+                <span className="percent">
+                  {Math.round((aiProgress.completed / aiProgress.total) * 100)}%
+                </span>
+              </div>
+            )}
           </div>
         )}
 
@@ -1894,7 +2107,7 @@ export default function StockGrid({
         <EditStockModal
           isOpen={true}
           onClose={() => setEditingStock(null)}
-          stock={editingStock}
+          stock={week?.stocks?.[editingStock.symbol] || editingStock}
           onSave={handleUpdateStock}
           paramDefinitions={data.paramDefinitions}
           sectors={sectors}
@@ -1905,6 +2118,9 @@ export default function StockGrid({
           isDeepView={true}
           watchlists={data.watchlists || []}
           aiSettings={aiSettings}
+          sortedStocks={sortedStocks}
+          onSelectStock={setEditingStock}
+          watchlistName={selectedWatchlistId === "all" ? "All Stocks" : (activeWatchlist?.name || "Watchlist")}
         />
       )}
 
@@ -1919,6 +2135,11 @@ export default function StockGrid({
         {fetchProgress.total > 0 && (
           <div className={`grid-sync-progress ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
             <div className="grid-sync-progress-bar"></div>
+          </div>
+        )}
+        {aiProgress.total > 0 && (
+          <div className={`grid-sync-progress ${aiProgress.completed >= aiProgress.total ? "sync-finished" : ""}`} style={{ top: fetchProgress.total > 0 ? "2px" : "0px" }}>
+            <div className="grid-sync-progress-bar" style={{ backgroundColor: "var(--color-primary)", width: "var(--ai-progress-width)" }}></div>
           </div>
         )}
 
@@ -1972,6 +2193,21 @@ export default function StockGrid({
                   onMouseDown={(e) => handleMouseDown(e, "symbol")}
                 />
               </th>
+              {showLivePrice && (
+                <th
+                  className="resizable-th cw-livePrice"
+                  onClick={() => toggleSort("__livePrice__")}
+                  style={{ cursor: "pointer" }}
+                >
+                  Live Price {renderSortIndicator("__livePrice__")}
+                  <div
+                    className="col-resizer"
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => resetColWidth(e, "__livePrice__")}
+                    onMouseDown={(e) => handleMouseDown(e, "__livePrice__")}
+                  />
+                </th>
+              )}
               <th
                 className="sector-col resizable-th cw-sector"
               >
@@ -2104,30 +2340,33 @@ export default function StockGrid({
                               />
                             </svg>
                           </button>
-                          {activeTagDropdown === stock.symbol && (
-                            <div className="custom-tag-dropdown">
-                              {availableTags.length === 0 && (
-                                <div className="tag-option empty">
-                                  No tags defined
-                                </div>
-                              )}
-                              {availableTags.map((t) => {
-                                const isSelected = stock.tags?.includes(t);
-                                return (
-                                  <div
-                                    key={t}
-                                    className={`tag-option ${isSelected ? "selected" : ""}`}
-                                    onClick={() =>
-                                      !isSelected && addTag(stock, t)
-                                    }
-                                  >
-                                    {t}
-                                    {isSelected && <span>✓</span>}
+                          {activeTagDropdown === stock.symbol && (() => {
+                            const userSelectableTags = availableTags.filter((t) => !t.toUpperCase().startsWith("AI:"));
+                            return (
+                              <div className="custom-tag-dropdown">
+                                {userSelectableTags.length === 0 && (
+                                  <div className="tag-option empty">
+                                    No tags defined
                                   </div>
-                                );
-                              })}
-                            </div>
-                          )}
+                                )}
+                                {userSelectableTags.map((t) => {
+                                  const isSelected = stock.tags?.includes(t);
+                                  return (
+                                    <div
+                                      key={t}
+                                      className={`tag-option ${isSelected ? "selected" : ""}`}
+                                      onClick={() =>
+                                        !isSelected && addTag(stock, t)
+                                      }
+                                    >
+                                      {t}
+                                      {isSelected && <span>✓</span>}
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            );
+                          })()}
                         </div>
                       )}
                     </div>
@@ -2149,6 +2388,35 @@ export default function StockGrid({
                     )}
                   </div>
                 </td>
+                {showLivePrice && (
+                  <td className="cw-livePrice">
+                    {quotes[stock.symbol] ? (
+                      <div className="stock-grid-price-row">
+                        <span className="stock-grid-price-val">
+                          {(() => {
+                            const q = quotes[stock.symbol];
+                            const priceVal = q.currentPrice;
+                            const currencySymbol = country === 'US' ? '$' : '₹';
+                            const locale = country === 'US' ? 'en-US' : 'en-IN';
+                            return priceVal > 0 
+                              ? `${currencySymbol}${priceVal.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              : '—';
+                          })()}
+                        </span>
+                        {quotes[stock.symbol].dailyChangePct !== undefined ? (
+                          <span className={`stock-grid-price-change ${quotes[stock.symbol].isAdvancing ? 'adv' : 'dec'}`}>
+                            {quotes[stock.symbol].dailyChangePct >= 0 ? '+' : ''}
+                            {quotes[stock.symbol].dailyChangePct.toFixed(2)}%
+                          </span>
+                        ) : (
+                          <span className="stock-grid-price-change-placeholder">—</span>
+                        )}
+                      </div>
+                    ) : (
+                      <span className="stock-grid-price-placeholder">—</span>
+                    )}
+                  </td>
+                )}
                 <td className="sector-col cw-sector">
                   <div className="input-clear-wrapper type-select">
                     <select
@@ -2157,8 +2425,7 @@ export default function StockGrid({
                       disabled={isReadOnly}
                       onChange={(e) => {
                         if (isReadOnly) return;
-                        stock.sector = e.target.value;
-                        setData({ ...data });
+                        updateStockField(stock.symbol, "sector", e.target.value);
                       }}
                     >
                       <option value=""></option>
@@ -2171,8 +2438,7 @@ export default function StockGrid({
                     {!isReadOnly && stock.sector && (
                       <ClearButton
                         onClick={() => {
-                          stock.sector = "";
-                          setData({ ...data });
+                          updateStockField(stock.symbol, "sector", "");
                         }}
                         isSelect
                       />
@@ -2194,8 +2460,7 @@ export default function StockGrid({
                             disabled={isReadOnly}
                             onChange={(e) => {
                               if (isReadOnly) return;
-                              stock.params[key] = e.target.checked;
-                              setData({ ...data });
+                              updateStockParam(stock.symbol, key, e.target.checked);
                             }}
                           />
                         )}
@@ -2208,8 +2473,7 @@ export default function StockGrid({
                               disabled={isReadOnly}
                               onChange={(e) => {
                                 if (isReadOnly) return;
-                                stock.params[key] = e.target.value;
-                                setData({ ...data });
+                                updateStockParam(stock.symbol, key, e.target.value);
                               }}
                             >
                               <option value=""></option>
@@ -2220,8 +2484,7 @@ export default function StockGrid({
                             {!isReadOnly && stock.params[key] && (
                               <ClearButton
                                 onClick={() => {
-                                  stock.params[key] = "";
-                                  setData({ ...data });
+                                  updateStockParam(stock.symbol, key, "");
                                 }}
                                 isSelect
                               />
@@ -2238,15 +2501,13 @@ export default function StockGrid({
                               disabled={isReadOnly}
                               onChange={(e) => {
                                 if (isReadOnly) return;
-                                stock.params[key] = e.target.value;
-                                setData({ ...data });
+                                updateStockParam(stock.symbol, key, e.target.value);
                               }}
                             />
                             {!isReadOnly && stock.params[key] && (
                               <ClearButton
                                 onClick={() => {
-                                  stock.params[key] = "";
-                                  setData({ ...data });
+                                  updateStockParam(stock.symbol, key, "");
                                 }}
                               />
                             )}
@@ -2264,16 +2525,14 @@ export default function StockGrid({
                               onBlur={(e) => {
                                 if (isReadOnly) return;
                                 if (stock.params[key] !== e.target.value) {
-                                  stock.params[key] = e.target.value;
-                                  setData({ ...data });
+                                  updateStockParam(stock.symbol, key, e.target.value);
                                 }
                               }}
                             />
                             {!isReadOnly && stock.params[key] && (
                               <ClearButton
                                 onClick={() => {
-                                  stock.params[key] = "";
-                                  setData({ ...data });
+                                  updateStockParam(stock.symbol, key, "");
                                 }}
                                 isSelect
                               />
@@ -2289,15 +2548,13 @@ export default function StockGrid({
                               disabled={isReadOnly}
                               onChange={(e) => {
                                 if (isReadOnly) return;
-                                stock.params[key] = e.target.value;
-                                setData({ ...data });
+                                updateStockParam(stock.symbol, key, e.target.value);
                               }}
                             />
                             {!isReadOnly && stock.params[key] && (
                               <ClearButton
                                 onClick={() => {
-                                  stock.params[key] = "";
-                                  setData({ ...data });
+                                  updateStockParam(stock.symbol, key, "");
                                 }}
                               />
                             )}
@@ -2319,8 +2576,7 @@ export default function StockGrid({
                     disabled={isReadOnly}
                     onChange={(e) => {
                       if (isReadOnly) return;
-                      stock.tradable = e.target.checked;
-                      setData({ ...data });
+                      updateStockField(stock.symbol, "tradable", e.target.checked);
                     }}
                   />
                 </td>
@@ -2334,15 +2590,13 @@ export default function StockGrid({
                         disabled={isReadOnly}
                         placeholder="Notes.."
                         onChange={(e) => {
-                          stock.notes = e.target.value;
-                          setData({ ...data });
+                          updateStockField(stock.symbol, "notes", e.target.value);
                         }}
                       />
                       {!isReadOnly && stock.notes && (
                         <ClearButton
                           onClick={() => {
-                            stock.notes = "";
-                            setData({ ...data });
+                            updateStockField(stock.symbol, "notes", "");
                           }}
                         />
                       )}

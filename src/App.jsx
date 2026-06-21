@@ -16,6 +16,7 @@ import SettingsModal from "./components/SettingsModal";
 import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import UserGuideModal from "./components/UserGuideModal";
 import DataManagementModal from "./components/DataManagementModal";
+import WeeklyFeedbackModal from "./components/WeeklyFeedbackModal";
 import { ToastProvider, useToast } from "./components/ToastContext";
 import { ConfirmProvider, useConfirm } from "./components/ConfirmContext";
 import "./styles.css";
@@ -27,6 +28,9 @@ import { EMPTY_DATA } from "./constants/app";
 import { getLatestWeekKey, isWeekReadOnly, getLocalDateString, getSundayOfWeek } from "./utils/weekHelpers";
 import { isParamRelevantForCountry, scrubParamDefinitions } from "./utils/paramUtils";
 
+import MarketPulseView from "./components/MarketPulseView";
+import JournalView from "./components/JournalView";
+
 function AppContent() {
   /* =========================
      HOOKS (Must be at the TOP)
@@ -35,6 +39,7 @@ function AppContent() {
   const [country, setCountry] = useState("IN");
   const [weekKey, setWeekKey] = useState(null);
   const [selectedWatchlistId, setSelectedWatchlistId] = useState("all");
+  const [activeTab, setActiveTab] = useState("watchlists");
 
   const { theme, toggleTheme } = useTheme(data?.theme, (newTheme) => {
     setData(prev => ({ ...prev, theme: newTheme }));
@@ -105,12 +110,24 @@ function AppContent() {
           setData((currentData) => {
             if (!currentData) return newData;
 
-            if (currentData.weeks === newData.weeks) {
+            const isWeeksEqual = JSON.stringify(currentData.weeks) === JSON.stringify(newData.weeks);
+            const isAiSettingsEqual = JSON.stringify(currentData.aiSettings) === JSON.stringify(newData.aiSettings);
+            const isUiConfigEqual = JSON.stringify(currentData.uiConfig) === JSON.stringify(newData.uiConfig);
+            const isOtherEqual =
+              currentData.theme === newData.theme &&
+              currentData.isPro === newData.isPro &&
+              JSON.stringify(currentData.watchlists) === JSON.stringify(newData.watchlists) &&
+              JSON.stringify(currentData.journals) === JSON.stringify(newData.journals) &&
+              JSON.stringify(currentData.analyticsLayout) === JSON.stringify(newData.analyticsLayout) &&
+              JSON.stringify(currentData.paramDefinitions) === JSON.stringify(newData.paramDefinitions);
+
+            if (isWeeksEqual && isAiSettingsEqual && isUiConfigEqual && isOtherEqual) {
               return currentData;
             }
 
             return {
               ...currentData,
+              ...newData,
               weeks: newData.weeks,
               aiSettings: newData.aiSettings || currentData.aiSettings
             };
@@ -275,6 +292,46 @@ function AppContent() {
     });
   };
 
+  const handleBulkAnalyze = () => {
+    const currentWeekData = data.weeks?.[country]?.[weekKey] || { stocks: {} };
+    let stocksToAnalyze = currentWeekData.stocks || {};
+    
+    if (selectedWatchlistId && selectedWatchlistId !== "all") {
+      const filteredStocks = {};
+      Object.values(stocksToAnalyze).forEach(stock => {
+          if (stock.watchlists?.includes(selectedWatchlistId)) {
+            filteredStocks[stock.symbol] = stock;
+          }
+      });
+      stocksToAnalyze = filteredStocks;
+    }
+
+    const stockArray = Object.values(stocksToAnalyze);
+    if (stockArray.length === 0) {
+      showToast("No stocks to analyze.", "warning");
+      return;
+    }
+
+    if (!data?.aiSettings?.apiKey) {
+      showToast("API Key missing. Please configure AI settings.", "error");
+      return;
+    }
+
+    showToast(`Background Analysis started for ${stockArray.length} stocks. This may take a while. You can close this window.`, "info");
+
+    chrome.runtime.sendMessage({
+      action: "RUN_BULK_AI_ANALYSIS",
+      payload: {
+        stocks: stockArray,
+        apiKey: data.aiSettings.apiKey,
+        model: data.aiSettings.model,
+        country,
+        weekKey,
+        watchlistName: selectedWatchlistId === "all" ? "All Stocks" : (data.watchlists?.find(w => w.id === selectedWatchlistId)?.name || "Watchlist")
+      }
+    });
+  };
+
   /* =========================
      CONDITIONAL RENDERING (Late Exit)
   ========================= */
@@ -320,33 +377,45 @@ function AppContent() {
         onToggleTheme={toggleTheme}
         country={country}
         setCountry={handleCountryChange}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
       />
 
-      <WeekSelector
-        data={data}
-        setData={setData}
-        country={country}
-        weekKey={weekKey}
-        setWeekKey={setWeekKey}
-        selectedWatchlistId={selectedWatchlistId}
-        setSelectedWatchlistId={setSelectedWatchlistId}
-        onClearWeek={clearWeekData}
-        onAnalyze={() => modals.setShowAnalyze(true)}
-        onShowAnalytics={() => modals.setShowAnalytics(true)}
-      />
+      {activeTab === 'watchlists' ? (
+        <>
+          <WeekSelector
+            data={data}
+            setData={setData}
+            country={country}
+            weekKey={weekKey}
+            setWeekKey={setWeekKey}
+            selectedWatchlistId={selectedWatchlistId}
+            setSelectedWatchlistId={setSelectedWatchlistId}
+            onClearWeek={clearWeekData}
+            onAnalyze={() => modals.setShowAnalyze(true)}
+            onBulkAnalyze={handleBulkAnalyze}
+            onShowAnalytics={() => modals.setShowAnalytics(true)}
+            onShowWeeklyFeedback={() => modals.setShowWeeklyFeedback(true)}
+          />
 
-      <StockGrid
-        data={data}
-        setData={setData}
-        country={country}
-        weekKey={weekKey}
-        selectedWatchlistId={selectedWatchlistId}
-        isReadOnly={isReadOnly}
-        onExportAll={exportAllData}
-        onImportAll={importAllData}
-        availableTags={availableTags}
-        aiSettings={data.aiSettings}
-      />
+          <StockGrid
+            data={data}
+            setData={setData}
+            country={country}
+            weekKey={weekKey}
+            selectedWatchlistId={selectedWatchlistId}
+            isReadOnly={isReadOnly}
+            onExportAll={exportAllData}
+            onImportAll={importAllData}
+            availableTags={availableTags}
+            aiSettings={data.aiSettings}
+          />
+        </>
+      ) : activeTab === 'market-pulse' ? (
+        <MarketPulseView country={country} />
+      ) : (
+        <JournalView country={country} data={data} setData={setData} />
+      )}
 
       <footer className="py-6 text-center text-[11px] text-slate-500 opacity-60">
         © {new Date().getFullYear()} TradeClarity.market. All rights reserved.
@@ -454,6 +523,17 @@ function AppContent() {
           weekKey={weekKey}
           setWeekKey={setWeekKey}
           onClose={() => modals.setShowDataManagement(false)}
+        />
+      )}
+
+      {modals.showWeeklyFeedback && (
+        <WeeklyFeedbackModal
+          isOpen={modals.showWeeklyFeedback}
+          data={data}
+          setData={setData}
+          country={country}
+          weekKey={weekKey}
+          onClose={() => modals.setShowWeeklyFeedback(false)}
         />
       )}
 

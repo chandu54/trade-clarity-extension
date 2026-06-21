@@ -105,7 +105,7 @@ const BookIcon = () => (
   </svg>
 );
 
-export default function Header({ onOpenModal, onClearAll, onManageTags, onManageWatchlists, theme, onToggleTheme, onShowSettings, onShowUserGuide, country, setCountry }) {
+export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll, onManageTags, onManageWatchlists, theme, onToggleTheme, onShowSettings, onShowUserGuide, country, setCountry }) {
   const [open, setOpen] = useState(false);
   const [regionOpen, setRegionOpen] = useState(false);
   const menuRef = useRef(null);
@@ -138,7 +138,7 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, onManage
   };
 
   const handleClearAll = async () => {
-    if (await confirm("⚠️ All data will be permanently deleted across all regions. Continue?", "delete all data")) {
+    if (await confirm("Are you sure? All data will be permanently deleted across all regions. Continue?", "delete all data")) {
       onClearAll();
     }
   };
@@ -156,6 +156,21 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, onManage
           </h2>
           <span className="app-tagline-v2">Your disciplined path to smarter trades</span>
         </div>
+      </div>
+      <div className="header-tabs">
+        {[
+          { id: 'watchlists', label: 'Watchlists' },
+          { id: 'market-pulse', label: 'Market Pulse' },
+          { id: 'journal', label: 'Journal' }
+        ].map((tab) => (
+          <button
+            key={tab.id}
+            onClick={() => onTabChange(tab.id)}
+            className={`header-tab-btn ${activeTab === tab.id ? 'active' : ''}`}
+          >
+            {tab.label}
+          </button>
+        ))}
       </div>
       <div className="header-actions">
         <div className="header-group system-controls">
@@ -209,8 +224,8 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, onManage
           <div className="settings-wrapper" ref={menuRef}>
             <button
               className="settings-cta"
-            onClick={() => setOpen((o) => !o)}
-            title="Settings (Alt + S)"
+              onClick={() => setOpen((o) => !o)}
+              title="Settings (Alt + S)"
             >
               <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="header-icon">
                 <circle cx="12" cy="12" r="3" /><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z" />
@@ -238,7 +253,7 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, onManage
                     onShowSettings();
                   }}
                 >
-                  ✨ AI integration
+                  ⚙ AI integration
                 </button>
               </div>
             )}
@@ -249,7 +264,7 @@ export default function Header({ onOpenModal, onClearAll, onManageTags, onManage
           <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
             <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
           </svg>
-          Reset All
+          <span>Reset All</span>
         </button>
       </div>
     </div>

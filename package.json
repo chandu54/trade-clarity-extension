@@ -23,6 +23,7 @@
     "@vitejs/plugin-react": "^4.7.0",
     "autoprefixer": "^10.4.27",
     "jsdom": "^26.0.0",
+    "playwright": "^1.60.0",
     "postcss": "^8.5.8",
     "tailwindcss": "^4.2.1",
     "vite": "^5.0.0",

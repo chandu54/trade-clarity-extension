@@ -6,6 +6,7 @@ import { useConfirm } from "./ConfirmContext";
 export default function ManageTagsModal({ data, setData, onClose, isOpen }) {
   const [newTag, setNewTag] = useState("");
   const tags = data.uiConfig?.tags || [];
+  const displayedTags = tags.filter((t) => !t.toUpperCase().startsWith("AI:"));
   const showTags = data.uiConfig?.showTags !== false;
   const { showToast } = useToast();
   const { confirm } = useConfirm();
@@ -23,6 +24,10 @@ export default function ManageTagsModal({ data, setData, onClose, isOpen }) {
   function handleAdd() {
     const val = newTag.trim();
     if (!val) return;
+    if (val.toUpperCase().startsWith("AI:")) {
+      showToast("Cannot create tags starting with 'AI:'", "warning");
+      return;
+    }
     if (tags.includes(val)) {
       showToast("Tag already exists", "warning");
       return;
@@ -110,10 +115,10 @@ export default function ManageTagsModal({ data, setData, onClose, isOpen }) {
       </div>
 
       <div className="tag-manager-list">
-        {tags.length === 0 && (
+        {displayedTags.length === 0 && (
           <div className="empty-state">No tags defined.</div>
         )}
-        {tags.map((tag) => (
+        {displayedTags.map((tag) => (
           <div key={tag} className="tag-chip-manage">
             <span>{tag}</span>
             <button

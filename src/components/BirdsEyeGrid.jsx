@@ -1,7 +1,7 @@
 import React from 'react';
 import MiniCandlestickChart from './MiniCandlestickChart';
 
-export default function BirdsEyeGrid({ stocksCount, timeframe, setTimeframe, data, country, onTileClick }) {
+export default function BirdsEyeGrid({ stocksCount, timeframe, setTimeframe, data, country, onTileClick, accountCapital }) {
   if (!data || data.length === 0) {
     return (
       <div className="birds-eye-controls">
@@ -15,6 +15,18 @@ export default function BirdsEyeGrid({ stocksCount, timeframe, setTimeframe, dat
       <div className="birds-eye-controls">
         <span className="constituent-label">{stocksCount} constituent stocks</span>
         <div className="timeframe-toggles">
+          <button 
+            className={`tf-btn ${timeframe === '1d' ? 'active' : ''}`}
+            onClick={() => setTimeframe('1d')}
+          >
+            1D
+          </button>
+          <button 
+            className={`tf-btn ${timeframe === '1w' ? 'active' : ''}`}
+            onClick={() => setTimeframe('1w')}
+          >
+            1W
+          </button>
           <button 
             className={`tf-btn ${timeframe === '1mo' ? 'active' : ''}`}
             onClick={() => setTimeframe('1mo')}
@@ -49,6 +61,7 @@ export default function BirdsEyeGrid({ stocksCount, timeframe, setTimeframe, dat
             data={item} 
             country={country}
             onClick={() => onTileClick(item)} 
+            accountCapital={accountCapital}
           />
         ))}
       </div>

@@ -33,6 +33,7 @@ export function useModalState() {
     showDataManagement: activeModal === 'data_management',
     showAnalytics: activeModal === 'analytics',
     showUserGuide: activeModal === 'guide',
+    showWeeklyFeedback: activeModal === 'weekly_feedback',
     
     // Legacy setters for individual modals
     setShowManageParams: (val) => val ? setActiveModal('params') : setActiveModal(null),
@@ -47,5 +48,6 @@ export function useModalState() {
     setShowDataManagement: (val) => val ? setActiveModal('data_management') : setActiveModal(null),
     setShowAnalytics: (val) => val ? setActiveModal('analytics') : setActiveModal(null),
     setShowUserGuide: (val) => val ? setActiveModal('guide') : setActiveModal(null),
+    setShowWeeklyFeedback: (val) => val ? setActiveModal('weekly_feedback') : setActiveModal(null),
   };
 }

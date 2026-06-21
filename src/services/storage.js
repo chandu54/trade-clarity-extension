@@ -225,6 +225,27 @@ export async function loadData() {
   }
 
   /* =========================
+     MERGE DEFAULT JOURNALS
+  ========================= */
+  if (!data.journals) {
+    data.journals = { IN: [], US: [] };
+    needsSave = true;
+  } else {
+    if (Array.isArray(data.journals)) {
+      data.journals = { IN: data.journals, US: [] };
+      needsSave = true;
+    }
+    if (!data.journals.IN) {
+      data.journals.IN = [];
+      needsSave = true;
+    }
+    if (!data.journals.US) {
+      data.journals.US = [];
+      needsSave = true;
+    }
+  }
+
+  /* =========================
      ENSURE CURRENT WEEK
   ========================= */
   /* =========================

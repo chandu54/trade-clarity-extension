@@ -1,8 +1,16 @@
 import { describe, it, vi, beforeEach, expect } from 'vitest';
-import { render, screen, fireEvent, within } from '@testing-library/react';
+import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
 import StockGrid from '../StockGrid';
 import { ToastContext } from '../ToastContext';
 import { ConfirmContext } from '../ConfirmContext';
+
+vi.mock('../../utils/yahooFinanceMap', () => ({
+  fetchStockQuotes: vi.fn().mockResolvedValue([
+    { symbol: 'AAPL', currentPrice: 150.25, dailyChangePct: 1.5, isAdvancing: true },
+    { symbol: 'RELIANCE', currentPrice: 2500, dailyChangePct: -0.5, isAdvancing: false }
+  ]),
+  fetchStockData: vi.fn().mockResolvedValue([])
+}));
 
 // Mock contexts
 const mockShowToast = vi.fn();
@@ -176,5 +184,120 @@ describe('StockGrid', () => {
     // Should be hidden in IN
     renderWithContext(<StockGrid {...propsWithLegacy} country="IN" />);
     expect(screen.queryByText('Old Parameter')).toBeNull();
+  });
+
+  describe('Stock deletion', () => {
+    it('completely deletes the stock from week data when selectedWatchlistId is "all"', async () => {
+      mockConfirm.mockResolvedValueOnce(true);
+      
+      const mockSetData = vi.fn();
+      const customProps = {
+        ...props,
+        setData: mockSetData,
+        selectedWatchlistId: 'all',
+      };
+
+      renderWithContext(<StockGrid {...customProps} />);
+
+      const deleteBtns = screen.getAllByTitle('Delete stock');
+      expect(deleteBtns.length).toBe(1); // AAPL delete button
+      
+      await fireEvent.click(deleteBtns[0]);
+
+      expect(mockConfirm).toHaveBeenCalledWith('Delete AAPL?', { confirmSettingsKey: 'skipDeleteConfirm' });
+      expect(mockSetData).toHaveBeenCalled();
+      
+      // Call the updater function passed to setData to verify state changes
+      // Since auto-sync runs on mount and calls setData, we find the deleteStock call (the last call)
+      const deleteCall = mockSetData.mock.calls[mockSetData.mock.calls.length - 1];
+      const updater = deleteCall[0];
+      const updatedState = updater(mockData);
+      
+      // Stock AAPL should be deleted completely from US '2024-03-17' stocks
+      expect(updatedState.weeks.US['2024-03-17'].stocks.AAPL).toBeUndefined();
+    });
+
+    it('only removes the watchlist ID from the stock watchlists array when a watchlist is selected', async () => {
+      mockConfirm.mockResolvedValueOnce(true);
+      
+      const mockDataWithWatchlist = {
+        ...mockData,
+        watchlists: [{ id: 'wl1', name: 'Tech Watchlist' }],
+        weeks: {
+          US: {
+            '2024-03-17': {
+              stocks: {
+                AAPL: { 
+                  symbol: 'AAPL', 
+                  sector: 'Tech', 
+                  params: { volume: 100, rs: 80 }, 
+                  notes: 'Buy',
+                  watchlists: ['wl1']
+                }
+              }
+            }
+          }
+        }
+      };
+
+      const mockSetData = vi.fn();
+      const customProps = {
+        ...props,
+        data: mockDataWithWatchlist,
+        setData: mockSetData,
+        selectedWatchlistId: 'wl1',
+      };
+
+      renderWithContext(<StockGrid {...customProps} />);
+
+      const deleteBtns = screen.getAllByTitle('Delete stock');
+      expect(deleteBtns.length).toBe(1);
+      
+      await fireEvent.click(deleteBtns[0]);
+
+      expect(mockConfirm).toHaveBeenCalledWith('Remove AAPL from watchlist "Tech Watchlist"?', { confirmSettingsKey: 'skipDeleteConfirm' });
+      expect(mockSetData).toHaveBeenCalled();
+      
+      // Since auto-sync runs on mount and calls setData, we find the deleteStock call (the last call)
+      const deleteCall = mockSetData.mock.calls[mockSetData.mock.calls.length - 1];
+      const updater = deleteCall[0];
+      const updatedState = updater(mockDataWithWatchlist);
+      
+      // AAPL should still exist but its watchlists should be empty/filtered
+      expect(updatedState.weeks.US['2024-03-17'].stocks.AAPL).toBeDefined();
+      expect(updatedState.weeks.US['2024-03-17'].stocks.AAPL.watchlists).toEqual([]);
+    });
+  });
+
+  it('renders Live Price column and displays quotes correctly', async () => {
+    renderWithContext(<StockGrid {...props} />);
+    
+    expect(screen.getByText('Live Price')).toBeDefined();
+    
+    await waitFor(() => {
+      expect(screen.getByText('$150.25')).toBeDefined();
+      expect(screen.getByText('+1.50%')).toBeDefined();
+    });
+  });
+
+  it('filters out AI tags from the inline tag picker dropdown', async () => {
+    const customProps = {
+      ...props,
+      availableTags: ['Growth', 'AI: BUY', 'ai: exit'],
+      showTags: true
+    };
+    renderWithContext(<StockGrid {...customProps} />);
+    
+    // Find the tag adder trigger for AAPL
+    const addTagBtn = screen.getByTitle('Add Tag(s) to AAPL');
+    fireEvent.click(addTagBtn);
+    
+    // Now the custom-tag-dropdown is open.
+    // It should render "Growth" option.
+    expect(screen.getByText('Growth')).toBeDefined();
+    
+    // It should not render the AI options.
+    expect(screen.queryByText('AI: BUY')).toBeNull();
+    expect(screen.queryByText('ai: exit')).toBeNull();
   });
 });

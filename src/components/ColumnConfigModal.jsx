@@ -10,9 +10,17 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
   const visibility = data.uiConfig.columnVisibility;
 
   function toggle(key) {
-    if (isGlobal) {
-      visibility[key] = !visibility[key];
-      setData({ ...data });
+    if (isGlobal || key === "__livePrice__" || key === "__notes__") {
+      const nextValue = !getValue(key);
+      const newVisibility = { ...visibility, [key]: nextValue };
+      const newData = {
+        ...data,
+        uiConfig: {
+          ...data.uiConfig,
+          columnVisibility: newVisibility
+        }
+      };
+      setData(newData);
     } else {
       const wList = { ...activeWatchlist };
       if (wList.visibleParams.includes(key)) {
@@ -26,7 +34,7 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
   }
 
   function getValue(key) {
-    if (isGlobal) return visibility[key] ?? true;
+    if (isGlobal || key === "__livePrice__" || key === "__notes__") return visibility[key] ?? true;
     return activeWatchlist?.visibleParams.includes(key) ?? false;
   }
 
@@ -92,6 +100,23 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
           </div>
         ))}
 
+        {/* Live Price */}
+        <div className="filter-config-row">
+          <div>
+            <strong>Live Price</strong>
+            <div className="muted small">Optional column</div>
+          </div>
+
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={getValue("__livePrice__")}
+              onChange={() => toggle("__livePrice__")}
+            />
+            <span className="slider" />
+          </label>
+        </div>
+
         {/* Notes */}
         <div className="filter-config-row">
           <div>
@@ -104,7 +129,6 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
               type="checkbox"
               checked={getValue("__notes__")}
               onChange={() => toggle("__notes__")}
-              disabled={!isGlobal && !activeWatchlist?.visibleParams.includes("__notes__") && activeWatchlist?.visibleParams.length > 0 === false}
             />
             <span className="slider" />
           </label>

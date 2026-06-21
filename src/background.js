@@ -1,5 +1,6 @@
 import { mapAdrBucket, mapLiquidityBucket, mapMovingAverageBucket } from "./utils/metrics.js";
 import { getActualParamKeyAndDef } from "./utils/paramUtils.js";
+import { getBulkStockVerdicts } from "./services/ai.js";
 import { CONFIG } from "./constants/config.js";
 
 chrome.action.onClicked.addListener(() => {
@@ -12,6 +13,9 @@ let processingQueue = [];
 let isProcessing = false;
 let totalJobs = 0;
 let completedJobs = 0;
+
+let bulkAiQueue = [];
+let isAiProcessing = false;
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "OPEN_DASHBOARD") {
@@ -54,8 +58,133 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     sendResponse({ status: "queued", count: symbols.length });
   }
+
+  if (message.action === "RUN_BULK_AI_ANALYSIS") {
+    bulkAiQueue.push(message.payload);
+    if (!isAiProcessing) {
+      processAiQueue();
+    }
+    sendResponse({ status: "started" });
+  }
   return true;
 });
+
+async function processAiQueue() {
+  if (bulkAiQueue.length === 0) {
+    isAiProcessing = false;
+    return;
+  }
+  isAiProcessing = true;
+  const payload = bulkAiQueue.shift();
+  
+  const { stocks, apiKey, model, country, weekKey, watchlistName } = payload;
+  const total = stocks.length;
+  const chunkSize = 7;
+  const results = {};
+  
+  // Estimate ~1 minute per stock based on Gemini "Thinking" time (6.8m per 7 stocks)
+  const startTime = Date.now();
+  const estimatedEndTime = startTime + (total * 60 * 1000);
+  
+  try {
+    for (let i = 0; i < total; i += chunkSize) {
+      chrome.runtime.sendMessage({
+        action: "BULK_AI_PROGRESS",
+        payload: { completed: i, total, startTime, estimatedEndTime }
+      }).catch(() => {});
+      
+      const chunk = stocks.slice(i, i + chunkSize);
+      const chunkResults = await getBulkStockVerdicts(apiKey, model, chunk);
+      Object.assign(results, chunkResults);
+      // Brief pause to respect API rate limits slightly
+      if (i + chunkSize < total) {
+        await new Promise(r => setTimeout(r, 2000));
+      }
+    }
+
+    chrome.runtime.sendMessage({
+      action: "BULK_AI_PROGRESS",
+      payload: { completed: total, total, startTime, estimatedEndTime }
+    }).catch(() => {});
+
+    // Now update storage
+    const summary = { BUY: 0, WAIT: 0, SELL: 0, "STRONG BUY": 0 };
+    let updatedCount = 0;
+
+    await new Promise((resolve) => {
+      chrome.storage.local.get(["trading_app_data"], (res) => {
+        const db = res.trading_app_data;
+        if (!db || !db.weeks || !db.weeks[country] || !db.weeks[country][weekKey]) {
+          resolve();
+          return;
+        }
+
+        const currentWeekData = db.weeks[country][weekKey];
+        const newStocksData = { ...currentWeekData.stocks };
+
+        Object.entries(results).forEach(([symbol, analysisData]) => {
+          if (newStocksData[symbol] && analysisData && analysisData.verdict) {
+            const verdict = analysisData.verdict.toUpperCase();
+            if (summary[verdict] !== undefined) {
+               summary[verdict]++;
+            } else {
+               summary[verdict] = 1;
+            }
+
+            let currentTags = newStocksData[symbol].tags || [];
+            currentTags = currentTags.filter(t => !t.startsWith("AI: "));
+            currentTags.push(`AI: ${verdict}`);
+
+            newStocksData[symbol] = {
+              ...newStocksData[symbol],
+              tags: currentTags,
+              aiAnalysis: `**Verdict:** ${verdict}\n\n**Reasoning:** ${analysisData.reasoning || ""}`,
+              aiAnalysisDate: new Date().toLocaleString()
+            };
+            updatedCount++;
+          }
+        });
+
+        const enrichedBulkAnalysis = {
+          summary,
+          timestamp: new Date().toISOString(),
+          stockCount: total,
+          updatedCount,
+          watchlistName: watchlistName
+        };
+
+        db.weeks[country][weekKey].bulkAnalysis = enrichedBulkAnalysis;
+        db.weeks[country][weekKey].stocks = newStocksData;
+        
+        if (!db.uiConfig) db.uiConfig = {};
+        if (!db.uiConfig.tags) db.uiConfig.tags = [];
+        ["AI: STRONG BUY", "AI: BUY", "AI: WAIT", "AI: SELL"].forEach(t => {
+          if (!db.uiConfig.tags.includes(t)) {
+             db.uiConfig.tags.push(t);
+          }
+        });
+
+        chrome.storage.local.set({ trading_app_data: db }, () => {
+          chrome.runtime.sendMessage({
+            action: "BULK_AI_ANALYSIS_COMPLETE",
+            payload: { updatedCount }
+          }).catch(() => {});
+          resolve();
+        });
+      });
+    });
+
+  } catch (error) {
+    console.error("Background AI Analysis Failed:", error);
+    chrome.runtime.sendMessage({
+      action: "BULK_AI_ANALYSIS_FAILED",
+      payload: { error: error.message || String(error) }
+    }).catch(() => {});
+  }
+
+  // Continue queue
+  setTimeout(processAiQueue, 1000);
+}
 
 async function processQueue() {
   if (processingQueue.length === 0) {
@@ -150,6 +279,7 @@ async function fetchAndCalculateMetrics(
     if (maxDays > 20) range = "3mo";
     if (maxDays > 60) range = "6mo";
     if (maxDays > 120) range = "1y";
+    if (maxDays >= 250) range = "2y";
 
     // Fetch Data (Consolidating everything into the v8/chart API which is currently WORKING and bypasses 401s)
     const url = `${CONFIG.YAHOO_FINANCE_URL}${ticker}?range=${range}&interval=1d`;
@@ -337,3 +467,5 @@ async function updateStorageWithMetrics(updates) {
     });
   });
 }
+
+

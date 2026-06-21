@@ -227,7 +227,7 @@ export default function CategoryAnalysisView({
           <EditStockModal
             isOpen={!!selectedStockForEdit}
             onClose={() => setSelectedStockForEdit(null)}
-            stock={selectedStockForEdit}
+            stock={mergedStockData.find(s => s.symbol === selectedStockForEdit.symbol) || selectedStockForEdit}
             paramDefinitions={paramDefinitions}
             sectors={sectors}
             availableTags={availableTags}
@@ -236,6 +236,9 @@ export default function CategoryAnalysisView({
             aiSettings={aiSettings}
             isDeepView={true}
             onUpdateStock={onUpdateStock}
+            sortedStocks={mergedStockData}
+            onSelectStock={setSelectedStockForEdit}
+            watchlistName={categoryName}
           />
         )}
       </div>

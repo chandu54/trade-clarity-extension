@@ -1,8 +1,8 @@
 {
   "name": "TradeClarity.market",
-  "description": "Professional swing trading research terminal. Organize watchlists weekly, quantify setups, and get AI insights.",
+  "description": "Professional swing trading research terminal. Organize watchlists weekly, quantify setups, Journaling and get AI insights.",
   "author": "TradeClarity Team",
-  "version": "1.0.1",
+  "version": "2.0.0",
   "manifest_version": 3,
   "permissions": [
     "storage",
@@ -10,7 +10,8 @@
   ],
   "host_permissions": [
     "https://query1.finance.yahoo.com/*",
-    "https://generativelanguage.googleapis.com/*"
+    "https://generativelanguage.googleapis.com/*",
+    "https://www.niftyindices.com/*"
   ],
   "action": {
     "default_title": "Open TradeClarity.market",
