@@ -958,6 +958,33 @@ export default function StockGrid({
     });
   }, [filteredStocks, sortBy, sortDir, quotes]);
 
+  const advancesAndDeclines = useMemo(() => {
+    let advances = 0;
+    let declines = 0;
+    let unchanged = 0;
+    let totalWithQuotes = 0;
+
+    const watchlistStocks = selectedWatchlistId === "all"
+      ? allStocks
+      : allStocks.filter(stock => stock.watchlists?.includes(selectedWatchlistId));
+
+    watchlistStocks.forEach((stock) => {
+      const q = quotes[stock.symbol];
+      if (q && q.dailyChangePct !== undefined) {
+        totalWithQuotes++;
+        if (q.dailyChangePct > 0) {
+          advances++;
+        } else if (q.dailyChangePct < 0) {
+          declines++;
+        } else {
+          unchanged++;
+        }
+      }
+    });
+
+    return { advances, declines, unchanged, total: totalWithQuotes };
+  }, [allStocks, selectedWatchlistId, quotes]);
+
   const totalPages = Math.max(1, Math.ceil(sortedStocks.length / pageSize));
 
   const start = (currentPage - 1) * pageSize;
@@ -1920,6 +1947,22 @@ export default function StockGrid({
                     : (week.lastSyncDate ? week.lastSyncDate.split('-').reverse().join('-') : 'Never')}
                 </span>
               </div>
+
+              {advancesAndDeclines.total > 0 && (
+                <div className="advances-declines-summary flex items-center gap-1.5 ml-2 pl-2 border-l border-slate-700">
+                  <span className="text-emerald-500 font-semibold" title="Advances (Price Up)">
+                    ▲ {advancesAndDeclines.advances}
+                  </span>
+                  <span className="text-rose-500 font-semibold" title="Declines (Price Down)">
+                    ▼ {advancesAndDeclines.declines}
+                  </span>
+                  {advancesAndDeclines.unchanged > 0 && (
+                    <span className="text-slate-400 font-semibold" title="Unchanged">
+                      ■ {advancesAndDeclines.unchanged}
+                    </span>
+                  )}
+                </div>
+              )}
               
               {!isReadOnly && (
                 <button 

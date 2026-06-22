@@ -300,4 +300,30 @@ describe('StockGrid', () => {
     expect(screen.queryByText('AI: BUY')).toBeNull();
     expect(screen.queryByText('ai: exit')).toBeNull();
   });
+
+  it('renders advances and declines metrics next to Last synced in the grid header', async () => {
+    const propsWithSyncDate = {
+      ...props,
+      data: {
+        ...mockData,
+        weeks: {
+          US: {
+            '2024-03-17': {
+              lastSyncDate: '2024-03-17',
+              stocks: {
+                AAPL: { symbol: 'AAPL', sector: 'Tech', params: { volume: 100, rs: 80 }, notes: 'Buy' }
+              }
+            }
+          }
+        }
+      }
+    };
+    renderWithContext(<StockGrid {...propsWithSyncDate} />);
+    
+    await waitFor(() => {
+      expect(screen.getByTitle('Advances (Price Up)')).toBeDefined();
+      expect(screen.getByText('▲ 1')).toBeDefined();
+    });
+  });
 });
+
