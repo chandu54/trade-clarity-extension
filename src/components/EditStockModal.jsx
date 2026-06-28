@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import Modal from "./Modal";
 import MiniCandlestickChart from "./MiniCandlestickChart";
 import { fetchStockData, fetchStockQuotes } from "../utils/yahooFinanceMap";
@@ -237,16 +237,17 @@ export default function EditStockModal({
     };
   }, [isOpen, sortedStocks, country]);
 
+  const symbolToFetch = formData?.symbol;
+
   // On-demand data loading for Chart (e.g. when clicked from Stock Grid or duration changed)
   useEffect(() => {
-    if (!isOpen || !formData || !formData.symbol) return;
+    if (!isOpen || !symbolToFetch) return;
 
     let isCurrent = true;
 
     const loadChartData = async () => {
       setLoadingChart(true);
       try {
-        const symbolToFetch = formData.symbol;
         const results = await fetchStockData([symbolToFetch], country, timeframe, interval);
         if (isCurrent && results && results.length > 0) {
           // Double check that the symbol fetched matches the current stock prop
@@ -281,11 +282,14 @@ export default function EditStockModal({
     return () => {
       isCurrent = false;
     };
-  }, [isOpen, formData?.symbol, country, timeframe, interval, stock.symbol]);
+  }, [isOpen, symbolToFetch, country, timeframe, interval, stock.symbol]);
 
   // Reset interval to 'auto' when timeframe changes to ensure compatible range/interval defaults
   useEffect(() => {
-    setInterval('auto');
+    const resetTimeout = setTimeout(() => {
+      setInterval('auto');
+    }, 0);
+    return () => clearTimeout(resetTimeout);
   }, [timeframe]);
 
   // Resizer Event Handlers
@@ -319,7 +323,7 @@ export default function EditStockModal({
 
   const currentIndex = (sortedStocks || []).findIndex(s => s.symbol === stock?.symbol);
 
-  const handleSelectStock = (targetStock) => {
+  const handleSelectStock = useCallback((targetStock) => {
     if (formData) {
       const finalData = {
         ...formData,
@@ -337,9 +341,9 @@ export default function EditStockModal({
     if (onSelectStock) {
       onSelectStock(targetStock);
     }
-  };
+  }, [formData, aiAnalysis, aiAnalysisDate, stock, paramDefinitions, onUpdateStock, onSave, onSelectStock]);
 
-  const handleNavigate = (direction) => {
+  const handleNavigate = useCallback((direction) => {
     if (!sortedStocks || sortedStocks.length <= 1 || currentIndex === -1) return;
     let nextIndex = currentIndex;
     if (direction === 'next') {
@@ -351,7 +355,7 @@ export default function EditStockModal({
     if (nextIndex >= 0 && nextIndex < sortedStocks.length) {
       handleSelectStock(sortedStocks[nextIndex]);
     }
-  };
+  }, [sortedStocks, currentIndex, handleSelectStock]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -398,7 +402,7 @@ export default function EditStockModal({
     return () => {
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [currentIndex, sortedStocks, formData, aiAnalysis, aiAnalysisDate, isOpen]);
+  }, [currentIndex, sortedStocks, formData, aiAnalysis, aiAnalysisDate, isOpen, handleNavigate]);
 
   const filteredNavStocks = (sortedStocks || []).filter(s => {
     const q = navSearchQuery.toLowerCase().trim();

@@ -84,7 +84,7 @@ async function run() {
       const escapedSymbols = symbolsString.replace(/'/g, "''");
       execSync(`powershell -NoProfile -Command "Set-Clipboard -Value '${escapedSymbols}'"`);
       console.log("📋 Copied tickers directly to your Windows Clipboard!");
-    } catch (clipErr) {
+    } catch (_clipErr) {
       console.log("⚠️ Could not auto-copy to clipboard. Please copy manually from scraped_symbols.txt.");
     }
 

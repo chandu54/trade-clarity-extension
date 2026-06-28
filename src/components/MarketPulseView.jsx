@@ -73,6 +73,7 @@ export default function MarketPulseView({ country }) {
   };
 
   const loadData = useCallback(async () => {
+    await Promise.resolve();
     setLoading(true);
     try {
       const results = await fetchMarketPulseData(country, timeframe);
@@ -201,24 +202,32 @@ export default function MarketPulseView({ country }) {
     setSortBy('custom');
   };
 
-  // Reset data when country or timeframe changes to prevent stale UI
-  useEffect(() => {
+  const [prevCountry, setPrevCountry] = useState(country);
+  const [prevTimeframe, setPrevTimeframe] = useState(timeframe);
+
+  if (country !== prevCountry || timeframe !== prevTimeframe) {
+    setPrevCountry(country);
+    setPrevTimeframe(timeframe);
     setData([]);
     setLoading(true);
-  }, [country, timeframe]);
+  }
 
   // Keep fullScreenIndex data fresh if data refreshes in the background
   useEffect(() => {
     if (fullScreenIndex && data.length > 0) {
       const freshIndex = data.flatMap(g => g.indices).find(idx => idx.symbol === fullScreenIndex.symbol);
-      if (freshIndex) {
-        setFullScreenIndex(freshIndex);
+      if (freshIndex && freshIndex !== fullScreenIndex) {
+        Promise.resolve().then(() => {
+          setFullScreenIndex(freshIndex);
+        });
       }
     }
-  }, [data]);
+  }, [data, fullScreenIndex]);
 
   useEffect(() => {
-    loadData();
+    Promise.resolve().then(() => {
+      loadData();
+    });
     const intervalId = setInterval(loadData, refreshInterval * 60 * 1000);
     return () => clearInterval(intervalId);
   }, [loadData, refreshInterval]);
@@ -260,11 +269,15 @@ export default function MarketPulseView({ country }) {
           </div>
 
           <div className="pulse-last-updated">
-            {loading && data.length > 0 ? (
-              <span className="sync-status syncing">
-                <span className="sync-pulse"></span>
-                Syncing live data...
-              </span>
+            {loading ? (
+              data.length > 0 ? (
+                <span className="sync-status syncing">
+                  <span className="sync-pulse"></span>
+                  Syncing live data...
+                </span>
+              ) : (
+                <span className="sync-status">Fetching data...</span>
+              )
             ) : (
               lastUpdated ? (
                 <span className="sync-status">
@@ -273,7 +286,7 @@ export default function MarketPulseView({ country }) {
                   </svg>
                   Last updated: {lastUpdated.toLocaleTimeString()}
                 </span>
-              ) : <span className="sync-status">Fetching data...</span>
+              ) : null
             )}
             <span className="region-badge">Region: {country === 'IN' ? 'India' : 'US'}</span>
           </div>
@@ -604,13 +617,7 @@ export default function MarketPulseView({ country }) {
                       const sma21Dist = idx.sma21 ? ((idx.currentPrice - idx.sma21) / idx.sma21) * 100 : null;
                       const sma50Dist = idx.sma50 ? ((idx.currentPrice - idx.sma50) / idx.sma50) * 100 : null;
                       const sma200Dist = idx.sma200 ? ((idx.currentPrice - idx.sma200) / idx.sma200) * 100 : null;
-                      const getDistClass = (dist) => {
-                        if (dist == null) return 'dist-null';
-                        if (dist > 10) return 'dist-bull-strong';
-                        if (dist > 0) return 'dist-bull';
-                        if (dist < -10) return 'dist-bear-strong';
-                        return 'dist-bear';
-                      };
+
                       const healthClass = idx.healthScore >= 70 ? 'bull' : idx.healthScore >= 40 ? 'warn' : 'bear';
                       const rsClass = idx.rsRating >= 0.5 ? 'dist-bull-strong' : idx.rsRating >= 0 ? 'dist-bull' : 'dist-bear';
                       const rsiClass = idx.rsi >= 70 ? 'dist-bear' : idx.rsi <= 30 ? 'dist-bull' : 'dist-null';

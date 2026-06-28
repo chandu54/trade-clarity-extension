@@ -504,6 +504,7 @@ function AppContent() {
 
       {modals.showSettings && (
         <SettingsModal
+          key={`${country}_${weekKey}`}
           isOpen={modals.showSettings}
           data={data}
           setData={setData}
@@ -511,11 +512,13 @@ function AppContent() {
           weekKey={weekKey}
           setWeekKey={setWeekKey}
           onClose={() => modals.setShowSettings(false)}
+          onOpenModal={modals.openModal}
         />
       )}
 
       {modals.showDataManagement && (
         <DataManagementModal
+          key={`${country}_${weekKey}`}
           isOpen={modals.showDataManagement}
           data={data}
           setData={setData}
@@ -528,6 +531,7 @@ function AppContent() {
 
       {modals.showWeeklyFeedback && (
         <WeeklyFeedbackModal
+          key={`${country}_${weekKey}`}
           isOpen={modals.showWeeklyFeedback}
           data={data}
           setData={setData}
@@ -566,9 +570,11 @@ function AppContent() {
 
       {modals.showUserGuide && (
         <UserGuideModal
+          key={modals.modalParams?.initialTab || 'guide'}
           isOpen={modals.showUserGuide}
           onClose={() => modals.setShowUserGuide(false)}
           onOpenModal={modals.openModal}
+          initialTab={modals.modalParams?.initialTab}
         />
       )}
     </ConfirmProvider>

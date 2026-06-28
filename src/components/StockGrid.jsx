@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, useRef } from "react";
+import { useCallback, useMemo, useState, useEffect, useRef } from "react";
 import AddStockModal from "./AddStockModal";
 import MultiSelectDropdown from "./MultiSelectDropdown";
 import EditStockModal from "./EditStockModal";
@@ -42,7 +42,7 @@ export function MovingAverageFilter({ value, onChange, id }) {
   const availableMAs = ["5", "10", "21", "50", "200"];
   
   // value is an object: { "5": "below", "50": "above" }
-  const activeConditions = value || {};
+  const activeConditions = useMemo(() => value || {}, [value]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -343,7 +343,7 @@ export default function StockGrid({
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const fetchQuotesCountRef = useRef(0);
 
-  const fetchQuotesForGrid = async () => {
+  const fetchQuotesForGrid = useCallback(async () => {
     if (!allStocks || allStocks.length === 0) {
       setQuotes({});
       return;
@@ -377,21 +377,24 @@ export default function StockGrid({
         setLoadingQuotes(false);
       }
     }
-  };
+  }, [allStocks, country]);
 
   const symbolsSerialized = useMemo(() => {
     return allStocks.map((s) => s.symbol).sort().join(",");
   }, [allStocks]);
 
   useEffect(() => {
-    fetchQuotesForGrid();
+    let active = true;
+    setTimeout(() => {
+      if (active) {
+        fetchQuotesForGrid();
+      }
+    }, 0);
     return () => {
+      active = false;
       fetchQuotesCountRef.current += 1;
     };
-  }, [symbolsSerialized, country, weekKey]);
-
-  const [showManageParams, setShowManageParams] = useState(false);
-  const [showManageSectors, setShowManageSectors] = useState(false);
+  }, [symbolsSerialized, country, weekKey, fetchQuotesForGrid]);
 
   const [importPendingStocks, setImportPendingStocks] = useState(null);
 
@@ -483,33 +486,7 @@ export default function StockGrid({
     });
   };
 
-  // --- AUTOMATED DAILY REFRESH ---
-  useEffect(() => {
-    if (!data || !weekKey || !data.weeks?.[country]?.[weekKey]) return;
-
-    const todayStr = getLocalDateString(new Date());
-    const weekData = data.weeks[country][weekKey];
-    
-    // Check setting and date
-    const autoRefreshEnabled = data.uiConfig?.autoRefreshMetrics !== false;
-    const isSyncedToday = weekData.lastSyncDate === todayStr;
-
-    if (autoRefreshEnabled && !isSyncedToday && !isReadOnly) {
-      console.log(`[AutoSync] New day detected (${todayStr}). Triggering refresh for ${country} watchlist...`);
-      triggerFullSync();
-      
-      // Update week-level lastSyncDate
-      setData(prev => {
-        const newData = structuredClone(prev);
-        if (newData.weeks?.[country]?.[weekKey]) {
-          newData.weeks[country][weekKey].lastSyncDate = todayStr;
-        }
-        return newData;
-      });
-    }
-  }, [weekKey, country, data?.weeks?.[country]?.[weekKey]?.lastSyncDate, data.uiConfig?.autoRefreshMetrics, isReadOnly]);
-
-  const triggerFullSync = () => {
+  const triggerFullSync = useCallback(() => {
     const symbols = Object.keys(week?.stocks || {});
     if (symbols.length === 0) return;
 
@@ -538,7 +515,35 @@ export default function StockGrid({
 
     // Refresh quotes simultaneously
     fetchQuotesForGrid();
-  };
+  }, [week, country, weekKey, data, setData, fetchQuotesForGrid]);
+
+  // --- AUTOMATED DAILY REFRESH ---
+  useEffect(() => {
+    if (!data || !weekKey || !data.weeks?.[country]?.[weekKey]) return;
+
+    const todayStr = getLocalDateString(new Date());
+    const weekData = data.weeks[country][weekKey];
+    
+    // Check setting and date
+    const autoRefreshEnabled = data.uiConfig?.autoRefreshMetrics !== false;
+    const isSyncedToday = weekData.lastSyncDate === todayStr;
+
+    if (autoRefreshEnabled && !isSyncedToday && !isReadOnly) {
+      console.log(`[AutoSync] New day detected (${todayStr}). Triggering refresh for ${country} watchlist...`);
+      setTimeout(() => {
+        triggerFullSync();
+        
+        // Update week-level lastSyncDate
+        setData(prev => {
+          const newData = structuredClone(prev);
+          if (newData.weeks?.[country]?.[weekKey]) {
+            newData.weeks[country][weekKey].lastSyncDate = todayStr;
+          }
+          return newData;
+        });
+      }, 0);
+    }
+  }, [weekKey, country, data, setData, triggerFullSync, isReadOnly]);
 
   const searchInputRef = useRef(null);
 
@@ -597,7 +602,9 @@ export default function StockGrid({
   }, [showFilters]);
 
   useEffect(() => {
-    setCurrentPage(1);
+    setTimeout(() => {
+      setCurrentPage(1);
+    }, 0);
   }, [weekKey, pageSize, filters, sortBy, sortDir, searchQuery]);
 
   useEffect(() => {
@@ -617,7 +624,11 @@ export default function StockGrid({
         setRateLimitWait(null); // clear rate-limit status when new progress arrives
       } else if (req.action === "BULK_AI_RATE_LIMIT_WAIT") {
         setRateLimitWait(req.payload);
-        setAiProgress(p => ({ ...p, completed: req.payload.completed, total: req.payload.total }));
+        setAiProgress(p => ({
+          ...p,
+          completed: req.payload.completed !== undefined ? req.payload.completed : p.completed,
+          total: req.payload.total !== undefined ? req.payload.total : p.total
+        }));
       } else if (req.action === "BULK_AI_ANALYSIS_COMPLETE") {
         setAiProgress({ total: 0, completed: 0 });
         setRateLimitWait(null);
@@ -736,7 +747,7 @@ export default function StockGrid({
   }
 
   // Helper for export/sort logic
-  function getChecksCount(stock) {
+  const getChecksCount = useCallback((stock) => {
     const checkParams = visibleParams.filter(([, p]) => p.isCheck === true);
     let passed = 0;
     checkParams.forEach(([key, p]) => {
@@ -745,7 +756,7 @@ export default function StockGrid({
       }
     });
     return passed;
-  }
+  }, [visibleParams]);
 
   /* =====================
      FILTER LOGIC (FULL DATASET)
@@ -885,13 +896,9 @@ export default function StockGrid({
     isTagFilterable,
     searchQuery,
     selectedWatchlistId,
+    country,
   ]);
 
-  const clearAllFilters = () => {
-    setSearchQuery("");
-    setFilters({});
-    setCurrentPage(1);
-  };
 
   /* =====================
      SORT LOGIC (FULL FILTERED DATA)
@@ -956,7 +963,7 @@ export default function StockGrid({
         ? String(aVal).localeCompare(String(bVal))
         : String(bVal).localeCompare(String(aVal));
     });
-  }, [filteredStocks, sortBy, sortDir, quotes]);
+  }, [filteredStocks, sortBy, sortDir, quotes, getChecksCount, params]);
 
   const advancesAndDeclines = useMemo(() => {
     let advances = 0;
@@ -1005,13 +1012,9 @@ export default function StockGrid({
     setFilters((f) => ({ ...f, [key]: value }));
   }
 
-  function clearFilters() {
-    setFilters({});
-    setSearchQuery("");
-  }
 
   const activeFilters = useMemo(() => {
-    return Object.entries(filters).filter(([key, value]) => {
+    return Object.entries(filters).filter(([_key, value]) => {
       if (value === undefined || value === "") return false;
       if (Array.isArray(value) && value.length === 0) return false;
       // MA toggle filter object: active only if mas has selections
@@ -1067,8 +1070,6 @@ export default function StockGrid({
 
     if (symbols.length === 0) return;
 
-    let sentBackgroundMessage = false;
-
     setData((prev) => {
       const prevWeek = prev.weeks[country][weekKey];
       const newStocks = { ...prevWeek.stocks };
@@ -1115,7 +1116,6 @@ export default function StockGrid({
               liquidityDays: prev.uiConfig?.liquidityDays || 20,
             },
           });
-          sentBackgroundMessage = true;
         }
       }
 
@@ -1437,7 +1437,7 @@ export default function StockGrid({
           }
           setImportPendingStocks(json);
         }
-      } catch (err) {
+      } catch (_err) {
         showToast("Failed to parse JSON file", "error");
       }
     };
@@ -1460,8 +1460,6 @@ export default function StockGrid({
 
   function importStocks(stocksArray) {
     if (!stocksArray || stocksArray.length === 0) return;
-
-    let sentBackgroundMessage = false;
 
     setData((prev) => {
       const currentWeekData = prev.weeks[country][weekKey] || { stocks: {} };
@@ -1524,7 +1522,6 @@ export default function StockGrid({
               liquidityDays: prev.uiConfig?.liquidityDays || 20,
             },
           });
-          sentBackgroundMessage = true;
         }
       }
 
@@ -1685,7 +1682,7 @@ export default function StockGrid({
               {!showFilters &&
                 activeFilters.length > 0 &&
                 activeFilters.map(([key, value]) => {
-                  let label = key;
+                  let label;
                   if (key === "__sector__") label = "Sector";
                   else if (key === "__tag__") label = "Tag";
                   else if (key === "__tradable__") label = "Tradable";

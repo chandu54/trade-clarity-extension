@@ -82,6 +82,16 @@ function parseRetryAfterMs(errorMessage, fallbackMs = 65000) {
   return fallbackMs;
 }
 
+async function waitWithCountdown(seconds, completed, total) {
+  for (let s = seconds; s > 0; s--) {
+    chrome.runtime.sendMessage({
+      action: "BULK_AI_RATE_LIMIT_WAIT",
+      payload: { waitSeconds: s, completed, total }
+    }).catch(() => {});
+    await new Promise(r => setTimeout(r, 1000));
+  }
+}
+
 async function processAiQueue() {
   if (bulkAiQueue.length === 0) {
     isAiProcessing = false;
@@ -120,13 +130,9 @@ async function processAiQueue() {
           const isRateLimit = errMsg.includes("quota") || errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("RESOURCE_EXHAUSTED");
           if (isRateLimit && chunkAttempt < maxChunkRetries - 1) {
             const waitMs = Math.min(parseRetryAfterMs(errMsg), 120000);
-            console.warn(`[BG] Rate limit on chunk ${i}–${i + chunkSize}. Waiting ${Math.round(waitMs / 1000)}s (attempt ${chunkAttempt + 1}/${maxChunkRetries})...`);
-            // Notify UI so spinner shows a helpful message instead of hanging
-            chrome.runtime.sendMessage({
-              action: "BULK_AI_RATE_LIMIT_WAIT",
-              payload: { waitSeconds: Math.round(waitMs / 1000), completed: i, total }
-            }).catch(() => {});
-            await new Promise(r => setTimeout(r, waitMs));
+            const waitSeconds = Math.round(waitMs / 1000);
+            console.warn(`[BG] Rate limit on chunk ${i}–${i + chunkSize}. Waiting ${waitSeconds}s (attempt ${chunkAttempt + 1}/${maxChunkRetries})...`);
+            await waitWithCountdown(waitSeconds, i, total);
             chunkAttempt++;
           } else {
             throw chunkErr; // non-rate-limit error, or exhausted retries
@@ -141,12 +147,7 @@ async function processAiQueue() {
       // Respect free-tier 20 RPM limit: wait ~65s between chunks so we never
       // exceed 1 request/minute (each chunk = 1 Gemini API call).
       if (i + chunkSize < total) {
-        const interChunkDelay = 65000; // 65 seconds — safely under 20 RPM
-        chrome.runtime.sendMessage({
-          action: "BULK_AI_RATE_LIMIT_WAIT",
-          payload: { waitSeconds: Math.round(interChunkDelay / 1000), completed: i + chunkSize, total }
-        }).catch(() => {});
-        await new Promise(r => setTimeout(r, interChunkDelay));
+        await waitWithCountdown(65, i + chunkSize, total);
       }
     }
 
@@ -453,6 +454,7 @@ async function fetchAndCalculateMetrics(
       movingAveragesKey: maMatch.key,
     };
   } catch (error) {
+    clearTimeout(timeoutId);
     throw error;
   }
 }

@@ -130,7 +130,7 @@ export default function DeepViewAi({ categoryName, symbols, weekData, aiSettings
 
     fetchAnalysis();
     return () => { isMounted = false; };
-  }, [categoryName, symbols, weekData, aiSettings, stockData, selectedPromptId]);
+  }, [categoryName, symbols, weekData, aiSettings, stockData, selectedPromptId, activeStrategy.text]);
 
   if (loading) {
     return (

@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState } from "react";
 import Modal from "./Modal";
 import { getActualCurrentSunday, getLatestWeekKey, getLocalDateString, getSundayOfWeek, getWeekRangeLabel } from "../utils/weekHelpers";
 
@@ -8,17 +8,22 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
   const [confirmText, setConfirmText] = useState("");
   const [saveStatus, setSaveStatus] = useState("");
 
-  const actualCurrentSunday = getActualCurrentSunday();
-  const storedWeeksKeys = Object.keys(data?.weeks?.[country] || {}).sort().reverse();
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  const [prevCountry, setPrevCountry] = useState(country);
 
-  useEffect(() => {
+  if (isOpen !== prevIsOpen || country !== prevCountry) {
+    setPrevIsOpen(isOpen);
+    setPrevCountry(country);
     if (isOpen) {
       setSelectedWeeks([]);
       setConfirmText("");
       setShowConfirm(false);
       setSaveStatus("");
     }
-  }, [isOpen, country]);
+  }
+
+  const actualCurrentSunday = getActualCurrentSunday();
+  const storedWeeksKeys = Object.keys(data?.weeks?.[country] || {}).sort().reverse();
 
   const toggleWeekSelection = (wk) => {
     if (wk === actualCurrentSunday) return;

@@ -23,17 +23,23 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
      SAVE EDIT
   ========================= */
   function saveEdit() {
-    data.paramDefinitions[editKey] = {
-      ...data.paramDefinitions[editKey],
-      label,
-      type,
-      options: type === "select" ? options.split(",").map(o => o.trim()) : [],
-      isCheck,
-      idealValues: isCheck && !['checkbox'].includes(type) ? idealValues.split(",").map(v => v.trim()) : [],
-      countries,
+    const nextParamDefinitions = {
+      ...data.paramDefinitions,
+      [editKey]: {
+        ...data.paramDefinitions[editKey],
+        label,
+        type,
+        options: type === "select" ? options.split(",").map(o => o.trim()) : [],
+        isCheck,
+        idealValues: isCheck && !['checkbox'].includes(type) ? idealValues.split(",").map(v => v.trim()) : [],
+        countries,
+      }
     };
 
-    setData({ ...data });
+    setData({
+      ...data,
+      paramDefinitions: nextParamDefinitions
+    });
     resetForm();
   }
 
@@ -58,18 +64,24 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
       .filter(o => o < 999); // Ignore temporal high-value defaults
     const nextOrder = Math.max(0, ...currentOrders) + 10;
 
-    data.paramDefinitions[paramKey] = {
-      label,
-      type,
-      options: type === "select" ? options.split(",").map(o => o.trim()) : [],
-      filterable: false,
-      isCheck,
-      idealValues: isCheck && !['checkbox'].includes(type) ? idealValues.split(",").map(v => v.trim()) : [],
-      countries,
-      order: nextOrder,
+    const nextParamDefinitions = {
+      ...data.paramDefinitions,
+      [paramKey]: {
+        label,
+        type,
+        options: type === "select" ? options.split(",").map(o => o.trim()) : [],
+        filterable: false,
+        isCheck,
+        idealValues: isCheck && !['checkbox'].includes(type) ? idealValues.split(",").map(v => v.trim()) : [],
+        countries,
+        order: nextOrder,
+      }
     };
 
-    setData({ ...data });
+    setData({
+      ...data,
+      paramDefinitions: nextParamDefinitions
+    });
     resetForm();
   }
 
@@ -79,17 +91,28 @@ export default function ManageParamsModal({ data, setData, onClose, isOpen }) {
   async function removeParam(key) {
     if (!await confirm("Delete parameter?")) return;
 
-    delete data.paramDefinitions[key];
+    const nextParamDefinitions = { ...data.paramDefinitions };
+    delete nextParamDefinitions[key];
 
-    Object.values(data.weeks).forEach((countryWeeks) => {
-      Object.values(countryWeeks).forEach((week) =>
-        Object.values(week.stocks).forEach((stock) => {
-          delete stock.params[key];
-        }),
-      );
+    // Deep copy/clone weeks to avoid mutating the prop in-place
+    const nextWeeks = JSON.parse(JSON.stringify(data.weeks || {}));
+    Object.values(nextWeeks).forEach((countryWeeks) => {
+      Object.values(countryWeeks).forEach((week) => {
+        if (week.stocks) {
+          Object.values(week.stocks).forEach((stock) => {
+            if (stock.params) {
+              delete stock.params[key];
+            }
+          });
+        }
+      });
     });
 
-    setData({ ...data });
+    setData({
+      ...data,
+      paramDefinitions: nextParamDefinitions,
+      weeks: nextWeeks
+    });
   }
 
   /* =========================

@@ -15,19 +15,250 @@ export default function MiniCandlestickChart({
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
 
+  useEffect(() => {
+    if (!data || !chartContainerRef.current) return;
+
+    const {
+      prevClose = 0,
+      candlesticks = [],
+      avgEntryPrice,
+      avgExitPrice,
+      activeStopLoss,
+      transactions,
+      isClosed: propIsClosed,
+      totalBought = 0,
+      openQty = 0
+    } = data;
+
+    const hasPosition = typeof avgEntryPrice === 'number' && avgEntryPrice > 0;
+    const isClosed = propIsClosed || (totalBought > 0 && openQty <= 0);
+
+    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
+    
+    // Theme-Aware Chart Colors (Respecting Global CSS Variables)
+    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#0f172a';
+
+    const chart = createChart(chartContainerRef.current, {
+      layout: {
+        background: { type: 'solid', color: 'transparent' },
+        textColor: textColor,
+        attributionLogo: false,
+        fontSize: 10,
+        fontFamily: "'Inter', sans-serif",
+      },
+      grid: {
+        vertLines: { visible: false },
+        horzLines: { 
+          visible: true, 
+          color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
+          style: 2, // Dashed
+        },
+      },
+      timeScale: { 
+        visible: interactive,
+        borderVisible: false,
+        timeVisible: true,
+        rightOffset: 8,
+        fixLeftEdge: true,
+      },
+      rightPriceScale: {
+        visible: true,
+        borderVisible: false,
+        entireTextOnly: true,
+        scaleMargins: { top: 0.05, bottom: 0.05 },
+        ticksVisible: false,
+        minimumWidth: 60,
+        alignLabels: true,
+      },
+      crosshair: {
+        mode: CrosshairMode.Magnet,
+        vertLine: { 
+          visible: interactive,
+          labelVisible: interactive,
+          color: 'rgba(56, 189, 248, 0.4)',
+          style: 1, 
+        },
+        horzLine: { 
+          visible: true,
+          labelVisible: true,
+          color: 'rgba(56, 189, 248, 0.4)',
+          style: 1,
+        },
+      },
+      handleScroll: {
+        mouseWheel: interactive && !disableZoom,
+        pressedMouseMove: interactive,
+        horzTouchDrag: interactive,
+        vertTouchDrag: interactive,
+      },
+      handleScale: {
+        mouseWheel: interactive && !disableZoom,
+        pinch: interactive && !disableZoom,
+        axisPressedMouseMove: interactive,
+      },
+    });
+
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: '#10b981',
+      downColor: '#ef4444',
+      borderVisible: false,
+      wickUpColor: '#10b981',
+      wickDownColor: '#ef4444',
+    });
+
+    if (candlesticks && candlesticks.length > 0) {
+      series.setData(candlesticks);
+
+      // Add price lines for entry & stop‑loss only when the card represents a position
+      if (hasPosition) {
+        if (avgEntryPrice) {
+          series.createPriceLine({
+            price: avgEntryPrice,
+            color: '#3b82f6', // entry blue
+            lineWidth: 1,
+            lineStyle: 2, // Dashed
+            axisLabelVisible: true,
+            title: 'ENTRY',
+          });
+        }
+        if (isClosed && avgExitPrice) {
+          series.createPriceLine({
+            price: avgExitPrice,
+            color: '#fbbf24', // EXIT yellow/orange
+            lineWidth: 1,
+            lineStyle: 2, // Dashed
+            axisLabelVisible: true,
+            title: 'EXIT',
+          });
+        } else if (!isClosed && activeStopLoss) {
+          series.createPriceLine({
+            price: activeStopLoss,
+            color: '#ef4444', // SL red
+            lineWidth: 1,
+            lineStyle: 3, // Dotted
+            axisLabelVisible: true,
+            title: 'SL',
+          });
+        }
+
+          // Add markers for Buy & Sell transactions
+          if (transactions) {
+            // Clear any existing markers (prevents duplicate markers on re‑render)
+            if (typeof series.setMarkers === 'function') {
+              series.setMarkers([]);
+            }
+            const markers = [];
+            
+            transactions.forEach(t => {
+              if (t.date) {
+                const matchedCandle = candlesticks.find(c => {
+                  let cTimeStr = '';
+                  if (typeof c.time === 'number') {
+                    cTimeStr = new Date(c.time * 1000).toISOString().split('T')[0];
+                  } else if (typeof c.time === 'string') {
+                    cTimeStr = c.time;
+                  } else if (c.time && typeof c.time === 'object' && c.time.year) {
+                    cTimeStr = `${c.time.year}-${String(c.time.month).padStart(2, '0')}-${String(c.time.day).padStart(2, '0')}`;
+                  }
+                  return cTimeStr === t.date;
+                });
+
+                if (matchedCandle) {
+                  const isBuy = t.type === 'Buy';
+                  markers.push({
+                    time: matchedCandle.time,
+                    position: isBuy ? 'belowBar' : 'aboveBar',
+                    color: isBuy ? '#3b82f6' : '#fbbf24',
+                    shape: isBuy ? 'arrowUp' : 'arrowDown',
+                    size: 1.1,
+                  });
+                }
+              }
+            });
+
+            if (markers.length > 0) {
+              markers.sort((a, b) => {
+                const aTime = typeof a.time === 'string' ? a.time : (typeof a.time === 'number' ? a.time : 0);
+                const bTime = typeof b.time === 'string' ? b.time : (typeof b.time === 'number' ? b.time : 0);
+                return aTime > bTime ? 1 : -1;
+              });
+              // Guard against missing setMarkers method (older lightweight-charts versions)
+              if (typeof series.setMarkers === 'function') {
+                series.setMarkers(markers);
+              } else if (typeof series.update === 'function') {
+                series.applyOptions({ markers });
+              }
+            }
+          }
+      }
+
+      chart.timeScale().fitContent();
+
+      // Only draw default prevClose line if it's not an active journal position card
+      if (interactive && !hasPosition) {
+        series.createPriceLine({
+          price: prevClose,
+          color: 'rgba(128, 128, 128, 0.5)',
+          lineWidth: 1,
+          lineStyle: 3, // Dotted
+          axisLabelVisible: true,
+          title: '', 
+        });
+      }
+    }
+
+    chartRef.current = chart;
+    seriesRef.current = series;
+
+    let lastWidth = 0;
+    let lastHeight = 0;
+    const resizeObserver = new ResizeObserver((entries) => {
+      if (entries.length === 0 || !chartRef.current) return;
+      const { width, height: observedHeight } = entries[0].contentRect;
+      const roundedWidth = Math.round(width);
+      const roundedHeight = Math.round(observedHeight);
+      
+      if (roundedWidth !== lastWidth || roundedHeight !== lastHeight) {
+        lastWidth = roundedWidth;
+        lastHeight = roundedHeight;
+        chartRef.current.applyOptions({ width: roundedWidth, height: roundedHeight });
+        chartRef.current.timeScale().fitContent();
+      }
+    });
+
+    if (chartContainerRef.current) {
+      resizeObserver.observe(chartContainerRef.current);
+    }
+
+    const themeObserver = new MutationObserver((mutations) => {
+      mutations.forEach((mutation) => {
+        if (mutation.attributeName === 'data-theme' && chartRef.current) {
+          const isDarkNow = document.documentElement.getAttribute('data-theme') === 'dark';
+          const newTextColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#0f172a';
+          chartRef.current.applyOptions({
+            layout: { textColor: newTextColor },
+            grid: { horzLines: { color: isDarkNow ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' } }
+          });
+        }
+      });
+    });
+    themeObserver.observe(document.documentElement, { attributes: true });
+
+    return () => {
+      resizeObserver.disconnect();
+      themeObserver.disconnect();
+      chart.remove();
+    };
+  }, [data, interactive, disableZoom]);
+
   if (!data) return null;
 
   const {
     symbol,
     longName,
     currentPrice = 0,
-    prevClose = 0,
-    periodChangePct = 0,
-    isAdvancing,
-    candlesticks = []
+    periodChangePct = 0
   } = data;
-
-  const isUp = isAdvancing;
 
   // Currency formatting based on country
   const currencySymbol = country === 'US' ? '$' : '₹';
@@ -149,228 +380,6 @@ export default function MiniCandlestickChart({
     maximumFractionDigits: 2
   });
 
-  useEffect(() => {
-    if (!chartContainerRef.current) return;
-
-    const isDark = document.documentElement.getAttribute('data-theme') === 'dark';
-    
-    // Theme-Aware Chart Colors (Respecting Global CSS Variables)
-    const textColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#0f172a';
-
-    const chart = createChart(chartContainerRef.current, {
-      layout: {
-        background: { type: 'solid', color: 'transparent' },
-        textColor: textColor,
-        attributionLogo: false,
-        fontSize: 10,
-        fontFamily: "'Inter', sans-serif",
-      },
-      grid: {
-        vertLines: { visible: false },
-        horzLines: { 
-          visible: true, 
-          color: isDark ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)',
-          style: 2, // Dashed
-        },
-      },
-      timeScale: { 
-        visible: interactive,
-        borderVisible: false,
-        timeVisible: true,
-        rightOffset: 8,
-        fixLeftEdge: true,
-      },
-      rightPriceScale: {
-        visible: true,
-        borderVisible: false,
-        entireTextOnly: true,
-        scaleMargins: { top: 0.05, bottom: 0.05 },
-        ticksVisible: false,
-        minimumWidth: 60,
-        alignLabels: true,
-      },
-      crosshair: {
-        mode: CrosshairMode.Magnet,
-        vertLine: { 
-          visible: interactive,
-          labelVisible: interactive,
-          color: 'rgba(56, 189, 248, 0.4)',
-          style: 1, 
-        },
-        horzLine: { 
-          visible: true,
-          labelVisible: true,
-          color: 'rgba(56, 189, 248, 0.4)',
-          style: 1,
-        },
-      },
-      handleScroll: {
-        mouseWheel: interactive && !disableZoom,
-        pressedMouseMove: interactive,
-        horzTouchDrag: interactive,
-        vertTouchDrag: interactive,
-      },
-      handleScale: {
-        mouseWheel: interactive && !disableZoom,
-        pinch: interactive && !disableZoom,
-        axisPressedMouseMove: interactive,
-      },
-    });
-
-    const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#10b981',
-      downColor: '#ef4444',
-      borderVisible: false,
-      wickUpColor: '#10b981',
-      wickDownColor: '#ef4444',
-    });
-
-    if (candlesticks && candlesticks.length > 0) {
-      series.setData(candlesticks);
-
-      // Add price lines for entry & stop‑loss only when the card represents a position
-      if (hasPosition) {
-        if (data.avgEntryPrice) {
-          series.createPriceLine({
-            price: data.avgEntryPrice,
-            color: '#3b82f6', // entry blue
-            lineWidth: 1,
-            lineStyle: 2, // Dashed
-            axisLabelVisible: true,
-            title: 'ENTRY',
-          });
-        }
-        if (isClosed && data.avgExitPrice) {
-          series.createPriceLine({
-            price: data.avgExitPrice,
-            color: '#fbbf24', // EXIT yellow/orange
-            lineWidth: 1,
-            lineStyle: 2, // Dashed
-            axisLabelVisible: true,
-            title: 'EXIT',
-          });
-        } else if (!isClosed && data.activeStopLoss) {
-          series.createPriceLine({
-            price: data.activeStopLoss,
-            color: '#ef4444', // SL red
-            lineWidth: 1,
-            lineStyle: 3, // Dotted
-            axisLabelVisible: true,
-            title: 'SL',
-          });
-        }
-
-          // Add markers for Buy & Sell transactions
-          if (data.transactions) {
-            // Clear any existing markers (prevents duplicate markers on re‑render)
-            if (typeof series.setMarkers === 'function') {
-              series.setMarkers([]);
-            }
-            const markers = [];
-            
-            data.transactions.forEach(t => {
-              if (t.date) {
-                const matchedCandle = candlesticks.find(c => {
-                  let cTimeStr = '';
-                  if (typeof c.time === 'number') {
-                    cTimeStr = new Date(c.time * 1000).toISOString().split('T')[0];
-                  } else if (typeof c.time === 'string') {
-                    cTimeStr = c.time;
-                  } else if (c.time && typeof c.time === 'object' && c.time.year) {
-                    cTimeStr = `${c.time.year}-${String(c.time.month).padStart(2, '0')}-${String(c.time.day).padStart(2, '0')}`;
-                  }
-                  return cTimeStr === t.date;
-                });
-
-                if (matchedCandle) {
-                  const isBuy = t.type === 'Buy';
-                  markers.push({
-                    time: matchedCandle.time,
-                    position: isBuy ? 'belowBar' : 'aboveBar',
-                    color: isBuy ? '#3b82f6' : '#fbbf24',
-                    shape: isBuy ? 'arrowUp' : 'arrowDown',
-                    size: 1.1,
-                  });
-                }
-              }
-            });
-
-            if (markers.length > 0) {
-              markers.sort((a, b) => {
-                const aTime = typeof a.time === 'string' ? a.time : (typeof a.time === 'number' ? a.time : 0);
-                const bTime = typeof b.time === 'string' ? b.time : (typeof b.time === 'number' ? b.time : 0);
-                return aTime > bTime ? 1 : -1;
-              });
-              // Guard against missing setMarkers method (older lightweight-charts versions)
-              if (typeof series.setMarkers === 'function') {
-                series.setMarkers(markers);
-              } else if (typeof series.update === 'function') {
-                series.applyOptions({ markers });
-              }
-            }
-          }
-      }
-
-      chart.timeScale().fitContent();
-
-      // Only draw default prevClose line if it's not an active journal position card
-      if (interactive && !hasPosition) {
-        series.createPriceLine({
-          price: prevClose,
-          color: 'rgba(128, 128, 128, 0.5)',
-          lineWidth: 1,
-          lineStyle: 3, // Dotted
-          axisLabelVisible: true,
-          title: '', 
-        });
-      }
-    }
-
-    chartRef.current = chart;
-    seriesRef.current = series;
-
-    let lastWidth = 0;
-    let lastHeight = 0;
-    const resizeObserver = new ResizeObserver((entries) => {
-      if (entries.length === 0 || !chartRef.current) return;
-      const { width, height: observedHeight } = entries[0].contentRect;
-      const roundedWidth = Math.round(width);
-      const roundedHeight = Math.round(observedHeight);
-      
-      if (roundedWidth !== lastWidth || roundedHeight !== lastHeight) {
-        lastWidth = roundedWidth;
-        lastHeight = roundedHeight;
-        chartRef.current.applyOptions({ width: roundedWidth, height: roundedHeight });
-        chartRef.current.timeScale().fitContent();
-      }
-    });
-
-    if (chartContainerRef.current) {
-      resizeObserver.observe(chartContainerRef.current);
-    }
-
-    const themeObserver = new MutationObserver((mutations) => {
-      mutations.forEach((mutation) => {
-        if (mutation.attributeName === 'data-theme' && chartRef.current) {
-          const isDarkNow = document.documentElement.getAttribute('data-theme') === 'dark';
-          const newTextColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#0f172a';
-          chartRef.current.applyOptions({
-            layout: { textColor: newTextColor },
-            grid: { horzLines: { color: isDarkNow ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' } }
-          });
-        }
-      });
-    });
-    themeObserver.observe(document.documentElement, { attributes: true });
-
-    return () => {
-      resizeObserver.disconnect();
-      themeObserver.disconnect();
-      chart.remove();
-    };
-  }, [candlesticks, prevClose, interactive, hasPosition, data.avgEntryPrice, data.activeStopLoss, data.transactions, isClosed, data.avgExitPrice]);
-
-  // Adjust chart height slightly for cards with premium headers/footers to avoid squeezing
   const chartHeight = hasPosition ? '110px' : height;
 
   return (

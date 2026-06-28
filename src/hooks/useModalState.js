@@ -6,17 +6,21 @@ import { useState, useCallback } from "react";
  */
 export function useModalState() {
   const [activeModal, setActiveModal] = useState(null);
+  const [modalParams, setModalParams] = useState(null);
 
-  const openModal = useCallback((modalName) => {
+  const openModal = useCallback((modalName, params = null) => {
     setActiveModal(modalName);
+    setModalParams(params);
   }, []);
 
   const closeModal = useCallback(() => {
     setActiveModal(null);
+    setModalParams(null);
   }, []);
 
   return {
     activeModal,
+    modalParams,
     openModal,
     closeModal,
     
@@ -36,18 +40,18 @@ export function useModalState() {
     showWeeklyFeedback: activeModal === 'weekly_feedback',
     
     // Legacy setters for individual modals
-    setShowManageParams: (val) => val ? setActiveModal('params') : setActiveModal(null),
-    setShowFilterConfig: (val) => val ? setActiveModal('filter') : setActiveModal(null),
-    setShowEditingRules: (val) => val ? setActiveModal('rules') : setActiveModal(null),
-    setShowColumnConfig: (val) => val ? setActiveModal('columns') : setActiveModal(null),
-    setShowManageSectors: (val) => val ? setActiveModal('sectors') : setActiveModal(null),
-    setShowManageWatchlists: (val) => val ? setActiveModal('watchlists') : setActiveModal(null),
-    setShowManageTags: (val) => val ? setActiveModal('tags') : setActiveModal(null),
-    setShowAnalyze: (val) => val ? setActiveModal('analyze') : setActiveModal(null),
-    setShowSettings: (val) => val ? setActiveModal('settings') : setActiveModal(null),
-    setShowDataManagement: (val) => val ? setActiveModal('data_management') : setActiveModal(null),
-    setShowAnalytics: (val) => val ? setActiveModal('analytics') : setActiveModal(null),
-    setShowUserGuide: (val) => val ? setActiveModal('guide') : setActiveModal(null),
-    setShowWeeklyFeedback: (val) => val ? setActiveModal('weekly_feedback') : setActiveModal(null),
+    setShowManageParams: (val) => val ? openModal('params') : closeModal(),
+    setShowFilterConfig: (val) => val ? openModal('filter') : closeModal(),
+    setShowEditingRules: (val) => val ? openModal('rules') : closeModal(),
+    setShowColumnConfig: (val) => val ? openModal('columns') : closeModal(),
+    setShowManageSectors: (val) => val ? openModal('sectors') : closeModal(),
+    setShowManageWatchlists: (val) => val ? openModal('watchlists') : closeModal(),
+    setShowManageTags: (val) => val ? openModal('tags') : closeModal(),
+    setShowAnalyze: (val) => val ? openModal('analyze') : closeModal(),
+    setShowSettings: (val) => val ? openModal('settings') : closeModal(),
+    setShowDataManagement: (val) => val ? openModal('data_management') : closeModal(),
+    setShowAnalytics: (val) => val ? openModal('analytics') : closeModal(),
+    setShowUserGuide: (val) => val ? openModal('guide') : closeModal(),
+    setShowWeeklyFeedback: (val) => val ? openModal('weekly_feedback') : closeModal(),
   };
 }

@@ -1,4 +1,4 @@
-import { useMemo, useState, useRef, useEffect } from "react";
+import { useMemo, useState, useRef } from "react";
 import { calculateCheckStats } from "../utils/checks";
 import { getStockCheckSummary } from "../utils/paramUtils";
 
@@ -6,13 +6,10 @@ export default function WeekSummary({ data, weekKey, country }) {
   const [open, setOpen] = useState(false);
   const wrapperRef = useRef(null);
   const popupRef = useRef(null);
-  const [popupPos, setPopupPos] = useState({
-    left: null,
-    top: null,
-    caretLeft: null,
-    maxHeight: null,
-  });
-  const week = data.weeks?.[country]?.[weekKey] || { stocks: {} };
+
+  const week = useMemo(() => {
+    return data.weeks?.[country]?.[weekKey] || { stocks: {} };
+  }, [data.weeks, country, weekKey]);
   const stocks = Object.values(week.stocks || {});
   const columnVisibility = data.uiConfig?.columnVisibility || {};
 
@@ -103,50 +100,12 @@ export default function WeekSummary({ data, weekKey, country }) {
     }
 
     return result;
-  }, [stocks, visibleParams]);
+  }, [stocks, visibleParams, data.paramDefinitions]);
 
-  const tradableSectorSummary = useMemo(() => {
-    const map = {};
-    const params = visibleParams;
 
-    stocks.forEach((stock) => {
-      const sector = stock.sector?.trim();
-      if (!sector) return;
-
-      if (!map[sector]) {
-        map[sector] = {
-          sector,
-          total: 0,
-          tradable: 0,
-          passedChecks: 0,
-        };
-      }
-
-      map[sector].total += 1;
-      if (stock.tradable) map[sector].tradable += 1;
-
-      const { passed } = getStockCheckSummary(stock, data.paramDefinitions);
-      map[sector].passedChecks += passed;
-    });
-
-    return Object.values(map)
-      .map((s) => ({
-        ...s,
-        ratio: s.tradable / s.total,
-        avgChecks: s.total > 0 ? s.passedChecks / s.total : 0,
-      }))
-      .sort((a, b) => {
-        if (b.ratio !== a.ratio) return b.ratio - a.ratio;
-        if (b.avgChecks !== a.avgChecks) return b.avgChecks - a.avgChecks;
-        if (b.tradable !== a.tradable) return b.tradable - a.tradable;
-        return b.total - a.total;
-      })
-      .slice(0, 3);
-  }, [stocks, visibleParams]);
 
   const summary = useMemo(() => {
     const stocks = Object.values(week.stocks || {});
-    const params = visibleParams;
 
     let pass80 = 0;
     let pass60 = 0;
@@ -178,40 +137,9 @@ export default function WeekSummary({ data, weekKey, country }) {
       tradable,
       outlook,
     };
-  }, [week, visibleParams]);
+  }, [week, data.paramDefinitions]);
 
-  useEffect(() => {
-    if (!open) return;
-    // position after render
-    requestAnimationFrame(() => {
-      const w = wrapperRef.current;
-      const p = popupRef.current;
-      if (!w || !p) return;
-      const icon = w.querySelector(".summary-icon");
-      if (!icon) return;
-      const ir = icon.getBoundingClientRect();
-      const pw = p.offsetWidth;
 
-      // compute popup left so it's centered above the icon, clamped to viewport
-      const iconCenterX = ir.left + ir.width / 2;
-      let left = Math.round(iconCenterX - pw / 2);
-      const gutter = 12;
-      if (left < gutter) left = gutter;
-      if (left + pw + gutter > window.innerWidth)
-        left = window.innerWidth - pw - gutter;
-
-      const top = Math.round(ir.bottom + 8);
-      const spaceBelow = window.innerHeight - top - 12;
-      const maxH = Math.max(
-        160,
-        Math.min(spaceBelow, Math.round(window.innerHeight * 0.6)),
-      );
-
-      const caretLeft = Math.round(iconCenterX - left);
-
-      setPopupPos({ left, top, caretLeft, maxHeight: maxH });
-    });
-  }, [open]);
 
   return (
     <div
@@ -358,15 +286,6 @@ export default function WeekSummary({ data, weekKey, country }) {
 
                 <div className="sector-cards">
                   {sectorSizeSummary.map((s) => {
-                    const ratio =
-                      s.total > 0
-                        ? Math.round((s.tradable / s.total) * 100)
-                        : 0;
-
-                    let ratioClass = "weak";
-                    if (ratio >= 65) ratioClass = "strong";
-                    else if (ratio >= 45) ratioClass = "ok";
-
                     return (
                       <div key={s.sector} className="sector-card-v2">
                         {/* Header */}

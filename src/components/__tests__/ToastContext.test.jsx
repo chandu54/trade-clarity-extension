@@ -1,7 +1,6 @@
 import { describe, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, act } from '@testing-library/react';
 import { ToastProvider, useToast } from '../ToastContext';
-import { useEffect } from 'react';
 
 const TestComponent = ({ message, type, duration }) => {
   const { showToast, hideToast } = useToast();

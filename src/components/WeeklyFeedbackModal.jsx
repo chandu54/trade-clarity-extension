@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import Modal from './Modal';
 import { useToast } from './ToastContext';
 import { getWeeklyJournalFeedback } from '../services/ai';
@@ -6,18 +6,37 @@ import { getWeeklyJournalFeedback } from '../services/ai';
 export default function WeeklyFeedbackModal({ isOpen, onClose, data, setData, country, weekKey }) {
   const { showToast } = useToast();
 
-  const initialFeedbackState = {
-    wentRight: '',
-    wentWrong: '',
-    improvement: '',
-    successfulTrades: '',
-    aiFeedback: ''
-  };
-
-  const [feedback, setFeedback] = useState(initialFeedbackState);
+  const [feedback, setFeedback] = useState(() => {
+    const existingFeedback = data?.weeks?.[country]?.[weekKey]?.feedback;
+    if (existingFeedback) {
+      return {
+        wentRight: existingFeedback.wentRight || '',
+        wentWrong: existingFeedback.wentWrong || '',
+        improvement: existingFeedback.improvement || '',
+        successfulTrades: existingFeedback.successfulTrades || '',
+        aiFeedback: existingFeedback.aiFeedback || ''
+      };
+    }
+    return {
+      wentRight: '',
+      wentWrong: '',
+      improvement: '',
+      successfulTrades: '',
+      aiFeedback: ''
+    };
+  });
   const [isGenerating, setIsGenerating] = useState(false);
 
-  useEffect(() => {
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  const [prevData, setPrevData] = useState(data);
+  const [prevCountry, setPrevCountry] = useState(country);
+  const [prevWeekKey, setPrevWeekKey] = useState(weekKey);
+
+  if (isOpen !== prevIsOpen || data !== prevData || country !== prevCountry || weekKey !== prevWeekKey) {
+    setPrevIsOpen(isOpen);
+    setPrevData(data);
+    setPrevCountry(country);
+    setPrevWeekKey(weekKey);
     if (isOpen) {
       const existingFeedback = data?.weeks?.[country]?.[weekKey]?.feedback;
       if (existingFeedback) {
@@ -29,10 +48,16 @@ export default function WeeklyFeedbackModal({ isOpen, onClose, data, setData, co
           aiFeedback: existingFeedback.aiFeedback || ''
         });
       } else {
-        setFeedback(initialFeedbackState);
+        setFeedback({
+          wentRight: '',
+          wentWrong: '',
+          improvement: '',
+          successfulTrades: '',
+          aiFeedback: ''
+        });
       }
     }
-  }, [isOpen, data, country, weekKey]);
+  }
 
   const handleSave = () => {
     setData((prev) => {

@@ -1,12 +1,53 @@
 import React, { useState } from "react";
 import Modal from "./Modal";
 
+const Section = ({
+  title,
+  icon,
+  children,
+  actionLabel,
+  actionKey,
+  primaryAction,
+  location,
+  onNavigate,
+}) => (
+  <div className="guide-section">
+    <div className="guide-header">
+      {icon && <div className="guide-icon">{icon}</div>}
+      <h3 className="guide-title">{title}</h3>
+    </div>
+
+    <div className="guide-content">
+      {location && (
+        <div className="guide-location">
+          <span>📍</span>
+          <span>{location}</span>
+        </div>
+      )}
+      {children}
+    </div>
+
+    {actionLabel && (
+      <div className="guide-actions">
+        <button
+          onClick={() => onNavigate && onNavigate(actionKey)}
+          className={primaryAction ? "primary-btn" : "outline"}
+        >
+          {actionLabel}
+        </button>
+      </div>
+    )}
+  </div>
+);
+
 export default function UserGuideModal({
   isOpen,
   onClose,
   onOpenModal,
+  initialTab = "watchlist",
 }) {
-  const [activeTab, setActiveTab] = useState("watchlist");
+  const [activeTab, setActiveTab] = useState(initialTab);
+
 
   const handleNavigate = (action) => {
     onClose();
@@ -15,44 +56,6 @@ export default function UserGuideModal({
       onOpenModal(action);
     }, 100);
   };
-
-  const Section = ({
-    title,
-    icon,
-    children,
-    actionLabel,
-    actionKey,
-    primaryAction,
-    location,
-  }) => (
-    <div className="guide-section">
-      <div className="guide-header">
-        {icon && <div className="guide-icon">{icon}</div>}
-        <h3 className="guide-title">{title}</h3>
-      </div>
-
-      <div className="guide-content">
-        {location && (
-          <div className="guide-location">
-            <span>📍</span>
-            <span>{location}</span>
-          </div>
-        )}
-        {children}
-      </div>
-
-      {actionLabel && (
-        <div className="guide-actions">
-          <button
-            onClick={() => handleNavigate(actionKey)}
-            className={primaryAction ? "primary-btn" : "outline"}
-          >
-            {actionLabel}
-          </button>
-        </div>
-      )}
-    </div>
-  );
 
   return (
     <Modal
@@ -70,6 +73,12 @@ export default function UserGuideModal({
             className={`guide-menu-btn ${activeTab === "settings" ? "active" : ""}`}
           >
             <span>All Settings</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("ai_settings")}
+            className={`guide-menu-btn ${activeTab === "ai_settings" ? "active" : ""}`}
+          >
+            <span>AI & Strategy Library</span>
           </button>
           <button
             onClick={() => setActiveTab("watchlist")}
@@ -118,6 +127,7 @@ export default function UserGuideModal({
                 actionLabel="Manage Watchlists →"
                 actionKey="watchlists"
                 location="Settings > Watchlists"
+                onNavigate={handleNavigate}
               >
                 <p>
                   Organize your stocks into custom watchlists for better focus and segmentation.
@@ -141,6 +151,7 @@ export default function UserGuideModal({
                 actionLabel="Configure Parameters →"
                 actionKey="params"
                 location="Settings > Parameters"
+                onNavigate={handleNavigate}
               >
                 <p>
                   Define the specific criteria that make a stock "tradable" for you.
@@ -165,6 +176,7 @@ export default function UserGuideModal({
                 actionLabel="Manage Sectors →"
                 actionKey="sectors"
                 location="Settings > Sectors"
+                onNavigate={handleNavigate}
               >
                 <p>
                   Group stocks by their industry to identify broader market trends and
@@ -184,6 +196,7 @@ export default function UserGuideModal({
                 actionLabel="Manage Tags →"
                 actionKey="tags"
                 location="Settings > Tags"
+                onNavigate={handleNavigate}
               >
                 <p>
                   Tags offer flexible, ad-hoc categorization beyond sectors (e.g.,
@@ -204,6 +217,7 @@ export default function UserGuideModal({
                 actionLabel="Configure Rules →"
                 actionKey="rules"
                 location="Settings > Rules"
+                onNavigate={handleNavigate}
               >
                 <p>
                   Enforce discipline by locking your history to prevent accidental
@@ -263,6 +277,128 @@ export default function UserGuideModal({
                   </li>
                   <li>
                     <strong>Clear All Data:</strong> Permanently deletes everything across all regions.
+                  </li>
+                </ul>
+              </Section>
+            </>
+          )}
+
+          {activeTab === "ai_settings" && (
+            <>
+              <h2 className="guide-tab-title">AI Configurations & Prompt Library</h2>
+
+              <div className="guide-intro">
+                <p>
+                  <strong>Proprietary Strategy Edge:</strong> TradeClarity.market lets you
+                  integrate institutional AI directly into your trading workflow. Rather than using generic prompts, you can configure your own proprietary strategy templates (instructions) for analysis.
+                </p>
+              </div>
+
+              <Section
+                title="1. General AI Configuration"
+                icon="🤖"
+                actionLabel="AI Settings →"
+                actionKey="settings"
+                location="Settings > AI Integration > General"
+                onNavigate={handleNavigate}
+              >
+                <p>
+                  Set up your secure connection to the Google Gemini API.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Secure API Key:</strong> Obtain an API Key from the Google AI Studio portal. Your key is stored strictly on your local device (in Chrome Storage or browser LocalStorage) and never sent to external servers.
+                  </li>
+                  <li>
+                    <strong>Connection Testing:</strong> Enter your key and click <strong>Test Connection</strong> to perform a live diagnostic check. You will receive a visual success status banner if the API is configured correctly.
+                  </li>
+                  <li>
+                    <strong>Model Selection:</strong> Switch between available models (e.g., <em>Gemini 1.5 Flash</em> for fast, cost-efficient analysis; or <em>Gemini 1.5 Pro</em> for complex logic and premium reasoning). You can also type in a Custom Model ID if desired.
+                  </li>
+                  <li>
+                    <strong>Pro Mode (Premium):</strong> Toggle the Pro Mode checkbox to enable premium templates and advanced reasoning features.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section
+                title="2. Proprietary Strategy Library"
+                icon="📚"
+                location="Settings > AI Integration > Prompt Library"
+              >
+                <p>
+                  Customize the exact instructions sent to the AI for each of the core workflows. The library organizes templates into three distinct categories:
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Watchlist (Macro Bias):</strong> Used when analyzing the weekly watchlist. It defines how the AI evaluates weekly data, identifies risk-on/risk-off macro biases, highlights leading sectors, and flags potential SEPA setups.
+                  </li>
+                  <li>
+                    <strong>Phenomena (Sector Deep Research):</strong> Used in the Category Analysis modal to analyze entire sectors. It guides the AI to perform leadership tiering and identify relative resilience/group anomalies.
+                  </li>
+                  <li>
+                    <strong>Single Stock (Micro Deep-Dive):</strong> Used for micro analysis of a single stock. It defines how the AI conducts technical deep-dives covering trend structure, key levels, and execution triggers.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section
+                title="3. Mini Prompt Editor & Dynamic Variables"
+                icon="✍️"
+                location="Settings > AI Integration > Prompt Library > Editor"
+              >
+                <p>
+                  You can edit strategies or create new ones using the built-in mini editor. The system supports <strong>real-time character counting</strong> and <strong>dynamic variables</strong>.
+                </p>
+                <p className="mt-2">
+                  To feed active watchlist data into your AI instructions, click on any of the variable badges below the editor text area. This inserts placeholders that the system automatically hydrates:
+                </p>
+                
+                <h5 className="guide-subsection-title">Watchlist Tab Variables</h5>
+                <ul className="guide-list">
+                  <li><code>{"{stocks}"}</code>: Hydrates a clean JSON dataset of all active stocks in the grid along with their notes, tags, checks, and metrics.</li>
+                  <li><code>{"{sectors}"}</code>: Injects a list of sectors represented in your active watchlist.</li>
+                  <li><code>{"{tickers}"}</code>: Injects a simple comma-separated list of all symbols in the grid.</li>
+                </ul>
+
+                <h5 className="guide-subsection-title">Phenomena Tab Variables</h5>
+                <ul className="guide-list">
+                  <li><code>{"{category}"}</code>: The name of the active sector or category being researched.</li>
+                  <li><code>{"{tickers}"}</code>: Comma-separated list of all symbols belonging to that sector.</li>
+                </ul>
+
+                <h5 className="guide-subsection-title">Single Stock Tab Variables</h5>
+                <ul className="guide-list">
+                  <li><code>{"{symbol}"}</code> / <code>{"{name}"}</code>: The stock ticker code and company name.</li>
+                  <li><code>{"{price}"}</code>: Injects the current last-traded price of the stock.</li>
+                  <li><code>{"{sector}"}</code>: The assigned sector.</li>
+                  <li><code>{"{notes}"}</code>: Injects your manual journal notes or voice-dictated remarks.</li>
+                </ul>
+              </Section>
+
+              <Section
+                title="4. Library Operations & Actions"
+                icon="⚡"
+                location="Settings > AI Integration > Prompt Library > Actions"
+              >
+                <p>
+                  Manage multiple proprietary strategies efficiently with intuitive control buttons:
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Active Default (🎯):</strong> Set any custom or system prompt as the default analysis template. The system will automatically use the active default strategy when you trigger AI analyses.
+                  </li>
+                  <li>
+                    <strong>Clone/Duplicate (📋):</strong> Instantly duplicate any template, including system defaults, so you can easily modify or customize the instructions without losing the original.
+                  </li>
+                  <li>
+                    <strong>Edit / Update (📝):</strong> Tweak the name and instructions of any custom template inline and save changes instantly.
+                  </li>
+                  <li>
+                    <strong>Delete (🗑️):</strong> Clean up unused strategies from your list. Deleting custom prompts includes safety checks to prevent deleting active defaults.
+                  </li>
+                  <li>
+                    <strong>System Defaults (⚙️):</strong> Built-in professional templates are always kept safe. If you ever want to revert, you can clone or reference the system default cards marked with a "System default" badge.
                   </li>
                 </ul>
               </Section>
@@ -337,6 +473,7 @@ export default function UserGuideModal({
                 actionLabel="Customize Columns →"
                 actionKey="columns"
                 location="Settings > Columns"
+                onNavigate={handleNavigate}
               >
                 <p>
                   Your main workspace. You have full control over what data is
@@ -364,6 +501,7 @@ export default function UserGuideModal({
                 actionLabel="Configure Filters →"
                 actionKey="filter"
                 location="Settings > Filters"
+                onNavigate={handleNavigate}
               >
                 <p>
                   As your watchlist grows, use search and filters to zero in on
@@ -394,6 +532,7 @@ export default function UserGuideModal({
                 actionLabel="AI Settings →"
                 actionKey="settings"
                 location="Top Left Icons"
+                onNavigate={handleNavigate}
               >
                 <p>Go beyond the spreadsheet view with visual insights.</p>
                 <ul className="guide-list">
@@ -411,10 +550,7 @@ export default function UserGuideModal({
                     Sectors, and Key Risks.
                   </li>
                   <li>
-                    <strong>Custom AI Strategies:</strong> Go to <em>Settings {"→"} AI Settings</em> to create your own instructions. You can define specific ways the AI should evaluate your watchlist (e.g. 'Conservative Evaluation', 'Aggressive Growth Focus').
-                    <div className="guide-note">
-                      Note: Use variables like <code>{"{stocks}"}</code> or <code>{"{sectors}"}</code> in your custom prompts. The system will automatically inject your real-time data into these placeholders before sending to the AI.
-                    </div>
+                    <strong>Custom AI Strategies:</strong> Go to <em>Settings {"→"} AI Settings</em> to create your own instructions. You can define specific ways the AI should evaluate your watchlist (e.g. 'Conservative Evaluation', 'Aggressive Growth Focus'). Learn more details in the <strong>AI & Strategy Library</strong> tab of this guide!
                   </li>
                 </ul>
               </Section>

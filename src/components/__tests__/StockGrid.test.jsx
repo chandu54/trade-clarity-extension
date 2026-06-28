@@ -1,5 +1,5 @@
 import { describe, it, vi, beforeEach, expect } from 'vitest';
-import { render, screen, fireEvent, within, waitFor } from '@testing-library/react';
+import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import StockGrid from '../StockGrid';
 import { ToastContext } from '../ToastContext';
 import { ConfirmContext } from '../ConfirmContext';

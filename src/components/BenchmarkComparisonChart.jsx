@@ -28,7 +28,6 @@ export default function BenchmarkComparisonChart({
   selectedTickers,
   calculatedPositions, 
   accountCapital, 
-  country,
   activeAnalyticsStartDate
 }) {
   const chartContainerRef = useRef(null);
@@ -295,27 +294,51 @@ export default function BenchmarkComparisonChart({
           dateStr = `${param.time.year}-${String(param.time.month).padStart(2, '0')}-${String(param.time.day).padStart(2, '0')}`;
         }
 
-        let tooltipHtml = `
-          <div class="text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1">${dateStr}</div>
-          <div class="flex justify-between gap-6 text-xs font-semibold py-0.5 border-b border-slate-100 dark:border-slate-800/80 pb-1 mb-1">
-            <span class="text-blue-500 flex items-center gap-1 font-bold">● Portfolio</span>
-            <span class="font-mono font-bold text-slate-800 dark:text-slate-100">${pVal >= 0 ? '+' : ''}${pVal.toFixed(2)}%</span>
-          </div>
-        `;
+        // Clear previous children and rebuild DOM structure safely (no innerHTML)
+        tooltip.replaceChildren();
+
+        const dateDiv = document.createElement('div');
+        dateDiv.className = "text-[9px] font-bold text-slate-400 dark:text-slate-500 uppercase tracking-wider mb-1";
+        dateDiv.textContent = dateStr;
+        tooltip.appendChild(dateDiv);
+
+        const portfolioDiv = document.createElement('div');
+        portfolioDiv.className = "flex justify-between gap-6 text-xs font-semibold py-0.5 border-b border-slate-100 dark:border-slate-800/80 pb-1 mb-1";
+
+        const portfolioSpan = document.createElement('span');
+        portfolioSpan.className = "text-blue-500 flex items-center gap-1 font-bold";
+        portfolioSpan.textContent = "● Portfolio";
+
+        const portfolioValSpan = document.createElement('span');
+        portfolioValSpan.className = "font-mono font-bold text-slate-800 dark:text-slate-100";
+        portfolioValSpan.textContent = `${pVal >= 0 ? '+' : ''}${pVal.toFixed(2)}%`;
+
+        portfolioDiv.appendChild(portfolioSpan);
+        portfolioDiv.appendChild(portfolioValSpan);
+        tooltip.appendChild(portfolioDiv);
 
         Object.entries(indexVals).forEach(([ticker, val]) => {
           const indexName = indexLabelsMap[ticker] || ticker;
           const color = TICKER_COLORS[ticker] || '#94a3b8';
-          tooltipHtml += `
-            <div class="flex justify-between gap-6 text-[11px] font-medium py-0.5">
-              <span class="flex items-center gap-1.5" style="color: ${color}">● ${indexName}</span>
-              <span class="font-mono font-bold text-slate-700 dark:text-slate-200">${val >= 0 ? '+' : ''}${val.toFixed(2)}%</span>
-            </div>
-          `;
+
+          const indexDiv = document.createElement('div');
+          indexDiv.className = "flex justify-between gap-6 text-[11px] font-medium py-0.5";
+
+          const indexSpan = document.createElement('span');
+          indexSpan.className = "flex items-center gap-1.5";
+          indexSpan.style.color = color;
+          indexSpan.textContent = `● ${indexName}`;
+
+          const indexValSpan = document.createElement('span');
+          indexValSpan.className = "font-mono font-bold text-slate-700 dark:text-slate-200";
+          indexValSpan.textContent = `${val >= 0 ? '+' : ''}${val.toFixed(2)}%`;
+
+          indexDiv.appendChild(indexSpan);
+          indexDiv.appendChild(indexValSpan);
+          tooltip.appendChild(indexDiv);
         });
 
         tooltip.style.display = 'block';
-        tooltip.innerHTML = tooltipHtml;
 
         const tooltipWidth = 190;
         const tooltipHeight = 110 + (Object.keys(indexVals).length * 20);

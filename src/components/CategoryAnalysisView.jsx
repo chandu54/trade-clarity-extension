@@ -33,8 +33,7 @@ export default function CategoryAnalysisView({
 
   const paramLabel = popupData?.data?.paramLabel || '';
   const categoryName = popupData?.data?.name || 'Category';
-  const categoryTitle = paramLabel ? `${paramLabel} — ${categoryName}` : categoryName;
-  const symbols = popupData?.data?.stocks || [];
+  const symbols = useMemo(() => popupData?.data?.stocks || [], [popupData?.data?.stocks]);
 
   const handleCopy = (e) => {
     if (e) e.stopPropagation();

@@ -41,8 +41,8 @@ function getInstitutionalTrend(price, smas) {
   if (price > sma50) score += 30;
   if (price > sma21) score += 30;
 
-  let phase = "Neutral";
-  let color = "var(--muted)";
+  let phase;
+  let color;
 
   if (score >= 100) {
     const extension = ((price - sma21) / sma21) * 100;

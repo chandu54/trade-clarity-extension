@@ -23,7 +23,7 @@ export function mapAdrBucket(avgAdr, adrDef) {
 }
 
 export function mapLiquidityBucket(liquidityValue, liqDef, country) {
-  let targetNumVal = liquidityValue;
+  let targetNumVal;
   if (country === "IN") {
      targetNumVal = liquidityValue / 10000000; // Convert to Crores
   } else {

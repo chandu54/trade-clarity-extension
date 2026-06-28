@@ -26,7 +26,7 @@ const isExtension = typeof chrome !== 'undefined' && chrome.runtime && chrome.ru
 const isContextValid = () => {
   try {
     return !!(chrome.runtime && chrome.runtime.id);
-  } catch (e) {
+  } catch (_e) {
     return false;
   }
 };
@@ -36,7 +36,7 @@ const safeStorage = {
     if (isExtension && isContextValid()) {
       try {
         chrome.storage.local.get(keys, callback);
-      } catch (e) {
+      } catch (_e) {
         console.warn("TradeClarity: Storage context lost. Refresh recommended.");
       }
     } else {
@@ -63,7 +63,7 @@ const safeStorage = {
             if (callback) callback(null);
           }
         });
-      } catch (e) {
+      } catch (_e) {
         console.warn("TradeClarity: Storage context lost. Refresh recommended.");
       }
     } else {
@@ -71,9 +71,9 @@ const safeStorage = {
       try {
         Object.entries(items).forEach(([k, v]) => localStorage.setItem(k, JSON.stringify(v)));
         if (callback) callback(null);
-      } catch (e) {
-        console.error("Local Storage Error:", e);
-        if (callback) callback(e);
+      } catch (_e) {
+        console.error("Local Storage Error:", _e);
+        if (callback) callback(_e);
       }
     }
   }
@@ -84,7 +84,7 @@ const TradeClarityWidget = () => {
   const [symbol, setSymbol] = useState(null);
   const [appData, setAppData] = useState(null);
   const [stockData, setStockData] = useState(null);
-  const [loading, setLoading] = useState(false);
+  const [_loading, setLoading] = useState(false);
   const [region, setRegion] = useState('IN');
   const [targetDate, setTargetDate] = useState(() => {
     const now = new Date();
@@ -120,14 +120,15 @@ const TradeClarityWidget = () => {
   const handleMouseUp = useCallback(() => {
     dragRef.current.isDragging = false;
     document.removeEventListener('mousemove', handleMouseMove);
-    document.removeEventListener('mouseup', handleMouseUp);
+    document.removeEventListener('mouseup', dragRef.current.mouseUpHandler);
   }, [handleMouseMove]);
 
   const handleMouseDown = (e) => {
     if (e.button !== 0) return;
     dragRef.current = {
       isDragging: true, startX: e.clientX, startY: e.clientY,
-      startTop: position.top, startRight: position.right, hasMoved: false
+      startTop: position.top, startRight: position.right, hasMoved: false,
+      mouseUpHandler: handleMouseUp
     };
     document.addEventListener('mousemove', handleMouseMove);
     document.addEventListener('mouseup', handleMouseUp);
@@ -137,9 +138,9 @@ const TradeClarityWidget = () => {
   useEffect(() => {
     return () => {
       document.removeEventListener('mousemove', handleMouseMove);
-      document.removeEventListener('mouseup', handleMouseUp);
+      document.removeEventListener('mouseup', dragRef.current.mouseUpHandler);
     };
-  }, [handleMouseMove, handleMouseUp]);
+  }, [handleMouseMove]);
 
   // --- RESIZE LOGIC ---
   const startResize = (direction) => (e) => {
@@ -201,13 +202,13 @@ const TradeClarityWidget = () => {
 
     if (isExtension) {
       try {
-        chrome.runtime.sendMessage({ action: 'OPEN_DASHBOARD' }, (response) => {
+        chrome.runtime.sendMessage({ action: 'OPEN_DASHBOARD' }, (_response) => {
           if (chrome.runtime.lastError) {
             const fallbackUrl = `chrome-extension://${chrome.runtime.id}/dashboard.html`;
             window.open(fallbackUrl, '_blank');
           }
         });
-      } catch (err) {
+      } catch (_err) {
         alert("TradeClarity.market updated. Please refresh this TradingView page to reconnect.");
       }
     }
@@ -229,7 +230,7 @@ const TradeClarityWidget = () => {
         if (isContextValid() && area === 'local' && changes.trading_app_data) {
           setAppData(changes.trading_app_data.newValue);
         }
-      } catch (e) {
+      } catch (_e) {
         // Context likely invalidated
       }
     };
@@ -238,14 +239,14 @@ const TradeClarityWidget = () => {
       if (isContextValid()) {
         chrome.storage.onChanged.addListener(handleStorageChange);
       }
-    } catch (e) {}
+    } catch (_e) { /* ignore */ }
 
     return () => {
       try {
         if (isContextValid()) {
           chrome.storage.onChanged.removeListener(handleStorageChange);
         }
-      } catch (e) {}
+      } catch (_e) { /* ignore */ }
     };
   }, []);
 
@@ -277,15 +278,20 @@ const TradeClarityWidget = () => {
     return () => observer.disconnect();
   }, []);
 
-  // Clear save status when symbol changes
-  useEffect(() => {
+  // Clear save status when symbol changes during render phase
+  const [prevSymbol, setPrevSymbol] = useState(null);
+  if (symbol !== prevSymbol) {
+    setPrevSymbol(symbol);
     setSaveStatus(null);
-  }, [symbol]);
+  }
 
   // Load Data
   useEffect(() => {
     if (!symbol || !targetDate || targetDate.length !== 10) return;
-    setLoading(true);
+
+    Promise.resolve().then(() => {
+      setLoading(true);
+    });
 
     safeStorage.get('trading_app_data', (result) => {
       const data = result.trading_app_data;
@@ -311,19 +317,19 @@ const TradeClarityWidget = () => {
   }, [symbol, region, targetDate]);
 
   // Handlers
-  const handleParamChange = (key, value) => {
+  const handleParamChange = useCallback((key, value) => {
     setStockData(prev => {
       const current = prev || {};
       const currentParams = current.params || {};
       return { ...current, params: { ...currentParams, [key]: value } };
     });
-  };
-  const handleFieldChange = (field, value) => {
+  }, []);
+  const handleFieldChange = useCallback((field, value) => {
     setStockData(prev => {
       const current = prev || {};
       return { ...current, [field]: value };
     });
-  };
+  }, []);
   const handleAddTag = (tag) => {
     if (!tag) return;
     setStockData(prev => {
@@ -397,7 +403,7 @@ const TradeClarityWidget = () => {
                 liquidityDays: newData.uiConfig?.liquidityDays || 20
               }
             });
-          } catch (e) {
+          } catch (_e) {
             // Silent fallback for hydration
           }
         }
@@ -1132,7 +1138,7 @@ const TradeClarityWidget = () => {
           {/* Dynamic Parameters */}
           {appData?.paramDefinitions && Object.entries(appData.paramDefinitions)
             .filter(([key]) => key !== 'movingAverages')
-            .filter(([key, def]) => {
+            .filter(([_key, def]) => {
                if (!def) return false;
                if (!def.countries || def.countries.length === 0) return true;
                return def.countries.includes(region);

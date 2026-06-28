@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Modal from "./Modal";
 
-export default function AddStockModal({ onAdd, onImport, onClose, existingStocks = {}, isOpen, sectors = [], onParseTv, watchlists = [], selectedWatchlistId }) {
+export default function AddStockModal({ onAdd, onImport, onClose, existingStocks = {}, isOpen, onParseTv, watchlists = [], selectedWatchlistId }) {
   const [activeTab, setActiveTab] = useState("manual");
   const [selectedWlIds, setSelectedWlIds] = useState(
     selectedWatchlistId && selectedWatchlistId !== 'all' ? [selectedWatchlistId] : []

@@ -151,7 +151,7 @@ export async function loadData() {
         ? JSON.parse(legacyData[CUSTOM_PROMPTS_STORE]) 
         : legacyData[CUSTOM_PROMPTS_STORE];
       needsSave = true;
-    } catch (e) { /* ignore silently */ }
+    } catch { /* ignore silently */ }
   }
 
   if (needsSave && isChromeStorage()) {

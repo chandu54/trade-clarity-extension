@@ -58,7 +58,7 @@ const getTooltip = (item) => {
   return `${item.name}: ${item.value}\nStocks: ${stockList}${suffix}`;
 };
 
-const PrintStockList = ({ stocks, label }) => {
+const PrintStockList = ({ stocks }) => {
   if (!stocks || stocks.length === 0) return null;
   return (
     <div className="print-stock-list mt-2 pt-2 border-t border-slate-200 border-dashed">
@@ -66,7 +66,7 @@ const PrintStockList = ({ stocks, label }) => {
         Stocks:
       </div>
       <div className="print-stock-values text-[11px] leading-relaxed flex flex-wrap gap-x-2">
-        {stocks.map((s, i) => (
+        {stocks.map((s) => (
           <span key={s} className="font-mono font-semibold">
             {s}
           </span>
@@ -80,26 +80,36 @@ const SimplePieChart = ({ data, onSliceClick, isExpanded }) => {
   const total = data.reduce((sum, item) => sum + item.value, 0);
   if (total === 0) return <div className="chart-empty">No data available</div>;
 
-  let currentAngle = 0;
   const size = 200;
   const radius = size / 2;
   const innerRadius = radius * 0.7;
   const center = radius;
 
+  // Precalculate slices to avoid variable mutation inside the JSX map loop
+  const slices = [];
+  let accumulatedAngle = 0;
+  data.forEach((item, index) => {
+    const percentage = item.value / total;
+    if (percentage > 0) {
+      const sliceAngle = percentage * 360;
+      slices.push({
+        item,
+        index,
+        percentage,
+        startAngle: accumulatedAngle,
+        endAngle: accumulatedAngle + sliceAngle,
+        sliceAngle
+      });
+      accumulatedAngle += sliceAngle;
+    }
+  });
+
   return (
     <div className="chart-container pie-chart-container">
       <div className="pie-chart-wrapper">
         <svg viewBox={`0 0 ${size} ${size}`} className="pie-svg">
-          {data.map((item, index) => {
-            const percentage = item.value / total;
-            if (percentage <= 0) return null;
-
-            const sliceAngle = percentage * 360;
-            const startAngle = currentAngle;
-            const endAngle = currentAngle + sliceAngle;
-            currentAngle = endAngle;
-
-            let d = "";
+          {slices.map(({ item, index, percentage, startAngle, endAngle, sliceAngle }) => {
+            let d;
             if (percentage >= 0.999) {
               // Fix for 100% slices: arcs fail at 360 degrees, so we draw a full donut manually
               d = `M ${center} ${center - radius} 
@@ -193,9 +203,6 @@ const SimpleBarChart = ({ data, onBarClick, isExpanded }) => {
   const max = Math.max(...data.map((d) => d.value));
   if (max === 0) return <div className="chart-empty">No data available</div>;
 
-  // Reduce gap if there are many items (e.g. 15-20 sectors)
-  const dynamicGap = data.length > 10 ? "2px" : "8px";
-
   return (
     <div className="chart-container bar-chart-container">
       <div className="bar-chart-grid">
@@ -203,7 +210,6 @@ const SimpleBarChart = ({ data, onBarClick, isExpanded }) => {
         <div className={`bar-chart-bars ${data.length > 10 ? 'gap-2' : 'gap-8'}`}>
           {data.map((item, index) => {
             const height = (item.value / max) * 100;
-            const color = COLORS[index % COLORS.length];
             return (
               <div
                 key={item.name}
@@ -239,7 +245,7 @@ const SimpleBarChart = ({ data, onBarClick, isExpanded }) => {
   );
 };
 
-const MASummaryWidget = ({ data, onBarClick, isExpanded, totalStocks = 0 }) => {
+const MASummaryWidget = ({ data, onBarClick, isExpanded }) => {
 
   if (!data || data.length === 0) return <div className="chart-empty">No MA data available</div>;
 
@@ -414,14 +420,12 @@ const createHistogramData = (data, label) => {
 
 const DotPlot = ({ data, onPointClick, isExpanded }) => {
   const [hoveredDot, setHoveredDot] = useState(null); // Will store the index of the dot
-  if (!data || data.length === 0)
-    return <div className="chart-empty">No numeric data</div>;
 
   const { points, ticks } = useMemo(() => {
+    if (!data || data.length === 0) return { points: [], ticks: [] };
     const values = data.map((d) => d.value);
     const minValRaw = Math.min(...values);
     const maxValRaw = Math.max(...values);
-    const rawRange = maxValRaw - minValRaw;
 
     // "Nice numbers" algorithm for clean axes
     const calculateNiceScale = (min, max) => {
@@ -477,6 +481,9 @@ const DotPlot = ({ data, onPointClick, isExpanded }) => {
 
     return { points: pointsWithPos, ticks };
   }, [data]);
+
+  if (!data || data.length === 0)
+    return <div className="chart-empty">No numeric data</div>;
 
   return (
     <div
@@ -651,19 +658,7 @@ const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
     columns.push(colDates);
   }
 
-  // Theming base color - Emerald for "thick green" contribution chart feel
-  const getColor = (count) => {
-    // Empty slot
-    if (count === 0) return "rgba(100, 116, 139, 0.15)";
-    if (maxCount === 1) return "#10b981"; // Medium green for single-stock peaks
 
-    const ratio = count / maxCount;
-    // Standard contribution intensity (Light -> Dark Emerald)
-    if (ratio <= 0.25) return "#6ee7b7"; // Emerald 300 (Light)
-    if (ratio <= 0.5) return "#10b981";  // Emerald 500 (Medium)
-    if (ratio <= 0.75) return "#059669"; // Emerald 600 (Dark)
-    return "#064e3b"; // Emerald 900 (Deepest)
-  };
 
   // Identify months for labels
   const monthLabels = [];
@@ -783,9 +778,10 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
     // For categorical data, a pie chart gives a great overview of proportions.
     // For distributions, we show the detailed plot.
     switch (param.type) {
-      case "numeric-distribution":
+      case "numeric-distribution": {
         const histData = createHistogramData(param.data, param.label);
         return <SimpleBarChart data={histData} onBarClick={onChartClick} isExpanded={true} />;
+      }
       case "date-timeline":
         return (
           <DateHeatmapChart
@@ -1151,14 +1147,14 @@ const AnalyticsDashboard = ({
   const [categoryAnalysisData, setCategoryAnalysisData] = useState(null);
   const [showSettings, setShowSettings] = useState(false);
   const settingsRef = useRef(null);
+
+  const [prevAnalyticsLayout, setPrevAnalyticsLayout] = useState(analyticsLayout);
   const [widgetConfig, setWidgetConfig] = useState(analyticsLayout || {});
 
-  // Sync widgetConfig with the provided analyticsLayout prop
-  useEffect(() => {
-    if (analyticsLayout) {
-      setWidgetConfig(analyticsLayout);
-    }
-  }, [analyticsLayout]);
+  if (analyticsLayout !== prevAnalyticsLayout) {
+    setPrevAnalyticsLayout(analyticsLayout);
+    setWidgetConfig(analyticsLayout || {});
+  }
 
   const trendData = useMemo(() => {
     if (!allWeeksData) return [];
@@ -1168,7 +1164,7 @@ const AnalyticsDashboard = ({
         // Format date to be shorter (e.g., "10-24")
         const shortDate = date.substring(5);
 
-        let validStocksCount = 0;
+        let validStocksCount;
         const weekStocks = Object.values(weekData.stocks || {});
 
         if (selectedWatchlistId && selectedWatchlistId !== "all") {
@@ -1446,7 +1442,7 @@ const AnalyticsDashboard = ({
     });
 
     return [...systemMetrics, ...paramMetrics];
-  }, [stocks, parameters]);
+  }, [parameters, filteredStocks]);
 
   // Persist config to central store
   useEffect(() => {

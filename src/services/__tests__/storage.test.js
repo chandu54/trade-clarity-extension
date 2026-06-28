@@ -105,6 +105,41 @@ describe("storage service", () => {
         JSON.stringify(testData)
       );
     });
+
+    it("should throw error if JSON in localStorage is malformed (negative scenario)", async () => {
+      mockStorage["trading_app_data"] = "{malformed-json";
+      await expect(loadData()).rejects.toThrow();
+    });
+  });
+
+  describe("Negative Scenarios - Storage Failures", () => {
+    beforeEach(() => {
+      restoreChrome = stubGlobal("chrome", {
+        storage: {
+          local: {
+            get: vi.fn((key, cb) => cb({})),
+            set: vi.fn((data, cb) => {
+              // Mock runtime.lastError presence
+              chrome.runtime.lastError = { message: "Quota exceeded" };
+              if (cb) cb();
+            })
+          }
+        },
+        runtime: {}
+      });
+      restoreLocalStorage = stubGlobal("localStorage", localStorageMock);
+    });
+
+    afterEach(() => {
+      restoreChrome();
+      restoreLocalStorage();
+    });
+
+    it("should handle chrome storage set callback when write limits are exceeded", async () => {
+      const testData = { hello: "limit" };
+      await saveData(testData);
+      expect(chrome.runtime.lastError.message).toBe("Quota exceeded");
+    });
   });
 });
 

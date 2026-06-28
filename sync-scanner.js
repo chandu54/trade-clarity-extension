@@ -48,7 +48,7 @@ async function run() {
       try {
         const background = await context.waitForEvent('serviceworker', { timeout: 2000 });
         extensionId = background.url().split('/')[2];
-      } catch (e) {
+      } catch (_e) {
         console.log(`Dynamic detection skipped (profile is pre-cached). Using ID: ${extensionId}`);
       }
     }

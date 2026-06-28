@@ -46,6 +46,26 @@ export default function WeekSelector({
   };
 
   // Sync internal date state if weekKey changes externally (e.g. app load)
+  const [prevWeekKey, setPrevWeekKey] = useState(weekKey);
+  if (weekKey !== prevWeekKey) {
+    setPrevWeekKey(weekKey);
+    const currentSunday = getSundayOfWeek(selectedDate);
+    if (currentSunday !== weekKey) {
+      const today = getLocalDateString(new Date());
+      const todaySunday = getSundayOfWeek(today);
+      if (weekKey === todaySunday) {
+        setSelectedDate(today);
+      } else {
+        // Default to Monday of the selected week to avoid confusion
+        const [y, m, d] = weekKey.split("-").map(Number);
+        const sunday = new Date(y, m - 1, d);
+        const monday = new Date(sunday);
+        monday.setDate(sunday.getDate() + 1);
+        setSelectedDate(getLocalDateString(monday));
+      }
+    }
+  }
+
   useEffect(() => {
     const today = getLocalDateString(new Date());
     const todaySunday = getSundayOfWeek(today);
@@ -56,27 +76,8 @@ export default function WeekSelector({
       if (weekKey !== todaySunday) {
         setWeekKey(todaySunday);
       }
-      return;
     }
-
-    if (weekKey) {
-      const currentSunday = getSundayOfWeek(selectedDate);
-      // Only update if the current selected date doesn't belong to the new weekKey
-      if (currentSunday !== weekKey) {
-        if (weekKey === todaySunday) {
-          setSelectedDate(today);
-        } else {
-          // Default to Monday of the selected week to avoid confusion
-          const [y, m, d] = weekKey.split("-").map(Number);
-          const sunday = new Date(y, m - 1, d);
-          const monday = new Date(sunday);
-          monday.setDate(sunday.getDate() + 1);
-          setSelectedDate(getLocalDateString(monday));
-        }
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [weekKey]);
+  }, [weekKey, setWeekKey]);
 
   function updateDate(dateStr) {
     setSelectedDate(dateStr);

@@ -78,7 +78,7 @@ export async function getAiAnalysis(
       apiKey && apiKey.length > 5
         ? errorMsg.replace(apiKey, "REDACTED")
         : errorMsg;
-    throw new Error(safeErrorMsg);
+    throw new Error(safeErrorMsg, { cause: error });
   }
 }
 
@@ -146,7 +146,7 @@ export async function getSingleStockAnalysis(
       apiKey && apiKey.length > 5
         ? errorMsg.replace(apiKey, "REDACTED")
         : errorMsg;
-    throw new Error(safeErrorMsg);
+    throw new Error(safeErrorMsg, { cause: error });
   }
 }
 
@@ -216,7 +216,7 @@ export async function getBulkStockVerdicts(
       apiKey && apiKey.length > 5
         ? errorMsg.replace(apiKey, "REDACTED")
         : errorMsg;
-    throw new Error(safeErrorMsg);
+    throw new Error(safeErrorMsg, { cause: error });
   }
 }
 
@@ -294,10 +294,17 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3)
         // Handle rate-limit (429) with smart retry
         if (response.status === 429 && attempt < retries) {
           const waitMs = Math.min(parseRetryAfterMs(errMessage), 120000); // cap at 2 minutes
+          const waitSeconds = Math.round(waitMs / 1000);
           console.warn(
-            `[AI] Rate limit hit (attempt ${attempt}/${retries}). Waiting ${Math.round(waitMs / 1000)}s before retry...`
+            `[AI] Rate limit hit (attempt ${attempt}/${retries}). Waiting ${waitSeconds}s before retry...`
           );
-          await new Promise(r => setTimeout(r, waitMs));
+          for (let s = waitSeconds; s > 0; s--) {
+            chrome.runtime.sendMessage({
+              action: "BULK_AI_RATE_LIMIT_WAIT",
+              payload: { waitSeconds: s }
+            }).catch(() => {});
+            await new Promise(r => setTimeout(r, 1000));
+          }
           continue; // retry
         }
 
@@ -313,7 +320,7 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3)
     } catch (error) {
       clearTimeout(timeoutId);
       if (error.name === 'AbortError') {
-        throw new Error("The AI request timed out. Please try again.");
+        throw new Error("The AI request timed out. Please try again.", { cause: error });
       }
       // Re-throw non-rate-limit errors immediately
       throw error;
@@ -340,9 +347,10 @@ function parseResponse(text, isCustom = false) {
 
     const jsonString = jsonMatch[0];
     return JSON.parse(jsonString);
-  } catch (e) {
+  } catch (error) {
     throw new Error(
       "The AI model returned an invalid response format. Please try again or refine your prompt.",
+      { cause: error }
     );
   }
 }
@@ -470,7 +478,7 @@ export async function getWeeklyJournalFeedback(
   } catch (error) {
     const errorMsg = error.message || "Unknown error";
     const safeErrorMsg = apiKey && apiKey.length > 5 ? errorMsg.replace(apiKey, "REDACTED") : errorMsg;
-    throw new Error(safeErrorMsg);
+    throw new Error(safeErrorMsg, { cause: error });
   }
 }
 
@@ -541,6 +549,6 @@ export async function getPortfolioAnalysis(
   } catch (error) {
     const errorMsg = error.message || "Unknown error";
     const safeErrorMsg = apiKey && apiKey.length > 5 ? errorMsg.replace(apiKey, "REDACTED") : errorMsg;
-    throw new Error(safeErrorMsg);
+    throw new Error(safeErrorMsg, { cause: error });
   }
 }

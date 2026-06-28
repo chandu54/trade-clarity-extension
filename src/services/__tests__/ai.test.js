@@ -66,7 +66,6 @@ describe("ai service", () => {
     });
   });
 
-  describe("API fetching (Gemini)", () => {
     it("should call Gemini API with correct payload", async () => {
       const apiKey = "valid-gemini-api-key-long-enough-39-chars";
       const model = "gemini-1.5-pro";
@@ -91,6 +90,47 @@ describe("ai service", () => {
         })
       );
       expect(result.marketBias).toBe("Positive");
+    });
+
+  describe("Negative & Error Handling Scenarios", () => {
+    const apiKey = "valid-gemini-api-key-long-enough-39-chars";
+    const weekData = { 
+      stocks: { AAPL: { symbol: "AAPL", sector: "Tech" } }
+    };
+
+    it("should throw error when API returns HTTP error status (e.g. 403 Forbidden)", async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 403,
+        statusText: "Forbidden",
+        json: () => Promise.resolve({
+          error: { message: "API key not valid." }
+        })
+      });
+
+      await expect(getAiAnalysis(apiKey, "gemini-1.5-pro", weekData, {}))
+        .rejects.toThrow("API key not valid.");
+    });
+
+    it("should throw error when Gemini returns empty parts text", async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          candidates: [{ content: { parts: [{}] } }]
+        })
+      });
+
+      await expect(getAiAnalysis(apiKey, "gemini-1.5-pro", weekData, {}))
+        .rejects.toThrow("Empty response from Gemini");
+    });
+
+    it("should handle request timeout AbortError correctly", async () => {
+      const abortError = new Error("The AI request timed out. Please try again.");
+      abortError.name = "AbortError";
+      fetchMock.mockRejectedValueOnce(abortError);
+
+      await expect(getAiAnalysis(apiKey, "gemini-1.5-pro", weekData, {}))
+        .rejects.toThrow("The AI request timed out");
     });
   });
 });

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useRef } from "react";
 import Modal from "./Modal";
 import { testConnection, PROMPT_TEMPLATES } from "../services/ai";
 import { CONFIG } from "../constants/config";
@@ -6,13 +6,19 @@ import { useConfirm } from "./ConfirmContext";
 
 const KNOWN_MODELS = CONFIG.MODELS;
 
-const SettingsModal = ({ isOpen, onClose, data, setData }) => {
+const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
   const [activeTab, setActiveTab] = useState("general");
   const [libraryCategory, setLibraryCategory] = useState("watchlist");
-  const [apiKey, setApiKey] = useState("");
-  const [model, setModel] = useState("");
-  const [isCustomModel, setIsCustomModel] = useState(false);
-  const [isPro, setIsPro] = useState(false);
+  const [apiKey, setApiKey] = useState(() => data?.aiSettings?.apiKey || "");
+  const [model, setModel] = useState(() => data?.aiSettings?.model || CONFIG.DEFAULT_AI_MODEL);
+  const [isCustomModel, setIsCustomModel] = useState(() => {
+    const savedModel = data?.aiSettings?.model;
+    if (savedModel) {
+      return !KNOWN_MODELS.some((m) => m.value === savedModel);
+    }
+    return false;
+  });
+  const [isPro, setIsPro] = useState(() => data?.isPro || false);
   const [saveStatus, setSaveStatus] = useState("");
   const textareaRef = useRef(null);
   const { confirm } = useConfirm();
@@ -20,16 +26,27 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
   const [testResult, setTestResult] = useState(null);
 
   // Library State
-  const [library, setLibrary] = useState({ watchlist: [], phenomena: [], stock: [] });
+  const [library, setLibrary] = useState(() => {
+    const promptLibrary = data?.aiSettings?.promptLibrary;
+    if (promptLibrary) {
+      return structuredClone(promptLibrary);
+    }
+    return { watchlist: [], phenomena: [], stock: [] };
+  });
   const [editingPromptId, setEditingPromptId] = useState(null);
   const [tempPrompt, setTempPrompt] = useState({ label: "", text: "" });
 
-  useEffect(() => {
+  const [prevIsOpen, setPrevIsOpen] = useState(isOpen);
+  const [prevData, setPrevData] = useState(data);
+
+  if (isOpen !== prevIsOpen || data !== prevData) {
+    setPrevIsOpen(isOpen);
+    setPrevData(data);
     if (isOpen && data?.aiSettings) {
       setIsPro(data.isPro || false);
       const { apiKey: savedKey, model: savedModel, promptLibrary } = data.aiSettings;
 
-      if (savedKey) setApiKey(savedKey);
+      setApiKey(savedKey || "");
       
       if (savedModel) {
         setModel(savedModel);
@@ -42,9 +59,11 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
 
       if (promptLibrary) {
         setLibrary(structuredClone(promptLibrary));
+      } else {
+        setLibrary({ watchlist: [], phenomena: [], stock: [] });
       }
     }
-  }, [isOpen, data]);
+  }
 
   const handleSave = () => {
     setData((prev) => ({
@@ -139,6 +158,14 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
   const startEdit = (prompt) => {
     setEditingPromptId(prompt.id);
     setTempPrompt({ label: prompt.label, text: prompt.text });
+  };
+
+  const handleOpenGuide = (e) => {
+    e.preventDefault();
+    onClose();
+    setTimeout(() => {
+      if (onOpenModal) onOpenModal("guide", { initialTab: "ai_settings" });
+    }, 100);
   };
 
   const getVariableHints = (cat) => {
@@ -409,8 +436,19 @@ const SettingsModal = ({ isOpen, onClose, data, setData }) => {
           </div>
         )}
 
-        <div className="settings-footer-note mt-4">
-          AI strategies define your analytical edge. Be specific in your instructions.
+        <div className="settings-footer-note mt-4 flex justify-between items-center text-xs text-muted">
+          <span>AI strategies define your analytical edge. Be specific in your instructions.</span>
+          <span>
+            Need help?{" "}
+            <a
+              href="#"
+              onClick={handleOpenGuide}
+              className="text-primary underline hover:text-primary-light"
+              style={{ cursor: "pointer" }}
+            >
+              Read Prompt Guide
+            </a>
+          </span>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { describe, it, vi, beforeEach } from 'vitest';
-import { render, screen, act, waitFor } from '@testing-library/react';
+import { render, screen, waitFor } from '@testing-library/react';
 import DeepViewAi from '../DeepViewAi';
 import * as aiService from '../../services/ai';
 

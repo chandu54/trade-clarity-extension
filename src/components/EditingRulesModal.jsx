@@ -9,21 +9,33 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
   const liquidityDays = data.uiConfig?.liquidityDays || 20;
 
   function toggleReadOnly(val) {
-    if (!data.uiConfig) data.uiConfig = {};
-    data.uiConfig.lockPreviousWeeks = val;
-    setData({ ...data });
+    setData({
+      ...data,
+      uiConfig: {
+        ...(data.uiConfig || {}),
+        lockPreviousWeeks: val,
+      },
+    });
   }
 
   function toggleApiHydration(val) {
-    if (!data.uiConfig) data.uiConfig = {};
-    data.uiConfig.enableApiHydration = val;
-    setData({ ...data });
+    setData({
+      ...data,
+      uiConfig: {
+        ...(data.uiConfig || {}),
+        enableApiHydration: val,
+      },
+    });
   }
 
   function handleDaysChange(field, val) {
-    if (!data.uiConfig) data.uiConfig = {};
-    data.uiConfig[field] = parseInt(val, 10) || 20;
-    setData({ ...data });
+    setData({
+      ...data,
+      uiConfig: {
+        ...(data.uiConfig || {}),
+        [field]: parseInt(val, 10) || 20,
+      },
+    });
   }
 
   return (
@@ -105,9 +117,13 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
             type="checkbox"
             checked={data.uiConfig?.autoRefreshMetrics !== false}
             onChange={(e) => {
-              if (!data.uiConfig) data.uiConfig = {};
-              data.uiConfig.autoRefreshMetrics = e.target.checked;
-              setData({ ...data });
+              setData({
+                ...data,
+                uiConfig: {
+                  ...(data.uiConfig || {}),
+                  autoRefreshMetrics: e.target.checked,
+                },
+              });
             }}
           />
           <span className="slider" />

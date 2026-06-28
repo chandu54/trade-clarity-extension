@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useMemo } from "react";
 import Modal from "./Modal";
 import TrashIcon from "./icons/TrashIcon";
 
@@ -8,31 +8,15 @@ export default function ManageSectorsModal({
   onClose,
   isOpen,
 }) {
-  const [localErrors, setLocalErrors] = useState({});
-  const sectors = data.uiConfig?.sectors || [];
+  const sectors = useMemo(() => {
+    return data.uiConfig?.sectors || [];
+  }, [data.uiConfig?.sectors]);
 
-  // Validate on mount to catch existing issues
-  useEffect(() => {
-    if (isOpen) {
-      validate(sectors);
-    }
-  }, [isOpen]);
-
-  function updateSectors(next) {
-    const newData = structuredClone(data);
-    newData.uiConfig.sectors = next;
-    newData.sectors = next;
-    setData(newData);
-    
-    // Perform validation on the new state
-    validate(next);
-  }
-
-  function validate(currentSectors) {
+  const localErrors = useMemo(() => {
     const newErrors = {};
-    const names = currentSectors.map(s => (s.name || "").trim().toLowerCase());
+    const names = sectors.map(s => (s.name || "").trim().toLowerCase());
     
-    currentSectors.forEach((s, i) => {
+    sectors.forEach((s, i) => {
       const name = (s.name || "").trim();
       if (!name) {
         newErrors[i] = "empty";
@@ -41,8 +25,14 @@ export default function ManageSectorsModal({
       }
     });
     
-    setLocalErrors(newErrors);
-    return Object.keys(newErrors).length === 0;
+    return newErrors;
+  }, [sectors]);
+
+  function updateSectors(next) {
+    const newData = structuredClone(data);
+    newData.uiConfig.sectors = next;
+    newData.sectors = next;
+    setData(newData);
   }
 
   function addSector() {
@@ -80,7 +70,6 @@ export default function ManageSectorsModal({
 
   const hasErrors = Object.keys(localErrors).length > 0;
   const isDuplicate = Object.values(localErrors).includes("duplicate");
-  const isEmpty = Object.values(localErrors).includes("empty");
 
   return (
     <Modal 

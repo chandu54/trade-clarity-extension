@@ -227,7 +227,6 @@ export default function JournalView({ country, data, setData }) {
   const [expandedTradeId, setExpandedTradeId] = useState(null);
 
   // Progressive Disclosure Toggles inside Modal
-  const [showOptionalDetails, setShowOptionalDetails] = useState(false);
   const [showScalingForm, setShowScalingForm] = useState(false);
 
   // Search & Filter state
@@ -273,7 +272,9 @@ export default function JournalView({ country, data, setData }) {
   // Default statusFilter to 'Open' when switching to Snapshot tab
   useEffect(() => {
     if (activeJournalTab === 'snapshot') {
-      setStatusFilter('Open');
+      Promise.resolve().then(() => {
+        setStatusFilter('Open');
+      });
     }
   }, [activeJournalTab]);
 
@@ -291,8 +292,10 @@ export default function JournalView({ country, data, setData }) {
 
   // Sync index ticker when country changes
   useEffect(() => {
-    setSelectedTickers([country === 'IN' ? '^NSEI' : '^GSPC']);
-    setBenchmarkPriceDataMap({});
+    Promise.resolve().then(() => {
+      setSelectedTickers([country === 'IN' ? '^NSEI' : '^GSPC']);
+      setBenchmarkPriceDataMap({});
+    });
   }, [country]);
 
   // Click outside compare dropdown logic
@@ -344,7 +347,7 @@ export default function JournalView({ country, data, setData }) {
     try {
       const saved = localStorage.getItem(`trade_clarity_journal_col_visibility_${country}`);
       if (saved) return JSON.parse(saved);
-    } catch {}
+    } catch (_e) { void 0; }
     const initial = {};
     DEFAULT_COLUMN_ORDER.forEach(col => {
       initial[col] = true;
@@ -475,7 +478,7 @@ export default function JournalView({ country, data, setData }) {
   }, [columnOrder, columnVisibility]);
 
   // Autocomplete watchlist lookup
-  const [autocompleteSuggestion, setAutocompleteSuggestion] = useState(null);
+
 
   // Global Account Capital & Default Risk Configurations
   const [isEditingCapital, setIsEditingCapital] = useState(false);
@@ -487,7 +490,7 @@ export default function JournalView({ country, data, setData }) {
   const [activeModalTab, setActiveModalTab] = useState('entry');
 
   // Base Form State (No tags or sector system)
-  const initialFormState = {
+  const initialFormState = useMemo(() => ({
     symbol: '',
     setup: '',
     initialStopLoss: '',
@@ -505,7 +508,7 @@ export default function JournalView({ country, data, setData }) {
     postMortem: '',
     transactions: [],
     isScaling: false
-  };
+  }), []);
 
   const [formData, setFormData] = useState(initialFormState);
 
@@ -519,7 +522,7 @@ export default function JournalView({ country, data, setData }) {
   const [slCashInput, setSlCashInput] = useState('');
 
   // Position Sizing Calculator local states
-  const [showSizer, setShowSizer] = useState(false);
+
   const [sizerInvestPct, setSizerInvestPct] = useState(''); // % of capital to invest
   const [sizerInvestCash, setSizerInvestCash] = useState(''); // fixed cash investment
   const [sizerUseCash, setSizerUseCash] = useState(false); // true = fixed cash, false = % of capital
@@ -596,7 +599,9 @@ export default function JournalView({ country, data, setData }) {
 
   // 2-minute polling sync
   useEffect(() => {
-    loadLivePrices();
+    Promise.resolve().then(() => {
+      loadLivePrices();
+    });
     const interval = setInterval(loadLivePrices, 120 * 1000);
     return () => clearInterval(interval);
   }, [loadLivePrices]);
@@ -991,7 +996,9 @@ export default function JournalView({ country, data, setData }) {
 
   useEffect(() => {
     if (activeJournalTab === 'analytics') {
-      loadBenchmarkData();
+      Promise.resolve().then(() => {
+        loadBenchmarkData();
+      });
     }
   }, [loadBenchmarkData, activeJournalTab, selectedTickers]);
 
@@ -1015,7 +1022,9 @@ export default function JournalView({ country, data, setData }) {
 
   useEffect(() => {
     if (activeJournalTab === 'snapshot') {
-      loadSnapshotData();
+      Promise.resolve().then(() => {
+        loadSnapshotData();
+      });
     }
   }, [loadSnapshotData, activeJournalTab]);
 
@@ -1028,19 +1037,7 @@ export default function JournalView({ country, data, setData }) {
 
   // (Filtered positions moved above loadSnapshotData to resolve Temporal Dead Zone)
 
-  // Global Portfolio Heat Calculation
-  const portfolioHeat = useMemo(() => {
-    let totalRisk = 0;
-    calculatedPositions.forEach(p => {
-      if (!p.isClosed) {
-        const riskPerShare = p.isLong 
-          ? Math.max(0, p.avgEntryPrice - p.initialStopLoss) 
-          : Math.max(0, p.initialStopLoss - p.avgEntryPrice);
-        totalRisk += p.openQty * riskPerShare;
-      }
-    });
-    return totalRisk;
-  }, [calculatedPositions]);
+
 
   // Overall Performance metrics
   const metrics = useMemo(() => {
@@ -1088,58 +1085,13 @@ export default function JournalView({ country, data, setData }) {
     };
   }, [calculatedPositions]);
 
-  // Win/Loss Streak bullets (latest 8 closed trades)
-  const streakSparks = useMemo(() => {
-    return calculatedPositions
-      .filter(p => p.isClosed)
-      .slice(0, 8)
-      .reverse();
-  }, [calculatedPositions]);
 
-  // Current Active Win/Loss Streak Count
-  const currentStreak = useMemo(() => {
-    const closed = calculatedPositions.filter(p => p.isClosed);
-    if (closed.length === 0) return { type: 'neutral', count: 0 };
-    
-    let count = 0;
-    let type = null;
-    
-    for (let i = 0; i < closed.length; i++) {
-      const p = closed[i];
-      const isWin = p.totalPnL > 0.01;
-      const isLoss = p.totalPnL < -0.01;
-      
-      if (!isWin && !isLoss) continue;
-      
-      const currentType = isWin ? 'win' : 'loss';
-      if (type === null) {
-        type = currentType;
-        count = 1;
-      } else if (type === currentType) {
-        count++;
-      } else {
-        break;
-      }
-    }
-    return { type: type || 'neutral', count };
-  }, [calculatedPositions]);
 
-  // Profit Distribution percentage calculator
-  const profitDistributionPct = useMemo(() => {
-    const total = metrics.grossGains + metrics.grossLosses;
-    if (total === 0) return 0;
-    return (metrics.grossGains / total) * 100;
-  }, [metrics.grossGains, metrics.grossLosses]);
 
-  // Performance Rating Badge
-  const edgeRating = useMemo(() => {
-    const netR = Number(metrics.netR);
-    if (netR >= 15) return { text: "INSTITUTIONAL EDGE", color: "text-emerald-600 dark:text-emerald-400 bg-emerald-500/5 dark:bg-emerald-500/10 border-emerald-500/25" };
-    if (netR >= 5) return { text: "CONSISTENT PROCESS", color: "text-teal-600 dark:text-teal-400 bg-teal-500/5 dark:bg-teal-400/10 border-teal-500/25" };
-    if (netR > 0) return { text: "PROFITABLE RETURN", color: "text-sky-600 dark:text-sky-400 bg-sky-500/5 dark:bg-sky-500/10 border-sky-500/25" };
-    if (netR === 0) return { text: "NEUTRAL BASIS", color: "text-slate-600 dark:text-slate-400 bg-slate-500/5 dark:bg-slate-500/10 border-slate-500/25" };
-    return { text: "TEMPERING PROCESS", color: "text-rose-600 dark:text-rose-400 bg-rose-500/5 dark:bg-rose-500/10 border-rose-500/25" };
-  }, [metrics.netR]);
+
+
+
+
 
   // Dashboard Metrics
   const dashboardMetrics = useMemo(() => {
@@ -1175,171 +1127,7 @@ export default function JournalView({ country, data, setData }) {
     };
   }, [calculatedPositions, accountCapital]);
 
-  const insightsData = useMemo(() => {
-    // 1. Symbol Aggregation (Leaderboards)
-    const stockStatsMap = {};
-    calculatedPositions.forEach(p => {
-      if (!stockStatsMap[p.symbol]) {
-        stockStatsMap[p.symbol] = {
-          symbol: p.symbol,
-          totalPnL: 0,
-          investedAmount: 0,
-          closedTrades: 0,
-          wins: 0,
-          costBasis: 0,
-          totalTrades: 0,
-        };
-      }
-      const stats = stockStatsMap[p.symbol];
-      stats.totalPnL += p.totalPnL;
-      stats.totalTrades += 1;
-      if (!p.isClosed) {
-        stats.investedAmount += (p.openQty * p.avgEntryPrice);
-      }
-      stats.costBasis += (p.totalBought * p.avgEntryPrice);
-      if (p.isClosed) {
-        stats.closedTrades += 1;
-        if (p.totalPnL > 0.01) stats.wins += 1;
-      }
-    });
 
-    const stockStats = Object.values(stockStatsMap).map(s => {
-      const returnPct = s.costBasis > 0 ? (s.totalPnL / s.costBasis) * 100 : 0;
-      return {
-        ...s,
-        returnPct
-      };
-    });
-
-    const bestByCash = [...stockStats]
-      .filter(s => s.totalPnL > 0)
-      .sort((a, b) => b.totalPnL - a.totalPnL)
-      .slice(0, 5);
-
-    const worstByCash = [...stockStats]
-      .filter(s => s.totalPnL < 0)
-      .sort((a, b) => a.totalPnL - b.totalPnL)
-      .slice(0, 5);
-
-    const bestByPct = [...stockStats]
-      .filter(s => s.returnPct > 0)
-      .sort((a, b) => b.returnPct - a.returnPct)
-      .slice(0, 5);
-
-    const worstByPct = [...stockStats]
-      .filter(s => s.returnPct < 0)
-      .sort((a, b) => a.returnPct - b.returnPct)
-      .slice(0, 5);
-
-    const mostInvested = [...stockStats]
-      .filter(s => s.investedAmount > 0)
-      .sort((a, b) => b.investedAmount - a.investedAmount)
-      .slice(0, 5);
-
-    // 2. Setup/Strategy performance ranking
-    const strategyStatsMap = {};
-    calculatedPositions.forEach(p => {
-      const name = p.setup || 'No Setup';
-      if (!strategyStatsMap[name]) {
-        strategyStatsMap[name] = {
-          name,
-          totalTrades: 0,
-          closedTrades: 0,
-          wins: 0,
-          losses: 0,
-          totalPnL: 0,
-          winRate: 0,
-        };
-      }
-      const stats = strategyStatsMap[name];
-      stats.totalTrades += 1;
-      stats.totalPnL += p.totalPnL;
-      if (p.isClosed) {
-        stats.closedTrades += 1;
-        if (p.totalPnL > 0.01) {
-          stats.wins += 1;
-        } else if (p.totalPnL < -0.01) {
-          stats.losses += 1;
-        }
-      }
-    });
-
-    const strategyStats = Object.values(strategyStatsMap).map(s => {
-      s.winRate = s.closedTrades > 0 ? Math.round((s.wins / s.closedTrades) * 100) : 0;
-      return s;
-    }).sort((a, b) => b.winRate - a.winRate || b.totalPnL - a.totalPnL);
-
-    // 3. Notable Milestone Badges
-    const badges = [];
-    if (dashboardMetrics.returnPct >= 5) {
-      badges.push({
-        id: 'green-horizon',
-        title: 'Green Horizon',
-        description: `Overall portfolio return is +${dashboardMetrics.returnPct.toFixed(1)}%. Great job!`,
-        icon: '🟢',
-        color: 'border-emerald-500/30 bg-emerald-500/5 text-emerald-400'
-      });
-    }
-    const pf = metrics.profitFactor;
-    const pfNum = Number(pf);
-    if (((!isNaN(pfNum) && pfNum >= 2.0) || (pf === "∞" && metrics.losses === 0 && metrics.wins > 0)) && metrics.closed >= 3) {
-      badges.push({
-        id: 'profit-factor-master',
-        title: 'Process Master',
-        description: `Profit Factor is a pristine ${pf}. Outstanding execution consistency.`,
-        icon: '🏆',
-        color: 'border-indigo-500/30 bg-indigo-500/5 text-indigo-400'
-      });
-    }
-    const avgW = Number(metrics.avgWin);
-    const avgL = Number(metrics.avgLoss);
-    if (avgL > 0 && (avgW / avgL) >= 2.0 && metrics.wins >= 2) {
-      badges.push({
-        id: 'risk-manager',
-        title: 'Risk Sentinel',
-        description: `Average win is ${(avgW / avgL).toFixed(1)}x larger than average loss. Excellent risk-reward logic!`,
-        icon: '🛡️',
-        color: 'border-sky-500/30 bg-sky-500/5 text-sky-400'
-      });
-    }
-    if (currentStreak.type === 'win' && currentStreak.count >= 3) {
-      badges.push({
-        id: 'streak-master',
-        title: 'Streak Titan',
-        description: `Active win streak of ${currentStreak.count} trades closed in profit!`,
-        icon: '🔥',
-        color: 'border-amber-500/30 bg-amber-500/5 text-amber-400'
-      });
-    }
-    if (dashboardMetrics.investedPct >= 50) {
-      badges.push({
-        id: 'heavy-weight',
-        title: 'High Allocator',
-        description: `Over 50% of account capital is actively deployed in position layouts.`,
-        icon: '⚡',
-        color: 'border-purple-500/30 bg-purple-500/5 text-purple-400'
-      });
-    }
-    if (metrics.closed >= 1) {
-      badges.push({
-        id: 'first-flight',
-        title: 'First Flight',
-        description: 'Successfully logged and closed your first trading setup.',
-        icon: '✈️',
-        color: 'border-teal-500/30 bg-teal-500/5 text-teal-400'
-      });
-    }
-
-    return {
-      bestByCash,
-      worstByCash,
-      bestByPct,
-      worstByPct,
-      mostInvested,
-      strategyStats,
-      badges
-    };
-  }, [calculatedPositions, metrics, currentStreak, dashboardMetrics, country]);
 
   // Analytics specific Performance metrics
   const analyticsMetrics = useMemo(() => {
@@ -1622,7 +1410,7 @@ export default function JournalView({ country, data, setData }) {
       strategyStats,
       badges
     };
-  }, [analyticsPositions, analyticsMetrics, analyticsCurrentStreak, analyticsDashboardMetrics, country]);
+  }, [analyticsPositions, analyticsMetrics, analyticsCurrentStreak, analyticsDashboardMetrics]);
 
 
 
@@ -1652,13 +1440,17 @@ export default function JournalView({ country, data, setData }) {
   // Debounced Modal Live Price Hydration & Quick-fill
   useEffect(() => {
     if (!showModal) {
-      setModalLivePrice(null);
-      setIsFetchingModalPrice(false);
+      Promise.resolve().then(() => {
+        setModalLivePrice(null);
+        setIsFetchingModalPrice(false);
+      });
       return;
     }
     const sym = formData.symbol?.toUpperCase().trim();
     if (!sym || sym.length < 2) {
-      setModalLivePrice(null);
+      Promise.resolve().then(() => {
+        setModalLivePrice(null);
+      });
       return;
     }
 
@@ -1725,33 +1517,36 @@ export default function JournalView({ country, data, setData }) {
   useEffect(() => {
     if (!showModal) return;
     const slPrice = Number(formData.initialStopLoss);
-    if (slPrice > 0 && refEntryPrice > 0) {
-      const dist = Math.abs(refEntryPrice - slPrice);
-      const pct = (dist / refEntryPrice) * 100;
-      
-      if (document.activeElement?.id !== 'sl-price-input') {
-        setSlPriceInput(slPrice.toString());
+    
+    Promise.resolve().then(() => {
+      if (slPrice > 0 && refEntryPrice > 0) {
+        const dist = Math.abs(refEntryPrice - slPrice);
+        const pct = (dist / refEntryPrice) * 100;
+        
+        if (document.activeElement?.id !== 'sl-price-input') {
+          setSlPriceInput(slPrice.toString());
+        }
+        if (document.activeElement?.id !== 'sl-pct-input') {
+          setSlPctInput(pct.toFixed(2));
+        }
+        if (refQty > 0 && document.activeElement?.id !== 'sl-cash-input') {
+          const cash = refQty * dist;
+          setSlCashInput(cash.toFixed(2));
+        } else if (refQty <= 0) {
+          setSlCashInput('');
+        }
+      } else {
+        if (document.activeElement?.id !== 'sl-price-input') {
+          setSlPriceInput(formData.initialStopLoss || '');
+        }
+        if (document.activeElement?.id !== 'sl-pct-input') {
+          setSlPctInput('');
+        }
+        if (document.activeElement?.id !== 'sl-cash-input') {
+          setSlCashInput('');
+        }
       }
-      if (document.activeElement?.id !== 'sl-pct-input') {
-        setSlPctInput(pct.toFixed(2));
-      }
-      if (refQty > 0 && document.activeElement?.id !== 'sl-cash-input') {
-        const cash = refQty * dist;
-        setSlCashInput(cash.toFixed(2));
-      } else if (refQty <= 0) {
-        setSlCashInput('');
-      }
-    } else {
-      if (document.activeElement?.id !== 'sl-price-input') {
-        setSlPriceInput(formData.initialStopLoss || '');
-      }
-      if (document.activeElement?.id !== 'sl-pct-input') {
-        setSlPctInput('');
-      }
-      if (document.activeElement?.id !== 'sl-cash-input') {
-        setSlCashInput('');
-      }
-    }
+    });
   }, [formData.initialStopLoss, refEntryPrice, refQty, showModal]);
 
   const modalIsLong = useMemo(() => {
@@ -1815,17 +1610,7 @@ export default function JournalView({ country, data, setData }) {
     setFormData(prev => ({ ...prev, symbol: sym }));
   };
 
-  // Keyboard shortcut Ctrl+S / Cmd+S save listener
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (showModal && (e.ctrlKey || e.metaKey) && e.key === 's') {
-        e.preventDefault();
-        handleSavePosition();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [showModal, formData, showScalingForm, editingTradeId, refEntryPrice, refQty]);
+
 
   // Global keyboard shortcuts: Ctrl+K / Cmd+K to focus search, Alt+R to refresh quotes
   useEffect(() => {
@@ -1889,7 +1674,7 @@ export default function JournalView({ country, data, setData }) {
   };
 
   // Save Trade Position Log (Robust Synchronization Engine)
-  const handleSavePosition = () => {
+  const handleSavePosition = useCallback(() => {
     if (!formData.symbol.trim()) {
       showToast("Symbol is required", "error");
       return;
@@ -2045,10 +1830,20 @@ export default function JournalView({ country, data, setData }) {
     setShowModal(false);
     setEditingTradeId(null);
     setFormData(initialFormState);
-    setAutocompleteSuggestion(null);
     setShowScalingForm(false);
-    setShowOptionalDetails(false);
-  };
+  }, [formData, showToast, refEntryPrice, modalIsLong, modalLivePrice, showScalingForm, editingTradeId, country, setData, initialFormState]);
+
+  // Keyboard shortcut Ctrl+S / Cmd+S save listener
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (showModal && (e.ctrlKey || e.metaKey) && e.key === 's') {
+        e.preventDefault();
+        handleSavePosition();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [showModal, formData, showScalingForm, editingTradeId, refEntryPrice, refQty, handleSavePosition]);
 
   const handleEditClick = (trade, e) => {
     e.stopPropagation();
@@ -2087,12 +1882,7 @@ export default function JournalView({ country, data, setData }) {
       setShowScalingForm(false);
     }
 
-    // Auto-reveal optional thesis details if data exists
-    if (trade.notes || trade.chartUrl) {
-      setShowOptionalDetails(true);
-    } else {
-      setShowOptionalDetails(false);
-    }
+
 
     setShowModal(true);
   };
@@ -2264,7 +2054,6 @@ export default function JournalView({ country, data, setData }) {
               setFormData(initialFormState);
               setEditingTradeId(null);
               setShowScalingForm(false);
-              setShowOptionalDetails(false);
               setShowModal(true);
             }}
           >
@@ -3275,7 +3064,7 @@ export default function JournalView({ country, data, setData }) {
                       // Empty line → spacer
                       if (line.trim() === '') return <div key={i} className="h-1.5" />;
                       // Bullet points
-                      const isBullet = /^[\*\-]\s/.test(line);
+                      const isBullet = /^[*-]\s/.test(line);
                       const content = (isBullet ? line.slice(2) : line)
                         .split(/\*\*(.+?)\*\*/g)
                         .map((part, j) => j % 2 === 1
@@ -3313,13 +3102,10 @@ export default function JournalView({ country, data, setData }) {
             setShowModal(false);
             setEditingTradeId(null);
             setFormData(initialFormState);
-            setAutocompleteSuggestion(null);
             setShowScalingForm(false);
-            setShowOptionalDetails(false);
             setActiveModalTab('entry');
-            setShowSizer(false);
-            setSizerRiskPct('1');
-            setSizerRiskCash('');
+            setSizerInvestPct('');
+            setSizerInvestCash('');
             setSizerUseCash(false);
           }} 
           title={editingTradeId ? "Position Parameters" : "Log Trade Position"} 
@@ -4086,11 +3872,9 @@ export default function JournalView({ country, data, setData }) {
                 setEditingTradeId(null);
                 setFormData(initialFormState);
                 setShowScalingForm(false);
-                setShowOptionalDetails(false);
                 setActiveModalTab('entry');
-                setShowSizer(false);
-                setSizerRiskPct('1');
-                setSizerRiskCash('');
+                setSizerInvestPct('');
+                setSizerInvestCash('');
                 setSizerUseCash(false);
               }}
             >

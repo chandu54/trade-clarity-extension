@@ -1,4 +1,4 @@
-import { describe, it, vi, beforeEach, afterEach, expect } from 'vitest';
+import { describe, it, vi, beforeEach, expect } from 'vitest';
 import { render, screen, fireEvent, waitFor, cleanup } from '@testing-library/react';
 import JournalView from '../JournalView';
 import { ToastContext } from '../ToastContext';

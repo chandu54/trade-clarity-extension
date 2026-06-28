@@ -334,3 +334,45 @@ An analytical dashboard to audit your system edge.
 - **Performance Curve**: A line graph charting your account equity over time.
 - **Benchmark Comparison**: Plots your equity curve directly against indices (Nifty 50 or S&P 500) to confirm if you are outperforming the market index.
 
+---
+
+## 11. AI Settings & Prompt Library
+
+TradeClarity.market lets you integrate institutional-grade AI analysis (powered securely by the Google Gemini API) directly into your trading workflow. Instead of relying on generic prompts, you can create and manage a proprietary strategy library to dictate exactly how the AI evaluates your watchlists, sectors, and individual setups.
+
+### 🤖 1. General AI Configuration
+- **Access**: Open **Settings (⚙️) > AI integration** (at the bottom of the dropdown).
+- **Secure API Key**: Enter your Google Gemini API key. For maximum privacy, this key is saved exclusively in your local browser's storage and is never sent to external servers.
+- **Connection Testing**: Click **Test Connection** to perform a live diagnostic check. A success status banner will confirm if the API is configured correctly.
+- **Model Selection**: Choose between available models:
+  - *Gemini 1.5 Flash*: Best for fast, cost-efficient, everyday analysis.
+  - *Gemini 1.5 Pro*: Best for premium features, complex logic, and deep reasoning.
+  - *Custom Model ID*: You can type in any specific model ID from Google AI Studio.
+- **Pro Mode**: Check "Enable Premium Features (Pro Mode)" to activate premium strategy models.
+
+### 📚 2. Proprietary Strategy Library Tabs
+The Prompt Library tab organizes your custom AI instructions into three distinct scopes:
+1. **Watchlist**: Used when analyzing the weekly watchlist (macro bias, sector flow, SEPA setups).
+2. **Phenomena**: Used in the Category Analysis modal to analyze entire sectors (leadership tiering, relative strength decoupling anomalies).
+3. **Single Stock**: Used in the Journal Detail view to conduct deep technical and setup research on a single symbol.
+
+### ✍️ 3. Variable Placeholders & Mini Editor
+The mini editor allows you to type custom analysis instructions. To inject real-time data from your database, click the variable badges below the text area to insert placeholders:
+- **Watchlist Variables**:
+  - `{stocks}`: Clean JSON of all active stocks, checks, notes, and tags in the grid.
+  - `{sectors}`: A list of sectors present in the current grid.
+  - `{tickers}`: A comma-separated list of symbols.
+- **Phenomena Variables**:
+  - `{category}`: The active sector or category name.
+  - `{tickers}`: Comma-separated list of symbols in that category.
+- **Single Stock Variables**:
+  - `{symbol}` / `{name}`: The stock symbol and company name.
+  - `{price}`: The last-traded price.
+  - `{sector}`: The assigned sector.
+  - `{notes}`: Your manual journal notes or speech-dictated remarks.
+
+### ⚡ 4. Library Operations & Actions
+- **Set as Default (🎯)**: Mark any custom or system strategy as the default analyzer for that tab. The system will automatically use the default template when triggering AI actions.
+- **Clone / Duplicate (📋)**: Copy any strategy, including system templates, to create a customizable copy without losing the original.
+- **Edit / Update (📝)**: Modify prompt names and text inline, with a character counter to monitor length.
+- **Delete (🗑️)**: Safely delete custom strategies. Active defaults are protected to prevent accidental deletion.
