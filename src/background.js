@@ -38,25 +38,37 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (!symbols || !Array.isArray(symbols) || symbols.length === 0) return;
 
-    // Add new symbols to the queue
+    let addedCount = 0;
+    // Add new symbols to the queue, avoiding duplicates
     symbols.forEach((symbol) => {
-      processingQueue.push({
-        symbol,
-        country,
-        weekKey,
-        paramDefs,
-        adrDays,
-        liquidityDays,
-      });
+      const isAlreadyQueued = processingQueue.some(
+        (item) =>
+          item.symbol === symbol &&
+          item.country === country &&
+          item.weekKey === weekKey
+      );
+      if (!isAlreadyQueued) {
+        processingQueue.push({
+          symbol,
+          country,
+          weekKey,
+          paramDefs,
+          adrDays,
+          liquidityDays,
+        });
+        addedCount++;
+      }
     });
 
-    totalJobs += symbols.length;
+    if (addedCount > 0) {
+      totalJobs += addedCount;
 
-    if (!isProcessing) {
-      processQueue();
+      if (!isProcessing) {
+        processQueue();
+      }
     }
 
-    sendResponse({ status: "queued", count: symbols.length });
+    sendResponse({ status: "queued", count: addedCount });
   }
 
   if (message.action === "RUN_BULK_AI_ANALYSIS") {
@@ -245,6 +257,7 @@ async function processQueue() {
 
   // Take the next batch
   const batch = processingQueue.splice(0, CONFIG.BATCH_SIZE);
+  console.log(`[Sync] Processing batch of ${batch.length} symbols. Remaining in queue: ${processingQueue.length}`);
 
   const results = await Promise.allSettled(
     batch.map((item) =>
@@ -301,8 +314,12 @@ async function fetchWithRetryAndTimeout(symbol, country, paramDefs, adrDays, liq
       return await fetchAndCalculateMetrics(symbol, country, paramDefs, adrDays, liquidityDays);
     } catch (err) {
       if (i === retries) throw err;
-      // Exponential backoff or simple delay
-      await new Promise(r => setTimeout(r, 1000 * (i + 1)));
+      const errMsg = err.message || "";
+      const isRateLimit = errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("quota");
+      
+      const waitTime = isRateLimit ? 5000 * (i + 1) : 1000 * (i + 1);
+      console.warn(`[Sync] Fetch failed for ${symbol} (attempt ${i + 1}/${retries + 1}). Retrying in ${waitTime}ms... error:`, err);
+      await new Promise(r => setTimeout(r, waitTime));
     }
   }
 }
@@ -319,7 +336,7 @@ async function fetchAndCalculateMetrics(
 
   try {
     let ticker = symbol;
-    if (country === "IN") {
+    if (country === "IN" && !symbol.endsWith(".NS") && !symbol.endsWith(".BO") && !symbol.startsWith("^")) {
       ticker = `${symbol}.NS`;
     }
 
@@ -331,13 +348,25 @@ async function fetchAndCalculateMetrics(
     if (maxDays >= 250) range = "2y";
 
     // Fetch Data (Consolidating everything into the v8/chart API which is currently WORKING and bypasses 401s)
-    const url = `${CONFIG.YAHOO_FINANCE_URL}${ticker}?range=${range}&interval=1d`;
-    const response = await fetch(url, { 
+    let url = `${CONFIG.YAHOO_FINANCE_URL}${ticker}?range=${range}&interval=1d`;
+    console.log(`[Sync] Fetching historical data for ${symbol} via primary URL...`);
+    let response = await fetch(url, { 
        signal: controller.signal,
        headers: {
         'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
       }
     });
+
+    if (response.status === 429) {
+      const fallbackUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${ticker}?range=${range}&interval=1d`;
+      console.warn(`[Sync] Primary query returned 429 for ${symbol}. Failing over to query2...`);
+      response = await fetch(fallbackUrl, { 
+        signal: controller.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'
+        }
+      });
+    }
 
     clearTimeout(timeoutId);
 
@@ -373,24 +402,28 @@ async function fetchAndCalculateMetrics(
     // Filter and build historical bars with timestamps for sorting
     let rawBars = [];
     for (let i = 0; i < timestamps.length; i++) {
-        const closeVal = adjCloses[i] !== undefined && adjCloses[i] !== null ? adjCloses[i] : closes[i];
-        const rawClose = closes[i]; // Unadjusted close for turnover/liquidity calculation
-        if (
-            timestamps[i] != null &&
-            highs[i] != null &&
-            lows[i] != null &&
-            closeVal != null &&
-            rawClose != null &&
-            volumes[i] != null
-        ) {
-            rawBars.push({
-                timestamp: timestamps[i],
-                high: highs[i],
-                low: lows[i],
-                close: closeVal,     // Adjusted close for SMA/MA calculations
-                rawClose: rawClose,  // Unadjusted close for liquidity turnover
-                volume: volumes[i],
-            });
+        let closeVal = null;
+        if (adjCloses[i] !== null && adjCloses[i] !== undefined && adjCloses[i] > 0) {
+          closeVal = adjCloses[i];
+        } else if (closes[i] !== null && closes[i] !== undefined && closes[i] > 0) {
+          closeVal = closes[i];
+        }
+
+        const rawClose = (closes[i] !== null && closes[i] !== undefined && closes[i] > 0) ? closes[i] : closeVal;
+
+        if (timestamps[i] != null && closeVal != null && closeVal > 0) {
+          const highVal = (highs[i] != null && highs[i] > 0) ? highs[i] : closeVal;
+          const lowVal = (lows[i] != null && lows[i] > 0) ? lows[i] : closeVal;
+          const volumeVal = (volumes[i] != null && volumes[i] >= 0) ? volumes[i] : 0;
+
+          rawBars.push({
+            timestamp: timestamps[i],
+            high: highVal,
+            low: lowVal,
+            close: closeVal,
+            rawClose: rawClose,
+            volume: volumeVal,
+          });
         }
     }
 
@@ -442,6 +475,8 @@ async function fetchAndCalculateMetrics(
     // --- MOVING AVERAGES MAPPING ---
     const maMatch = getActualParamKeyAndDef(paramDefs, "movingAverages", "Moving Averages", country);
     const maBucket = mapMovingAverageBucket(validDays.map(d => d.close), lastClosePrice);
+
+    console.log(`[Sync] Computed for ${symbol}: ADR=${formattedAdr}, Liquidity=${formattedLiquidity}, MAs=${maBucket}`);
 
     return {
       adr: formattedAdr,
@@ -496,10 +531,16 @@ async function updateStorageWithMetrics(updates) {
             dataChanged = true;
           }
 
+          // Mark stock as successfully synced today
+          stock.lastSyncTime = Date.now();
+          dataChanged = true;
+
           // Update the week-level timestamp whenever we process a successful sync
           weekData.lastUpdatedTime = Date.now();
         }
       });
+
+      console.log(`[Sync] Saving metrics changes to storage for ${updates.map(u => u.symbol).join(', ')}. dataChanged=${dataChanged}`);
 
       if (dataChanged) {
         chrome.storage.local.set({ trading_app_data: db }, () => {

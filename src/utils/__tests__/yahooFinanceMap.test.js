@@ -90,7 +90,7 @@ describe('fetchStockData', () => {
   });
 
   it('should process in batches and respect delay', async () => {
-    const symbols = Array.from({ length: 16 }, (_, i) => `S${i + 1}`); // 16 symbols, Batch size is 15
+    const symbols = Array.from({ length: 6 }, (_, i) => `S${i + 1}`); // 6 symbols, Batch size is 5
     const mockData = {
       chart: {
         result: [{
@@ -105,16 +105,16 @@ describe('fetchStockData', () => {
 
     const resultPromise = fetchStockData(symbols, 'US');
     
-    // First batch of 15 should call fetch
+    // First batch of 5 should call fetch
     await vi.advanceTimersByTimeAsync(0); 
-    expect(fetch).toHaveBeenCalledTimes(15);
+    expect(fetch).toHaveBeenCalledTimes(5);
 
-    // After 100ms, the next batch should start
-    await vi.advanceTimersByTimeAsync(150);
-    expect(fetch).toHaveBeenCalledTimes(16);
+    // After 250ms, the next batch should start
+    await vi.advanceTimersByTimeAsync(300);
+    expect(fetch).toHaveBeenCalledTimes(6);
 
     const result = await resultPromise;
-    expect(result.length).toBe(16);
+    expect(result.length).toBe(6);
   });
 });
 

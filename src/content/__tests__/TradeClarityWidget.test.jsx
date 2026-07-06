@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, vi, beforeEach, expect } from 'vitest';
+import { describe, it, vi, beforeEach, afterEach, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import TradeClarityWidget from '../TradeClarityWidget';
 
@@ -32,6 +32,12 @@ describe('TradeClarityWidget', () => {
     document.title = "RELIANCE - Reliance Industries Ltd."; // Set page title matching ticker symbol format
     localStorage.clear();
     vi.clearAllMocks();
+    vi.useFakeTimers();
+    vi.setSystemTime(new Date('2026-06-22'));
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   it('renders and defaults to minimized toggle button', () => {

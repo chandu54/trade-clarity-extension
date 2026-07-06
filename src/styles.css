@@ -5267,10 +5267,44 @@ input[type=checkbox]:active {
 }
 
 .strategy-select-compact {
-  font-size: 11px !important;
-  height: 24px !important;
-  padding: 0 8px !important;
-  max-width: 120px !important;
+  font-size: 12px !important;
+  height: 28px !important;
+  padding: 0 28px 0 10px !important;
+  max-width: 130px !important;
+  background-color: var(--panel) !important;
+  color: var(--text) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  background-position: calc(100% - 14px) 50%, calc(100% - 8px) 50% !important;
+  background-size: 5px 5px !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05) !important;
+}
+
+.strategy-select-compact:hover {
+  border-color: var(--primary-light) !important;
+  background-color: var(--bg) !important;
+}
+
+.strategy-select-compact:focus {
+  outline: none !important;
+  border-color: var(--primary) !important;
+  box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.15) !important;
+}
+
+.strategy-btn-compact {
+  height: 28px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 12px !important;
+  padding: 0 14px !important;
+  border-radius: 6px !important;
+  font-weight: 700 !important;
+  border: none !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
 }
 
 .ai-report-spacer {
@@ -12867,6 +12901,35 @@ input:checked + .slider:before {
   display: flex !important;
   align-items: center !important;
   gap: 8px !important;
+}
+
+.sidebar-refresh-btn-premium {
+  background: transparent !important;
+  border: none !important;
+  color: var(--muted) !important;
+  cursor: pointer !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  width: 24px !important;
+  height: 24px !important;
+  border-radius: 4px !important;
+  padding: 0 !important;
+  transition: all 0.15s ease !important;
+}
+
+.sidebar-refresh-btn-premium:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--text) !important;
+}
+
+.sidebar-refresh-btn-premium.is-refreshing svg {
+  animation: spin-refresh 1s linear infinite !important;
+}
+
+@keyframes spin-refresh {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
 }
 
 .sidebar-close-btn-premium {

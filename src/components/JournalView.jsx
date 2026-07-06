@@ -7,6 +7,9 @@ import MovingAverageRibbon from './MovingAverageRibbon';
 import BirdsEyeGrid from './BirdsEyeGrid';
 import { getPortfolioAnalysis } from '../services/ai';
 import BenchmarkComparisonChart from './BenchmarkComparisonChart';
+import EditStockModal from './EditStockModal';
+import { getLatestWeekKey, getWeekRangeLabel } from '../utils/weekHelpers';
+import { isParamRelevantForCountry } from '../utils/paramUtils';
 
 
 // ---------------------------------------------------------------------
@@ -573,37 +576,115 @@ export default function JournalView({ country, data, setData }) {
     });
   }, [data?.journals, country]);
 
+  const journalSymbolsSerialized = useMemo(() => {
+    return [...new Set(journalEntries.map(e => e.symbol))].sort().join(",");
+  }, [journalEntries]);
+
+  // Helper to fetch synced Moving Averages from database
+  const getSyncedMA = useCallback((symbol) => {
+    if (!data?.weeks) return "";
+    for (const c of Object.keys(data.weeks)) {
+      for (const w of Object.keys(data.weeks[c])) {
+        const weekData = data.weeks[c][w];
+        if (weekData && weekData.stocks && weekData.stocks[symbol]) {
+          const stock = weekData.stocks[symbol];
+          if (stock.params && stock.params.movingAverages) {
+            return stock.params.movingAverages;
+          }
+        }
+      }
+    }
+    return "";
+  }, [data?.weeks]);
+
+  // Keep liveMAs populated from synced DB metrics on mount/updates
+  useEffect(() => {
+    const symbols = journalSymbolsSerialized ? journalSymbolsSerialized.split(",") : [];
+    if (symbols.length === 0) return;
+    const maMap = {};
+    symbols.forEach(symbol => {
+      const syncedMA = getSyncedMA(symbol);
+      if (syncedMA) {
+        maMap[symbol] = syncedMA;
+      }
+    });
+    if (Object.keys(maMap).length > 0) {
+      setLiveMAs(prev => {
+        let changed = false;
+        const next = { ...prev };
+        for (const [sym, val] of Object.entries(maMap)) {
+          if (prev[sym] !== val) {
+            next[sym] = val;
+            changed = true;
+          }
+        }
+        return changed ? next : prev;
+      });
+    }
+  }, [journalSymbolsSerialized, getSyncedMA]);
+
+  const journalAbortControllerRef = useRef(null);
+
   // Live Price Fetcher
   const loadLivePrices = useCallback(async () => {
-    if (journalEntries.length === 0) return;
+    const symbols = journalSymbolsSerialized ? journalSymbolsSerialized.split(",") : [];
+    if (symbols.length === 0) return;
+
+    if (journalAbortControllerRef.current) {
+      journalAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    journalAbortControllerRef.current = controller;
+
     setPricesLoading(true);
     try {
-      const symbols = [...new Set(journalEntries.map(e => e.symbol))];
-      const results = await fetchStockQuotes(symbols, country);
+      const results = await fetchStockQuotes(symbols, country, controller.signal);
+      if (controller.signal.aborted) return;
+
       const priceMap = {};
       const maMap = {};
       results.forEach(res => {
         if (res && res.currentPrice) {
           priceMap[res.symbol] = res.currentPrice;
-          maMap[res.symbol] = res.movingAverages || "";
+          const syncedMA = getSyncedMA(res.symbol);
+          maMap[res.symbol] = syncedMA || res.movingAverages || "";
         }
       });
       setLivePrices(prev => ({ ...prev, ...priceMap }));
       setLiveMAs(prev => ({ ...prev, ...maMap }));
     } catch (e) {
-      console.warn("Failed to fetch live prices:", e);
+      if (e.name !== 'AbortError') {
+        console.warn("Failed to fetch live prices:", e);
+      }
     } finally {
-      setPricesLoading(false);
+      if (journalAbortControllerRef.current === controller) {
+        setPricesLoading(false);
+        journalAbortControllerRef.current = null;
+      }
     }
-  }, [journalEntries, country]);
+  }, [journalSymbolsSerialized, country, getSyncedMA]);
 
   // 2-minute polling sync
   useEffect(() => {
-    Promise.resolve().then(() => {
-      loadLivePrices();
-    });
-    const interval = setInterval(loadLivePrices, 120 * 1000);
-    return () => clearInterval(interval);
+    let active = true;
+    setTimeout(() => {
+      if (active) {
+        loadLivePrices();
+      }
+    }, 0);
+    const interval = setInterval(() => {
+      if (active) {
+        loadLivePrices();
+      }
+    }, 120 * 1000);
+
+    return () => {
+      active = false;
+      clearInterval(interval);
+      if (journalAbortControllerRef.current) {
+        journalAbortControllerRef.current.abort();
+      }
+    };
   }, [loadLivePrices]);
 
   // Comprehensive math calculators based on transaction arrays
@@ -834,6 +915,131 @@ export default function JournalView({ country, data, setData }) {
       return sortDirection === 'asc' ? valA - valB : valB - valA;
     });
   }, [calculatedPositions, searchQuery, statusFilter, strategyFilter, dateFilterType, dateRangeFilter, customStartDate, customEndDate, selectedWeek, sortColumn, sortDirection, liveMAs]);
+
+  // Edit Stock State & Helpers
+  const [selectedStockForEdit, setSelectedStockForEdit] = useState(null);
+
+  // Memoized lists for EditStockModal
+  const filteredSectors = useMemo(() => {
+    const rawSectors = data?.uiConfig?.sectors || [];
+    return rawSectors
+      .filter(s => {
+        if (typeof s === 'string') return true;
+        if (!s.countries || s.countries.length === 0) return true;
+        return s.countries.includes(country);
+      })
+      .map(s => typeof s === 'string' ? s : s.name)
+      .sort((a, b) => a.localeCompare(b));
+  }, [data?.uiConfig?.sectors, country]);
+
+  const availableTags = useMemo(() => {
+    const tagsSet = new Set(data.uiConfig?.tags || []);
+    if (data.weeks?.[country]) {
+      Object.values(data.weeks[country]).forEach(weekData => {
+        if (weekData.stocks) {
+          Object.values(weekData.stocks).forEach(s => {
+            if (Array.isArray(s.tags)) {
+              s.tags.forEach(t => tagsSet.add(t));
+            }
+          });
+        }
+      });
+    }
+    return Array.from(tagsSet).sort();
+  }, [data.uiConfig?.tags, data.weeks, country]);
+
+  const journalStocks = useMemo(() => {
+    const uniqueSymbols = [...new Set(filteredPositions.map(pos => pos.symbol))];
+    return uniqueSymbols.map(symbol => {
+      // Look up the stock object in any week, starting from most recent
+      let existingStock = null;
+      if (data.weeks?.[country]) {
+        const sortedWeeks = Object.keys(data.weeks[country]).sort((a, b) => b.localeCompare(a));
+        for (const wk of sortedWeeks) {
+          if (data.weeks[country][wk]?.stocks?.[symbol]) {
+            existingStock = data.weeks[country][wk].stocks[symbol];
+            break;
+          }
+        }
+      }
+      return existingStock || {
+        symbol,
+        sector: "",
+        tradable: false,
+        notes: "",
+        tags: [],
+        params: {},
+        watchlists: [],
+      };
+    });
+  }, [filteredPositions, data.weeks, country]);
+
+  const handleAnalyzeStockClick = (symbol, e) => {
+    if (e) e.stopPropagation();
+    
+    // Find the stock object in journalStocks (which handles lookup)
+    const stockObj = journalStocks.find(s => s.symbol === symbol.toUpperCase()) || {
+      symbol: symbol.toUpperCase(),
+      sector: "",
+      tradable: false,
+      notes: "",
+      tags: [],
+      params: {},
+      watchlists: [],
+    };
+    
+    setSelectedStockForEdit(stockObj);
+  };
+
+  const handleUpdateStock = (updatedStock) => {
+    if (!updatedStock) return;
+    setData(prev => {
+      const newData = structuredClone(prev);
+      if (!newData.weeks) newData.weeks = {};
+      if (!newData.weeks[country]) newData.weeks[country] = {};
+
+      // Find the latest week where this stock already exists to update it there
+      let targetWeek = null;
+      const sortedWeeks = Object.keys(newData.weeks[country]).sort((a, b) => b.localeCompare(a));
+      for (const wk of sortedWeeks) {
+        if (newData.weeks[country][wk]?.stocks?.[updatedStock.symbol]) {
+          targetWeek = wk;
+          break;
+        }
+      }
+
+      // If not found in any week, use the latest week key overall
+      if (!targetWeek) {
+        targetWeek = getLatestWeekKey(newData.weeks[country]);
+      }
+
+      // If there is absolutely no week key yet, fallback to active current Sunday
+      if (!targetWeek) {
+        const today = new Date();
+        const day = today.getDay();
+        const diff = today.getDate() - day;
+        const sunday = new Date(today.setDate(diff));
+        targetWeek = sunday.toISOString().split('T')[0];
+      }
+
+      // Ensure target week exists
+      if (!newData.weeks[country][targetWeek]) {
+        newData.weeks[country][targetWeek] = { stocks: {} };
+      }
+      if (!newData.weeks[country][targetWeek].stocks) {
+        newData.weeks[country][targetWeek].stocks = {};
+      }
+
+      // Save the stock
+      newData.weeks[country][targetWeek].stocks[updatedStock.symbol] = updatedStock;
+      
+      // Update selectedStockForEdit with the new changes so it updates the Modal UI state
+      setSelectedStockForEdit(updatedStock);
+      
+      showToast(`Updated stock ${updatedStock.symbol} in week ${targetWeek}`, "success");
+      return newData;
+    });
+  };
 
   // Populate unique weeks from the journal's transactions
   const uniqueJournalWeeks = useMemo(() => {
@@ -1454,23 +1660,30 @@ export default function JournalView({ country, data, setData }) {
       return;
     }
 
+    const controller = new AbortController();
+
     const handler = setTimeout(async () => {
       setIsFetchingModalPrice(true);
       try {
-        const res = await fetchStockQuotes([sym], country);
+        const res = await fetchStockQuotes([sym], country, controller.signal);
         if (res && res[0] && res[0].currentPrice) {
           setModalLivePrice(res[0].currentPrice);
         } else {
           setModalLivePrice(null);
         }
       } catch (e) {
-        console.warn("Error fetching modal price:", e);
+        if (e.name !== 'AbortError') {
+          console.warn("Error fetching modal price:", e);
+        }
       } finally {
         setIsFetchingModalPrice(false);
       }
     }, 400);
 
-    return () => clearTimeout(handler);
+    return () => {
+      clearTimeout(handler);
+      controller.abort();
+    };
   }, [formData.symbol, showModal, country]);
 
   // Reference pricing and quantity for the Stop Loss matrix calculations
@@ -2334,7 +2547,7 @@ export default function JournalView({ country, data, setData }) {
                             width: width ? `${width}px` : undefined,
                             minWidth: width ? `${width}px` : undefined,
                             maxWidth: width ? `${width}px` : undefined,
-                            overflow: 'hidden',
+                            overflow: colKey === 'stopLoss' ? 'visible' : 'hidden',
                             textOverflow: 'ellipsis'
                           };
 
@@ -2345,8 +2558,20 @@ export default function JournalView({ country, data, setData }) {
                           let content = null;
                           if (colKey === 'symbol') {
                             content = (
-                              <div className="flex flex-col gap-0.5">
-                                <span className="tracking-tight">{pos.symbol}</span>
+                              <div className="flex flex-col gap-0.5 group">
+                                <div className="flex items-center gap-1.5">
+                                  <span className="tracking-tight font-black">{pos.symbol}</span>
+                                  <button
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      handleAnalyzeStockClick(pos.symbol);
+                                    }}
+                                    className="opacity-0 group-hover:opacity-100 hover:opacity-100 text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-sky-450 transition-all p-0.5 rounded cursor-pointer flex items-center justify-center"
+                                    title={`View chart & analyze ${pos.symbol}`}
+                                  >
+                                    <IconTrendingUp className="w-3 h-3" />
+                                  </button>
+                                </div>
                                 <span className="text-xs text-slate-500 dark:text-slate-400 font-bold truncate max-w-[160px]">{pos.setup}</span>
                                 <div className="flex flex-wrap gap-1.5 mt-1.5">
                                   {pos.totalBought > pos.transactions.filter(t => t.type === 'Buy')?.[0]?.qty && (
@@ -2409,13 +2634,26 @@ export default function JournalView({ country, data, setData }) {
                               </span>
                             );
                           } else if (colKey === 'stopLoss') {
+                            const isSlProfitLock = !pos.isClosed && pos.currentStopLoss && (pos.isLong ? pos.currentStopLoss > pos.avgEntryPrice : pos.currentStopLoss < pos.avgEntryPrice);
                             content = (
                               <div className="font-mono">
-                                <div className="text-xs font-black text-rose-600 dark:text-rose-400">
-                                  {pos.activeStopLossPct > 0 ? '-' : '+'}{Math.abs(pos.activeStopLossPct).toFixed(1)}%
+                                <div className={`text-xs font-black flex items-center justify-end gap-1 ${isSlProfitLock ? 'text-emerald-600 dark:text-emerald-400' : 'text-rose-600 dark:text-rose-400'}`}>
+                                  <span>{pos.activeStopLossPct > 0 ? '-' : '+'}{Math.abs(pos.activeStopLossPct).toFixed(1)}%</span>
+                                  {isSlProfitLock && (
+                                    <span className="group relative cursor-default inline-block" onClick={e => e.stopPropagation()}>
+                                      <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20" fill="currentColor" className="w-3.5 h-3.5 text-emerald-500 hover:text-emerald-600 transition-colors">
+                                        <path fillRule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zM8.94 6.94a.75.75 0 11-1.5 0 .75.75 0 011.5 0zm.75 3.31a.75.75 0 00-1.5 0v2.5a.75.75 0 001.5 0v-2.5z" clipRule="evenodd" />
+                                      </svg>
+                                      <span className="pointer-events-none absolute bottom-full right-0 mb-2 w-52 bg-slate-900 dark:bg-slate-800 text-white text-[10px] font-semibold leading-snug rounded-lg px-2.5 py-2 opacity-0 group-hover:opacity-100 transition-opacity z-50 shadow-xl border border-slate-700/50 text-center normal-case tracking-normal">
+                                        <span className="block font-black text-emerald-400 mb-0.5">Trailing SL Profit Lock</span>
+                                        Stop Loss has been trailed above entry price, locking in a minimum return of {Math.abs(pos.activeStopLossPct).toFixed(1)}% (risk-free trade).
+                                        <span className="absolute top-full right-1.5 border-4 border-transparent border-t-slate-900 dark:border-t-slate-800" />
+                                      </span>
+                                    </span>
+                                  )}
                                 </div>
                                 {pos.currentStopLoss ? (
-                                  <div className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-0.5" title="Current Trailed Stop Loss / Initial Stop Loss">
+                                  <div className={`text-xs font-bold mt-0.5 ${isSlProfitLock ? 'text-emerald-600/90 dark:text-emerald-400/90' : 'text-slate-500 dark:text-slate-400'}`} title="Current Trailed Stop Loss / Initial Stop Loss">
                                     {country === 'IN' ? '₹' : '$'}{pos.currentStopLoss.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                                     <span className="text-[10px] text-slate-400/80 font-semibold ml-1">
                                       (Init: {country === 'IN' ? '₹' : '$'}{pos.initialStopLoss.toLocaleString(undefined, { minimumFractionDigits: 2 })})
@@ -2482,6 +2720,14 @@ export default function JournalView({ country, data, setData }) {
                           } else if (colKey === 'actions') {
                             content = (
                               <div className="flex gap-2 justify-end" onClick={e => e.stopPropagation()}>
+                                <div 
+                                  role="button"
+                                  className="text-slate-400 dark:text-slate-500 hover:text-indigo-600 dark:hover:text-sky-400 hover:bg-slate-100 dark:hover:bg-slate-800 p-1.5 rounded transition-all cursor-pointer flex items-center justify-center"
+                                  onClick={(e) => handleAnalyzeStockClick(pos.symbol, e)}
+                                  title="Analyze Stock (Chart & Checklists)"
+                                >
+                                  <IconTrendingUp className="w-3.5 h-3.5" />
+                                </div>
                                 <div 
                                   role="button"
                                   className="text-slate-400 dark:text-slate-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-slate-100 dark:hover:bg-slate-800 p-1.5 rounded transition-all cursor-pointer flex items-center justify-center"
@@ -4026,6 +4272,36 @@ export default function JournalView({ country, data, setData }) {
             </div>
           </div>
         </Modal>
+      )}
+      {selectedStockForEdit && (
+        <EditStockModal
+          isOpen={!!selectedStockForEdit}
+          onClose={() => setSelectedStockForEdit(null)}
+          stock={selectedStockForEdit}
+          onSave={handleUpdateStock}
+          paramDefinitions={data.paramDefinitions}
+          sectors={filteredSectors}
+          availableTags={availableTags}
+          weekInfo={getWeekRangeLabel(
+            getLatestWeekKey(data.weeks?.[country] || {}) || 
+            (() => {
+              const today = new Date();
+              const day = today.getDay();
+              const diff = today.getDate() - day;
+              const sunday = new Date(today.setDate(diff));
+              return sunday.toISOString().split('T')[0];
+            })()
+          )}
+          country={country}
+          showTags={true}
+          isDeepView={true}
+          onUpdateStock={handleUpdateStock}
+          watchlists={data.watchlists || []}
+          aiSettings={data.aiSettings || {}}
+          sortedStocks={journalStocks}
+          onSelectStock={setSelectedStockForEdit}
+          watchlistName="Journal Stocks"
+        />
       )}
 
     </div>

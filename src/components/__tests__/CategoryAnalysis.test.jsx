@@ -14,6 +14,16 @@ vi.mock('../../services/ai', () => ({
   ]
 }));
 
+// Mock the Yahoo Finance utility
+vi.mock('../../utils/yahooFinanceMap', () => ({
+  fetchStockData: vi.fn(() => Promise.resolve([
+    { symbol: 'ABB', currentPrice: 5000, periodChangePct: 12.5, isAdvancing: true },
+    { symbol: 'NTPC', currentPrice: 200, periodChangePct: -4.2, isAdvancing: false },
+    { symbol: 'RELIANCE', currentPrice: 2500, periodChangePct: 8.0, isAdvancing: true },
+  ])),
+  fetchStockQuotes: vi.fn(() => Promise.resolve([]))
+}));
+
 const mockStockData = [
   { symbol: 'ABB', currentPrice: 5000, periodChangePct: 12.5, isAdvancing: true },
   { symbol: 'NTPC', currentPrice: 200, periodChangePct: -4.2, isAdvancing: false },

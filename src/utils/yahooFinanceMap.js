@@ -1,6 +1,6 @@
 import { mapMovingAverageBucket } from './metrics.js';
 
-export async function fetchStockData(symbols, country, timeframe = '3mo', customInterval = null) {
+export async function fetchStockData(symbols, country, timeframe = '3mo', customInterval = null, signal = null) {
   if (!symbols || !symbols.length) return [];
 
   const validTimeframes = {
@@ -28,10 +28,15 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
       const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
       const baseUrl = isLocalhost ? '/yahoo-api' : 'https://query1.finance.yahoo.com';
       const url = `${baseUrl}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${tf.range}&interval=${fetchInterval}`;
-      const response = await fetch(url, { cache: 'no-cache' });
+      let response = await fetch(url, { signal, cache: 'no-cache' });
+      
+      if (response.status === 429 && !isLocalhost) {
+        const fallbackUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${tf.range}&interval=${fetchInterval}`;
+        response = await fetch(fallbackUrl, { signal, cache: 'no-cache' });
+      }
       
       if (!response.ok) {
-        throw new Error(`Failed to fetch data for ${ticker}`);
+        throw new Error(`Failed to fetch data for ${ticker} (status ${response.status})`);
       }
       
       const data = await response.json();
@@ -150,48 +155,39 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
   };
 
   // Process in small batches to respect rate limits
-  const BATCH_SIZE = 15;
+  const BATCH_SIZE = 5;
   const results = [];
   
   for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
+    if (signal?.aborted) break;
     const batch = symbols.slice(i, i + BATCH_SIZE);
-    const batchResults = await Promise.all(batch.map(fetchSymbolData));
-    results.push(...batchResults);
+    try {
+      const batchResults = await Promise.all(batch.map(fetchSymbolData));
+      results.push(...batchResults);
+    } catch (e) {
+      if (e.name === 'AbortError') break;
+      throw e;
+    }
     
     if (i + BATCH_SIZE < symbols.length) {
-      // small delay between batches
-      await new Promise(resolve => setTimeout(resolve, 100));
+      if (signal?.aborted) break;
+      await new Promise(resolve => setTimeout(resolve, 250));
     }
   }
 
   return results.filter(r => !r.error);
 }
 
-export async function fetchStockQuotes(symbols, country) {
+export async function fetchStockQuotes(symbols, country, signal = null) {
   if (!symbols || !symbols.length) return [];
 
-  // Yahoo Finance /v7/finance/quote frequently returns 401 Unauthorized because it requires a crumb.
-  // To bypass this reliably, we use the /v8/finance/chart endpoint via our existing fetchStockData function.
-  // We process them in small batches to avoid overloading the API or local proxy.
-  const BATCH_SIZE = 10;
-  const results = [];
-
   try {
-    for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
-      const batch = symbols.slice(i, i + BATCH_SIZE);
-      
-      // Fetch 2y data for the batch to get enough history for SMA calculations
-      const batchResults = await fetchStockData(batch, country, '2y', '1d');
-      results.push(...batchResults);
-
-      if (i + BATCH_SIZE < symbols.length) {
-        // Small delay between batches to respect rate limits
-        await new Promise(resolve => setTimeout(resolve, 200));
-      }
-    }
-    return results;
+    // Fetch 5d data (which is more than enough to extract today's price and yesterday's close)
+    return await fetchStockData(symbols, country, '5d', '1d', signal);
   } catch (error) {
-    console.error("Failed to fetch stock quotes via chart API:", error);
-    return results;
+    if (error.name !== 'AbortError') {
+      console.error("Failed to fetch stock quotes via chart API:", error);
+    }
+    return [];
   }
 }

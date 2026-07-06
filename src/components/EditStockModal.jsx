@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback } from "react";
+import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Modal from "./Modal";
 import MiniCandlestickChart from "./MiniCandlestickChart";
 import { fetchStockData, fetchStockQuotes } from "../utils/yahooFinanceMap";
@@ -200,17 +200,19 @@ export default function EditStockModal({
     }
   }, [stock, paramDefinitions]);
 
-  // Fetch 1d daily quotes in background for all stocks in the watchlist sidebar
-  useEffect(() => {
-    if (!isOpen || !sortedStocks || sortedStocks.length === 0) return;
-    let active = true;
+  const sortedSymbolsSerialized = useMemo(() => {
+    return (sortedStocks || []).map(s => s.symbol).join(",");
+  }, [sortedStocks]);
 
-    const fetchSidebarQuotes = async () => {
+  const fetchSidebarQuotesRef = useRef(null);
+
+  useEffect(() => {
+    fetchSidebarQuotesRef.current = async (signal) => {
+      if (!sortedStocks || sortedStocks.length === 0) return;
       setLoadingQuotes(true);
       try {
         const symbols = sortedStocks.map(s => s.symbol);
-        const results = await fetchStockQuotes(symbols, country);
-        if (!active) return;
+        const results = await fetchStockQuotes(symbols, country, signal);
         if (results && results.length > 0) {
           const mapping = {};
           results.forEach(r => {
@@ -223,19 +225,33 @@ export default function EditStockModal({
           setSidebarStockData(mapping);
         }
       } catch (err) {
-        console.error("Failed to fetch sidebar quote data:", err);
-      } finally {
-        if (active) {
-          setLoadingQuotes(false);
+        if (err.name !== 'AbortError') {
+          console.error("Failed to fetch sidebar quote data:", err);
         }
+      } finally {
+        setLoadingQuotes(false);
       }
     };
+  }, [sortedStocks, country]);
 
-    fetchSidebarQuotes();
+  // Fetch 1d daily quotes in background on mount or symbols list changes
+  useEffect(() => {
+    if (!isOpen || !sortedSymbolsSerialized) return;
+    const controller = new AbortController();
+    if (fetchSidebarQuotesRef.current) {
+      fetchSidebarQuotesRef.current(controller.signal);
+    }
     return () => {
-      active = false;
+      controller.abort();
     };
-  }, [isOpen, sortedStocks, country]);
+  }, [isOpen, sortedSymbolsSerialized]);
+
+  // Manual refresh callback
+  const handleRefreshSidebarQuotes = useCallback(() => {
+    if (fetchSidebarQuotesRef.current) {
+      fetchSidebarQuotesRef.current();
+    }
+  }, []);
 
   const symbolToFetch = formData?.symbol;
 
@@ -558,22 +574,127 @@ export default function EditStockModal({
   const renderAiAnalysis = () => {
     if (!aiAnalysis) return null;
 
-    const sections = aiAnalysis.split(/###\s+/).filter(Boolean);
-    return (
-      <div className="deep-analysis-results themed-scroll">
-        {sections.map((section, idx) => {
-          const lines = section.split('\n');
-          const title = lines[0].trim();
-          const content = lines.slice(1).join('\n').trim();
-          return (
-            <div key={idx} className="analysis-section-box">
-              <h4 className="analysis-section-title">{title}</h4>
+    // Check if the analysis contains section headers
+    const hasHeaders = aiAnalysis.includes('###');
+
+    if (!hasHeaders) {
+      const lines = aiAnalysis.split('\n');
+      const sections = [];
+      let currentSection = null;
+
+      lines.forEach((line) => {
+        const trimmed = line.trim();
+        if (!trimmed) return;
+
+        // Check if the line matches a key-value pattern like: **Key:** Value
+        const match = trimmed.match(/^(\*\*([^*]+)\*\*|([A-Za-z0-9\s]+)):(.*)$/);
+        const rawKey = match ? (match[2] || match[3] || '') : '';
+        if (match && rawKey.trim().length > 0 && rawKey.trim().length <= 25) {
+          // If we had a previous section, push it
+          if (currentSection) {
+            sections.push(currentSection);
+          }
+          const key = rawKey.toUpperCase().trim();
+          const value = match[4].trim();
+          currentSection = {
+            title: key,
+            content: value,
+          };
+        } else {
+          // If it's a continuation line and we have an active section, append to it
+          if (currentSection) {
+            currentSection.content += '\n' + trimmed;
+          } else {
+            // No active section, create a default one
+            currentSection = {
+              title: '',
+              content: trimmed,
+            };
+          }
+        }
+      });
+
+      if (currentSection) {
+        sections.push(currentSection);
+      }
+
+      if (sections.length > 0 && sections.some(s => s.title)) {
+        return (
+          <div className="deep-analysis-results themed-scroll">
+            {sections.map((section, idx) => (
+              <div key={idx} className="analysis-section-box">
+                {section.title && <h4 className="analysis-section-title">{section.title}</h4>}
+                {section.content && (
+                  <div className="analysis-section-content">
+                    <SafeMarkdown text={section.content} />
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        );
+      }
+
+      // Fallback: Just render the whole text as markdown
+      return (
+        <div className="deep-analysis-results themed-scroll">
+          <div className="analysis-section-content">
+            <SafeMarkdown text={aiAnalysis} />
+          </div>
+        </div>
+      );
+    }
+
+    const parseInlineHeader = (str) => {
+      const parts = str.split(/(\*\*.*?\*\*)/g);
+      return parts.map((part, i) => {
+        if (part.startsWith('**') && part.endsWith('**')) {
+          return <strong key={i}>{part.slice(2, -2)}</strong>;
+        }
+        return part;
+      });
+    };
+
+    // If it has headers, split by '###'
+    const parts = aiAnalysis.split(/###\s+/);
+    const elements = [];
+
+    parts.forEach((part, idx) => {
+      const trimmedPart = part.trim();
+      if (!trimmedPart) return;
+
+      // If it's the very first part, and the original text didn't start with '###',
+      // then this part is introductory text and has no title.
+      const isIntro = idx === 0 && !aiAnalysis.startsWith('###');
+
+      if (isIntro) {
+        elements.push(
+          <div key={idx} className="analysis-section-box no-title">
+            <div className="analysis-section-content">
+              <SafeMarkdown text={trimmedPart} />
+            </div>
+          </div>
+        );
+      } else {
+        const lines = trimmedPart.split('\n');
+        const title = lines[0].trim();
+        const content = lines.slice(1).join('\n').trim();
+        elements.push(
+          <div key={idx} className="analysis-section-box">
+            {title && <h4 className="analysis-section-title">{parseInlineHeader(title)}</h4>}
+            {content && (
               <div className="analysis-section-content">
                 <SafeMarkdown text={content} />
               </div>
-            </div>
-          );
-        })}
+            )}
+          </div>
+        );
+      }
+    });
+
+    return (
+      <div className="deep-analysis-results themed-scroll">
+        {elements}
       </div>
     );
   };
@@ -897,11 +1018,27 @@ export default function EditStockModal({
                   <div className="sidebar-header-premium">
                     <span className="sidebar-title-premium">{watchlistName}</span>
                     <div className="sidebar-header-actions-premium">
-                      {loadingQuotes && (
-                        <div className="sidebar-loader-premium" title="Updating quotes...">
-                          <div className="sidebar-loader-dot" />
-                        </div>
-                      )}
+                      <button
+                        type="button"
+                        className={`sidebar-refresh-btn-premium ${loadingQuotes ? 'is-refreshing' : ''}`}
+                        onClick={handleRefreshSidebarQuotes}
+                        title={loadingQuotes ? "Updating quotes..." : "Refresh quotes"}
+                        disabled={loadingQuotes}
+                      >
+                        <svg 
+                          xmlns="http://www.w3.org/2000/svg" 
+                          width="12" 
+                          height="12" 
+                          viewBox="0 0 24 24" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          strokeWidth="2.5" 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round"
+                        >
+                          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.3" />
+                        </svg>
+                      </button>
                       <span className="sidebar-count-premium">{sortedStocks.length}</span>
                       <button
                         type="button"
@@ -1092,7 +1229,7 @@ export default function EditStockModal({
                       <select 
                         value={selectedPromptId} 
                         onChange={e => setSelectedPromptId(e.target.value)}
-                        className="select-control small strategy-select-compact"
+                        className="select-control strategy-select-compact"
                       >
                         <option value="default">Default</option>
                         {stockLibrary.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
@@ -1101,7 +1238,7 @@ export default function EditStockModal({
                     {!loadingAi && (
                       <button
                         onClick={handleRunAi}
-                        className="btn-ai-gradient btn-premium-primary-sm"
+                        className="btn-ai-gradient strategy-btn-compact"
                       >
                         Analyze
                       </button>

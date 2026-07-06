@@ -9,6 +9,7 @@ import { useConfirm } from "./ConfirmContext";
 import {
   doesParamPassCheck,
   isParamRelevantForCountry,
+  getActualParamKeyAndDef,
 } from "../utils/paramUtils";
 import { getLocalDateString } from "../utils/weekHelpers";
 
@@ -339,24 +340,33 @@ export default function StockGrid({
 
   const allStocks = useMemo(() => Object.values(week?.stocks || {}), [week]);
 
+  const symbolsSerialized = useMemo(() => {
+    return allStocks.map((s) => s.symbol).sort().join(",");
+  }, [allStocks]);
+
   const [quotes, setQuotes] = useState({});
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const fetchQuotesCountRef = useRef(0);
+  const fetchAbortControllerRef = useRef(null);
 
   const fetchQuotesForGrid = useCallback(async () => {
-    if (!allStocks || allStocks.length === 0) {
+    const symbols = symbolsSerialized ? symbolsSerialized.split(",") : [];
+    if (symbols.length === 0) {
       setQuotes({});
       return;
     }
 
-    fetchQuotesCountRef.current += 1;
-    const currentFetchId = fetchQuotesCountRef.current;
+    if (fetchAbortControllerRef.current) {
+      fetchAbortControllerRef.current.abort();
+    }
+    const controller = new AbortController();
+    fetchAbortControllerRef.current = controller;
 
     setLoadingQuotes(true);
     try {
-      const symbols = allStocks.map((s) => s.symbol);
-      const results = await fetchStockQuotes(symbols, country);
-      if (currentFetchId !== fetchQuotesCountRef.current) return;
+      const symbolsList = symbols;
+      const results = await fetchStockQuotes(symbolsList, country, controller.signal);
+      if (controller.signal.aborted) return;
 
       if (results && results.length > 0) {
         const mapping = {};
@@ -371,17 +381,16 @@ export default function StockGrid({
         setQuotes(mapping);
       }
     } catch (err) {
-      console.error("Failed to fetch stock quotes for grid:", err);
+      if (err.name !== 'AbortError') {
+        console.error("Failed to fetch stock quotes for grid:", err);
+      }
     } finally {
-      if (currentFetchId === fetchQuotesCountRef.current) {
+      if (fetchAbortControllerRef.current === controller) {
         setLoadingQuotes(false);
+        fetchAbortControllerRef.current = null;
       }
     }
-  }, [allStocks, country]);
-
-  const symbolsSerialized = useMemo(() => {
-    return allStocks.map((s) => s.symbol).sort().join(",");
-  }, [allStocks]);
+  }, [symbolsSerialized, country]);
 
   useEffect(() => {
     let active = true;
@@ -393,6 +402,9 @@ export default function StockGrid({
     return () => {
       active = false;
       fetchQuotesCountRef.current += 1;
+      if (fetchAbortControllerRef.current) {
+        fetchAbortControllerRef.current.abort();
+      }
     };
   }, [symbolsSerialized, country, weekKey, fetchQuotesForGrid]);
 
@@ -486,9 +498,44 @@ export default function StockGrid({
     });
   };
 
-  const triggerFullSync = useCallback(() => {
-    const symbols = Object.keys(week?.stocks || {});
-    if (symbols.length === 0) return;
+  const triggerFullSync = useCallback((force = false) => {
+    const allSymbols = Object.keys(week?.stocks || {});
+    if (allSymbols.length === 0) return;
+
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+
+    // Extract dynamic parameter keys based on current country
+    const adrInfo = getActualParamKeyAndDef(data?.paramDefinitions, 'adr', 'adr', country);
+    const liqInfo = getActualParamKeyAndDef(data?.paramDefinitions, 'liquidity', 'liquidity', country);
+    const adrKey = adrInfo?.key || 'adr';
+    const liqKey = liqInfo?.key || 'liquidity';
+
+    const symbols = allSymbols.filter(symbol => {
+      if (force) return true;
+      const stock = week.stocks[symbol];
+      if (!stock) return true;
+
+      // Check if metrics are missing
+      const params = stock.params || {};
+      const hasAdr = params[adrKey] !== undefined && params[adrKey] !== null && params[adrKey] !== "";
+      const hasLiq = params[liqKey] !== undefined && params[liqKey] !== null && params[liqKey] !== "";
+      const hasMa = params['movingAverages'] !== undefined && params['movingAverages'] !== null && params['movingAverages'] !== "";
+
+      if (!hasAdr || !hasLiq || !hasMa) return true;
+
+      // Check if last sync was before today
+      if (!stock.lastSyncTime || stock.lastSyncTime < todayStart) return true;
+
+      return false;
+    });
+
+    if (symbols.length === 0) {
+      console.log("[Sync] All stocks are already up-to-date for today. Skipping sync.");
+      return;
+    }
+
+    console.log(`[Sync] Triggering incremental sync for ${symbols.length}/${allSymbols.length} stocks...`);
 
     if (chrome?.runtime?.sendMessage) {
       chrome.runtime.sendMessage({
@@ -660,15 +707,17 @@ export default function StockGrid({
     (w) => w.id === selectedWatchlistId,
   );
 
-  const visibleParams = Object.entries(params)
-    .filter(([key, p]) => {
-      if (!isParamRelevantForCountry(p, country)) return false;
-      if (selectedWatchlistId !== "all" && activeWatchlist) {
-        return (activeWatchlist.visibleParams || []).includes(key);
-      }
-      return columnConfig[key] !== false;
-    })
-    .sort((a, b) => (a[1].order ?? 999) - (b[1].order ?? 999));
+  const visibleParams = useMemo(() => {
+    return Object.entries(params)
+      .filter(([key, p]) => {
+        if (!isParamRelevantForCountry(p, country)) return false;
+        if (selectedWatchlistId !== "all" && activeWatchlist) {
+          return (activeWatchlist.visibleParams || []).includes(key);
+        }
+        return columnConfig[key] !== false;
+      })
+      .sort((a, b) => (a[1].order ?? 999) - (b[1].order ?? 999));
+  }, [params, country, selectedWatchlistId, activeWatchlist, columnConfig]);
 
   const colCount =
     1 + // Stock
@@ -1070,10 +1119,13 @@ export default function StockGrid({
 
     if (symbols.length === 0) return;
 
+    const currentWeek = data.weeks?.[country]?.[weekKey] || { stocks: {} };
+    const currentStocks = currentWeek.stocks || {};
+    const newSymbolsAdded = symbols.filter((symbol) => !currentStocks[symbol]);
+
     setData((prev) => {
       const prevWeek = prev.weeks[country][weekKey];
       const newStocks = { ...prevWeek.stocks };
-      const newSymbolsAdded = [];
 
       symbols.forEach((symbol) => {
         if (!newStocks[symbol]) {
@@ -1086,7 +1138,6 @@ export default function StockGrid({
             params: {},
             watchlists: [...selectedWlIds],
           };
-          newSymbolsAdded.push(symbol);
         } else if (selectedWlIds.length > 0) {
           const existing = newStocks[symbol];
           const mergedWls = Array.from(
@@ -1098,26 +1149,6 @@ export default function StockGrid({
           };
         }
       });
-
-      // Trigger background API hydration immediately if enabled
-      if (
-        newSymbolsAdded.length > 0 &&
-        prev.uiConfig?.enableApiHydration === true
-      ) {
-        if (chrome?.runtime?.sendMessage) {
-          chrome.runtime.sendMessage({
-            action: "FETCH_STOCK_METRICS",
-            payload: {
-              symbols: newSymbolsAdded,
-              country,
-              weekKey,
-              paramDefs: prev.paramDefinitions,
-              adrDays: prev.uiConfig?.adrDays || 20,
-              liquidityDays: prev.uiConfig?.liquidityDays || 20,
-            },
-          });
-        }
-      }
 
       return {
         ...prev,
@@ -1133,6 +1164,27 @@ export default function StockGrid({
         },
       };
     });
+
+    // Trigger background API hydration immediately if enabled
+    if (
+      newSymbolsAdded.length > 0 &&
+      data?.uiConfig?.enableApiHydration === true
+    ) {
+      if (chrome?.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: "FETCH_STOCK_METRICS",
+          payload: {
+            symbols: newSymbolsAdded,
+            country,
+            weekKey,
+            paramDefs: data.paramDefinitions,
+            adrDays: data.uiConfig?.adrDays || 20,
+            liquidityDays: data.uiConfig?.liquidityDays || 20,
+          },
+        });
+      }
+    }
+
     showToast(`Added ${symbols.length} stock(s) to watchlist`, "success");
   }
 
@@ -1461,18 +1513,26 @@ export default function StockGrid({
   function importStocks(stocksArray) {
     if (!stocksArray || stocksArray.length === 0) return;
 
-    setData((prev) => {
-      const currentWeekData = prev.weeks[country][weekKey] || { stocks: {} };
-      const newStocks = { ...currentWeekData.stocks };
-      let count = 0;
-      const newSymbolsAdded = [];
+    const currentWeekData = data.weeks?.[country]?.[weekKey] || { stocks: {} };
+    const currentStocks = currentWeekData.stocks || {};
+    const newSymbolsAdded = [];
+    let count = 0;
 
-      stocksArray.forEach((s) => {
-        if (s.symbol && !newStocks[s.symbol]) {
+    stocksArray.forEach((s) => {
+      if (s.symbol) {
+        if (!currentStocks[s.symbol]) {
           newSymbolsAdded.push(s.symbol);
         }
+        count++;
+      }
+    });
+
+    setData((prev) => {
+      const prevWeekData = prev.weeks[country]?.[weekKey] || { stocks: {} };
+      const newStocks = { ...prevWeekData.stocks };
+
+      stocksArray.forEach((s) => {
         if (s.symbol) {
-          // Merge params if the stock already exists, otherwise just overwrite/add
           const existing = newStocks[s.symbol];
 
           const base = {
@@ -1501,33 +1561,8 @@ export default function StockGrid({
               ]),
             ),
           };
-          count++;
         }
       });
-
-      // Trigger background API hydration immediately if enabled
-      if (
-        newSymbolsAdded.length > 0 &&
-        prev.uiConfig?.enableApiHydration === true
-      ) {
-        if (chrome?.runtime?.sendMessage) {
-          chrome.runtime.sendMessage({
-            action: "FETCH_STOCK_METRICS",
-            payload: {
-              symbols: newSymbolsAdded,
-              country,
-              weekKey,
-              paramDefs: prev.paramDefinitions,
-              adrDays: prev.uiConfig?.adrDays || 20,
-              liquidityDays: prev.uiConfig?.liquidityDays || 20,
-            },
-          });
-        }
-      }
-
-      if (count > 0) {
-        showToast(`Imported ${count} stocks successfully.`, "success");
-      }
 
       return {
         ...prev,
@@ -1536,13 +1571,37 @@ export default function StockGrid({
           [country]: {
             ...prev.weeks[country],
             [weekKey]: {
-              ...currentWeekData,
+              ...prevWeekData,
               stocks: newStocks,
             },
           },
         },
       };
     });
+
+    // Trigger background API hydration immediately if enabled
+    if (
+      newSymbolsAdded.length > 0 &&
+      data?.uiConfig?.enableApiHydration === true
+    ) {
+      if (chrome?.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({
+          action: "FETCH_STOCK_METRICS",
+          payload: {
+            symbols: newSymbolsAdded,
+            country,
+            weekKey,
+            paramDefs: data.paramDefinitions,
+            adrDays: data.uiConfig?.adrDays || 20,
+            liquidityDays: data.uiConfig?.liquidityDays || 20,
+          },
+        });
+      }
+    }
+
+    if (count > 0) {
+      showToast(`Imported ${count} stocks successfully.`, "success");
+    }
   }
 
   /* =====================
@@ -1964,7 +2023,7 @@ export default function StockGrid({
               {!isReadOnly && (
                 <button 
                   className={`force-sync-btn ${(fetchProgress.total > 0 || loadingQuotes) ? 'is-syncing' : ''}`}
-                  onClick={triggerFullSync}
+                  onClick={() => triggerFullSync(true)}
                   title="Force refresh all stock metrics"
                   disabled={fetchProgress.total > 0 || loadingQuotes}
                 >

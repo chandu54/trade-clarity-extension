@@ -473,7 +473,11 @@ export default function MarketPulseView({ country }) {
                               </div>
                             </div>
 
-                            <div className="index-chart-container">
+                            <div 
+                              className="index-chart-container cursor-pointer hover:opacity-90 transition-opacity"
+                              onClick={() => setFullScreenIndex(idx)}
+                              title="Expand Chart"
+                            >
                               <MiniCandlestickChart 
                                 data={idx} 
                                 country={country}
