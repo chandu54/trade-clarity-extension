@@ -10,7 +10,8 @@ export default function MiniCandlestickChart({
   disableZoom = false,
   height = '150px',
   accountCapital,
-  maSettings = {}
+  maSettings = {},
+  timeframe = '3mo'
 }) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -108,7 +109,8 @@ export default function MiniCandlestickChart({
     });
 
     if (candlesticks && candlesticks.length > 0) {
-      series.setData(candlesticks);
+      const visibleCandlesticks = getVisibleCandlesticks(candlesticks, timeframe);
+      series.setData(visibleCandlesticks);
 
       // Add moving average lines if maSettings is provided
       if (maSettings) {
@@ -120,19 +122,22 @@ export default function MiniCandlestickChart({
           '200': '#ef4444' // red
         };
 
+        const visibleTimes = new Set(visibleCandlesticks.map(c => c.time));
+
         Object.entries(maSettings).forEach(([maKey, config]) => {
           if (config && config.visible) {
             const period = parseInt(maKey, 10);
             if (!isNaN(period)) {
-              const smaData = calculateSMA(candlesticks, period);
-              if (smaData.length > 0) {
+              const fullSmaData = calculateSMA(candlesticks, period);
+              const visibleSmaData = fullSmaData.filter(d => visibleTimes.has(d.time));
+              if (visibleSmaData.length > 0) {
                 const lineSeries = chart.addSeries(LineSeries, {
                   color: config.color || maColors[maKey] || '#8b5cf6',
                   lineWidth: config.thickness || 1.2,
                   title: `${maKey} SMA`,
                   priceLineVisible: false,
                 });
-                lineSeries.setData(smaData);
+                lineSeries.setData(visibleSmaData);
               }
             }
           }
@@ -281,7 +286,7 @@ export default function MiniCandlestickChart({
       themeObserver.disconnect();
       chart.remove();
     };
-  }, [data, interactive, disableZoom, maSettings]);
+  }, [data, interactive, disableZoom, maSettings, timeframe]);
 
   if (!data) return null;
 
@@ -515,5 +520,38 @@ function calculateSMA(candlesticks, period) {
     });
   }
   return smaData;
+}
+
+function getVisibleCandlesticks(candlesticks, timeframe) {
+  if (!candlesticks || candlesticks.length === 0) return [];
+  if (!timeframe || timeframe === 'all' || timeframe === '2y' || timeframe === '5y') return candlesticks;
+
+  const daysMap = {
+    '1d': 1,
+    '5d': 5,
+    '1w': 7,
+    '1mo': 30,
+    '3mo': 90,
+    '6mo': 180,
+    'ytd': -1,
+    '1y': 365
+  };
+
+  const days = daysMap[timeframe];
+  if (!days) return candlesticks;
+
+  if (timeframe === 'ytd') {
+    const currentYear = new Date().getFullYear();
+    return candlesticks.filter(c => {
+      const date = new Date(c.time * 1000);
+      return date.getFullYear() === currentYear;
+    });
+  }
+
+  const lastCandle = candlesticks[candlesticks.length - 1];
+  const lastTime = lastCandle.time;
+  const cutoffTime = lastTime - (days * 24 * 60 * 60);
+
+  return candlesticks.filter(c => c.time >= cutoffTime);
 }
 

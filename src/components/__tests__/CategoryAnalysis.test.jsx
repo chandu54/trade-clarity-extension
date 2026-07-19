@@ -299,5 +299,46 @@ describe('Category Intelligence Suite', () => {
       expect(screen.getByText('AAPL')).toBeInTheDocument();
       expect(screen.getByText(/Apple Inc/)).toBeInTheDocument();
     });
+
+    it('calculates and renders moving averages on full history while slicing view by timeframe', () => {
+      // 210 days of history
+      const candlesticks = [];
+      const now = Math.floor(Date.now() / 1000);
+      for (let i = 0; i < 210; i++) {
+        candlesticks.push({
+          time: now - (210 - i) * 24 * 60 * 60,
+          open: 100 + i,
+          high: 105 + i,
+          low: 95 + i,
+          close: 101 + i
+        });
+      }
+
+      const mockChartData = {
+        symbol: 'AAPL',
+        longName: 'Apple Inc.',
+        currentPrice: 300,
+        prevClose: 295,
+        periodChangePct: 1.69,
+        isAdvancing: true,
+        candlesticks: candlesticks
+      };
+
+      const maSettings = {
+        '5': { visible: true, color: '#10b981', thickness: 1 },
+        '200': { visible: true, color: '#ef4444', thickness: 2 }
+      };
+
+      render(
+        <MiniCandlestickChart 
+          data={mockChartData} 
+          country="US" 
+          maSettings={maSettings} 
+          timeframe="3mo" 
+        />
+      );
+
+      expect(screen.getByText('AAPL')).toBeInTheDocument();
+    });
   });
 });

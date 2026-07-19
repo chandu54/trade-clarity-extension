@@ -81,29 +81,10 @@ export const DEFAULT_DATA = {
 
     "in.liquidity": {
       label: "Liquidity",
-      type: "select",
-      options: [
-        "<=20Cr",
-        "21 to 49Cr",
-        "50 to 99Cr",
-        "100Cr to 199Cr",
-        "200Cr to 499Cr",
-        "500Cr+",
-        "1000Cr+",
-        "1500Cr+",
-        "2000Cr+",
-      ],
+      type: "number",
       countries: ["IN"],
       filterable: true,
-      isCheck: true,
-      idealValues: [
-        "100Cr to 199Cr",
-        "200Cr to 499Cr",
-        "500Cr+",
-        "1000Cr+",
-        "1500Cr+",
-        "2000Cr+",
-      ],
+      isCheck: false,
       order: 20,
     },
     "us.liquidity": {

@@ -368,7 +368,8 @@ export default function EditStockModal({
     const loadChartData = async () => {
       setLoadingChart(true);
       try {
-        const results = await fetchStockData([symbolToFetch], country, timeframe, interval);
+        const fetchTimeframe = (interval === '1d' || interval === '1wk' || (interval === 'auto' && ['1mo', '3mo', '6mo', 'ytd', '1y'].includes(timeframe))) ? '2y' : timeframe;
+        const results = await fetchStockData([symbolToFetch], country, fetchTimeframe, interval);
         if (isCurrent && results && results.length > 0) {
           // Double check that the symbol fetched matches the current stock prop
           if (symbolToFetch === stock.symbol) {
@@ -1525,6 +1526,7 @@ export default function EditStockModal({
                     disableZoom={false}
                     height="100%"
                     maSettings={maSettings}
+                    timeframe={timeframe}
                   />
                 </div>
               </div>
