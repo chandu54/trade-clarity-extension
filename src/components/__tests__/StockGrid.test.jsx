@@ -325,5 +325,46 @@ describe('StockGrid', () => {
       expect(screen.getByText('▲ 1')).toBeDefined();
     });
   });
+
+  it('toggles interactive advances and declines price filters', async () => {
+    // AAPL has positive dailyChangePct (advancing), MSFT has negative (declining)
+    const mockManyStocks = {
+      AAPL: { symbol: 'AAPL', params: {}, dailyChangePct: 1.5 },
+      MSFT: { symbol: 'MSFT', params: {}, dailyChangePct: -0.5 }
+    };
+    const propsWithSyncDate = {
+      ...props,
+      data: {
+        ...mockData,
+        weeks: {
+          US: {
+            '2024-03-17': {
+              lastSyncDate: '2024-03-17',
+              stocks: mockManyStocks
+            }
+          }
+        }
+      }
+    };
+    renderWithContext(<StockGrid {...propsWithSyncDate} />);
+
+    // Wait for the advances/declines summary badges to render
+    const advancesBadge = await screen.findByTitle('Advances (Price Up)');
+    expect(advancesBadge).toBeDefined();
+
+    // Click Advances filter to show only green stocks
+    fireEvent.click(advancesBadge);
+
+    // AAPL should be visible, MSFT should be filtered out
+    expect(screen.getByText('AAPL')).toBeDefined();
+    expect(screen.queryByText('MSFT')).toBeNull();
+
+    // Click Advances filter again to clear filter
+    fireEvent.click(advancesBadge);
+    
+    // Both should be visible now
+    expect(screen.getByText('AAPL')).toBeDefined();
+    expect(screen.getByText('MSFT')).toBeDefined();
+  });
 });
 

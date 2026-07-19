@@ -13,7 +13,8 @@
     "test:watchlist": "vitest run --config vite.config.js Watchlist",
     "test:journal": "vitest run --config vite.config.js Journal",
     "test:settings": "vitest run --config vite.config.js Settings",
-    "test:utils": "vitest run --config vite.config.js utils"
+    "test:utils": "vitest run --config vite.config.js utils",
+    "update-metadata-db": "node scripts/generateMetadataDb.js"
   },
   "dependencies": {
     "lightweight-charts": "^5.1.0",

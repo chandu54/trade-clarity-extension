@@ -5,6 +5,7 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
   const readOnly = data.uiConfig?.lockPreviousWeeks !== false;
   // Default = true
   const enableApiHydration = data.uiConfig?.enableApiHydration !== false;
+  const autoIdentifySectors = data.uiConfig?.autoIdentifySectors !== false;
   const adrDays = data.uiConfig?.adrDays || 20;
   const liquidityDays = data.uiConfig?.liquidityDays || 20;
 
@@ -24,6 +25,16 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
       uiConfig: {
         ...(data.uiConfig || {}),
         enableApiHydration: val,
+      },
+    });
+  }
+
+  function toggleAutoIdentifySectors(val) {
+    setData({
+      ...data,
+      uiConfig: {
+        ...(data.uiConfig || {}),
+        autoIdentifySectors: val,
       },
     });
   }
@@ -102,6 +113,24 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
             </div>
           </div>
         )}
+      </div>
+
+      <div className="param-row margin-top-16">
+        <div>
+          <strong>Auto-Identify Stock Sectors</strong>
+          <div className="muted small">
+            Automatically resolve sectors for newly added stocks using local metadata database, and register them to your list.
+          </div>
+        </div>
+
+        <label className="switch">
+          <input
+            type="checkbox"
+            checked={autoIdentifySectors}
+            onChange={(e) => toggleAutoIdentifySectors(e.target.checked)}
+          />
+          <span className="slider" />
+        </label>
       </div>
 
       <div className="param-row margin-top-16">

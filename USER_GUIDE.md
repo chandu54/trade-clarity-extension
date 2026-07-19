@@ -95,6 +95,7 @@ Once your stocks are in the grid, it's time to process them.
 - **Filter**:
   - Use the **Filters** bar (top of grid) to show only specific Sectors or Tags.
   - Filter by your custom parameters (e.g., Show only stocks where "Trend" is "Up").
+- **Interactive Daily Trend Filters**: Click the **Advances (▲)** or **Declines (▼)** count badges in the grid header to filter the list instantly for stocks that are UP or DOWN today. The list is automatically sorted by the daily percent change, letting you spot momentum leaders immediately. Click the active badge again to clear the filter.
 - **Mark as Tradable**: When a stock meets all your criteria, check the **Tradable** box. This is your final "Shortlist."
 - **Live Syncing**: When you add new symbols or switch weeks, TradeClarity automatically fetches metrics like ADR and Liquidity in the background. A progress bar will appear in the grid header during this process.
 - **Data Freshness**: Check the **"Last synced"** timestamp in the top-left of the grid header. It shows the exact time your technical data was last refreshed from the market.
@@ -104,7 +105,28 @@ Once your stocks are in the grid, it's time to process them.
 
 ---
 
-## 6. Visual Insights & AI
+## 6. Deep View Workspace & Watchlist Grouping
+
+When you click on any stock symbol in the main grid, it opens the **Deep View Workspace** modal. This is a comprehensive workspace designed for in-depth technical analysis and watchlist management without losing your context.
+
+### 📋 Watchlist Sidebar & Grouping Options
+On the left side of the workspace, the active watchlist is displayed as a sidebar list. You can customize this list to organize your thoughts:
+- **Watchlist Grouping Popover**: Click the **Layers Icon (Group & Categorize)** next to the refresh button. You can group your stocks in the sidebar by **Sector** or **Tag**, or select **None (Flat List)**.
+- **Collapsible Groups**: When grouped, each sector or tag section displays a collapsible header with the stock count (e.g. `Tech (5)`). Click the header to expand or collapse the section. Stocks that do not have an assigned category are neatly grouped under an "Unassigned" header at the bottom.
+- **Auto-Expansion**: Selecting a stock automatically expands its containing group, highlighting it in the list.
+- **Search & Switch**: Use the **Search stock... (Ctrl+K)** input to filter the list and quickly switch tickers. Use the `ArrowUp`/`ArrowDown` or `ArrowLeft`/`ArrowRight` keys to navigate the list, and next/prev buttons in the header for seamless paging.
+
+### ⚙️ Moving Average (MAs) Settings Popover
+In the chart control toolbar, you can manage the visibility and style of technical moving averages:
+- Click the **Gear Icon (MAs)** trigger to open the settings popover.
+- Check/uncheck individual moving averages (e.g. `5-day SMA`, `10-day SMA`, `21-day SMA`, `50-day SMA`, `200-day SMA`) to show or hide them on the chart.
+- Change the display color of each line.
+- Customize the line weight using the thickness selector (1px to 4px).
+- Your styling preferences are stored locally and persist across sessions.
+
+---
+
+## 7. Visual Insights & AI
 
 ### 📊 Analytics Dashboard
 
@@ -163,7 +185,7 @@ Hover over the **"i" icon** next to the week dropdown.
 
 ---
 
-## 7. Data Management
+## 8. Data Management
 
 ### 💾 Backup & Restore (Full App)
 
@@ -189,7 +211,7 @@ As your database grows over many months, you may want to clean up old data to ke
 
 ---
 
-## 8. Configuration Tips
+## 9. Configuration Tips
 
 - **Manage Sectors**: Go to **Settings > Sectors** to customize the dropdown list to match your preferred taxonomy.
 - **Column Visibility**: Go to **Settings > Columns** to hide parameters you don't need to see in the main grid every day.
@@ -257,7 +279,7 @@ Once the correct symbol is detected, you can input your trade plan:
 
 ---
 
-## 9. Market Pulse Guide
+## 10. Market Pulse Guide
 
 The **Market Pulse** dashboard acts as your bird's-eye view of indices and sector performance. Rather than evaluating tickers in isolation, you should first look here to understand the broader market trend, momentum strength, and system risk levels.
 
@@ -288,7 +310,7 @@ At the bottom of the Snapshot page, the system displays the **Technical Thesis**
 
 ---
 
-## 10. Trading Journal Guide
+## 11. Trading Journal Guide
 
 A professional trading journal enforces discipline. Recording your setups, risk-reward parameters, and scaling points prevents impulsive decisions, provides audit trails, and lets you calculate performance stats objectively. Treating trading as a business requires tracking every unit of risk and analyzing your performance parameters over time.
 
@@ -336,7 +358,7 @@ An analytical dashboard to audit your system edge.
 
 ---
 
-## 11. AI Settings & Prompt Library
+## 12. AI Settings & Prompt Library
 
 TradeClarity.market lets you integrate institutional-grade AI analysis (powered securely by the Google Gemini API) directly into your trading workflow. Instead of relying on generic prompts, you can create and manage a proprietary strategy library to dictate exactly how the AI evaluates your watchlists, sectors, and individual setups.
 

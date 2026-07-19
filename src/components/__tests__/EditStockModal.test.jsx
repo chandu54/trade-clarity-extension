@@ -467,4 +467,85 @@ describe('EditStockModal', () => {
       expect(screen.queryByText('ai: exit')).toBeNull();
     });
   });
+
+  describe('Moving Averages and Sidebar Grouping Popovers', () => {
+    const sortedStocks = [
+      { symbol: 'AAPL', longName: 'Apple Inc.', sector: 'Tech', tags: ['Growth'], periodChangePct: 1.5, isAdvancing: true },
+      { symbol: 'MSFT', longName: 'Microsoft Corp.', sector: 'Tech', tags: ['Value'], periodChangePct: -0.8, isAdvancing: false },
+      { symbol: 'GOOGL', longName: 'Alphabet Inc.', sector: 'Finance', tags: [], periodChangePct: 2.3, isAdvancing: true }
+    ];
+
+    it('toggles the sidebar grouping popover dropdown options', () => {
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+        />
+      );
+
+      // Verify layers icon button is rendered
+      const groupingBtn = screen.getByTitle('Group & Categorize watchlist');
+      expect(groupingBtn).toBeDefined();
+
+      // Click to open popover
+      fireEvent.click(groupingBtn);
+      expect(screen.getByText('Group by:')).toBeDefined();
+      expect(screen.getByText('Sector')).toBeDefined();
+      expect(screen.getByText('Tag')).toBeDefined();
+
+      // Click 'Sector' option
+      fireEvent.click(screen.getByText('Sector'));
+
+      // The popover should close
+      expect(screen.queryByText('Group by:')).toBeNull();
+    });
+
+    it('groups and collapses/expands the sidebar watchlist items based on sector and tags', () => {
+      render(
+        <EditStockModal
+          {...props}
+          isDeepView={true}
+          sortedStocks={sortedStocks}
+        />
+      );
+
+      const groupingBtn = screen.getByTitle('Group & Categorize watchlist');
+      fireEvent.click(groupingBtn);
+      fireEvent.click(screen.getByText('Sector'));
+
+      // Header categories should appear: Tech and Finance
+      expect(screen.getByText('Tech')).toBeDefined();
+      expect(screen.getByText('Finance')).toBeDefined();
+
+      // We should be able to click on 'Finance' header to collapse/expand
+      const financeHeader = screen.getByText('Finance').closest('.sidebar-group-header-premium');
+      expect(financeHeader).toBeDefined();
+      fireEvent.click(financeHeader);
+    });
+
+    it('toggles moving average (MAs) popover rows and line weight configuration changes', () => {
+      render(<EditStockModal {...props} isDeepView={true} />);
+
+      // Verify the MAs trigger button
+      const maTrigger = screen.getByTitle('Moving Average Settings');
+      expect(maTrigger).toBeDefined();
+
+      // Click to open MAs popover
+      fireEvent.click(maTrigger);
+      expect(screen.getByText('50-day SMA')).toBeDefined();
+      expect(screen.getByText('200-day SMA')).toBeDefined();
+
+      // Verify and toggle visibility of SMA 50
+      const checkboxes = screen.getAllByRole('checkbox');
+      const sma50Checkbox = checkboxes.find(c => c.checked);
+      expect(sma50Checkbox).toBeDefined();
+      fireEvent.click(sma50Checkbox);
+
+      // Verify line thickness selector
+      const thicknessSelect = screen.getByTitle('Change 50 SMA line thickness');
+      expect(thicknessSelect).toBeDefined();
+      fireEvent.change(thicknessSelect, { target: { value: '3' } });
+    });
+  });
 });

@@ -4,6 +4,87 @@ This reference document serves as an architectural blueprint and implementation 
 
 ---
 
+## 📐 System Architecture Flowchart
+
+Below is the visual system architecture flowchart of the TradeClarity Chrome Extension, Content Widgets, and Dashboard Terminal.
+
+```mermaid
+graph TD
+    %% Define Styling
+    classDef ui fill:#3b82f6,stroke:#1d4ed8,stroke-width:2px,color:#fff;
+    classDef background fill:#f59e0b,stroke:#d97706,stroke-width:2px,color:#fff;
+    classDef storage fill:#10b981,stroke:#047857,stroke-width:2px,color:#fff;
+    classDef api fill:#8b5cf6,stroke:#6d28d9,stroke-width:2px,color:#fff;
+    classDef pages fill:#64748b,stroke:#475569,stroke-width:2px,color:#fff;
+
+    %% Subgraph Layouts
+    subgraph TargetWebsites ["Target Browser Pages (TradingView, Screener.in)"]
+        Title["Browser Title <title><br>(e.g. 'RELIANCE 2500...')"]
+        Widget["TradeClarityWidget.jsx<br>(Shadow DOM Overlay)"]
+        Voice["Voice Recognition<br>(Web Speech API)"]
+    end
+
+    subgraph DataStorage ["Data Layer"]
+        DB[("chrome.storage.local<br>(trading_app_data)")]
+    end
+
+    subgraph BackgroundWorker ["Extension Background Service Worker (background.js)"]
+        BG_Listener["Message Router<br>(chrome.runtime.onMessage)"]
+        Fetch_Metrics["Metrics Fetching Queue<br>(Yahoo Finance)"]
+        AI_Analysis["Bulk Gemini AI Analysis Queue"]
+    end
+
+    subgraph DashboardPage ["Dashboard Terminal (dashboard.html / App.jsx)"]
+        Nav["Main Navigation Tabs"]
+        View_Grid["Watchlist Grid<br>(StockGrid.jsx)"]
+        View_Pulse["Market Pulse<br>(MarketPulseView.jsx)"]
+        View_Journal["Journal View<br>(JournalView.jsx)"]
+        Dashboard_Analytics["Analytics Dashboard<br>(AnalyticsDashboard.jsx)"]
+    end
+
+    %% Apply Styles
+    class Title,Widget,Voice pages;
+    class DB storage;
+    class BG_Listener,Fetch_Metrics,AI_Analysis background;
+    class Nav,View_Grid,View_Pulse,View_Journal,Dashboard_Analytics ui;
+
+    %% Interactions and Data Flow
+    Title -->|"1. MutationObserver tracks ticker change"| Widget
+    Widget -->|"2. Load/Save current stock data"| DB
+    Voice -->|"Voice-to-Text notes & parameters"| Widget
+    
+    Widget -.->|"3. Open Dashboard click"| BG_Listener
+    BG_Listener -->|"Creates tab"| DashboardPage
+    
+    %% Storage Synchronization
+    DB <.->|"Real-time state synchronization (chrome.storage.onChanged)"| DashboardPage
+    DB <.->|"Real-time state synchronization (chrome.storage.onChanged)"| Widget
+
+    %% Background queues triggers
+    View_Grid -->|"Trigger Stock Metrics Sync"| BG_Listener
+    View_Grid -->|"Trigger Bulk AI Analysis"| BG_Listener
+
+    BG_Listener -->|"Queues ticker requests"| Fetch_Metrics
+    BG_Listener -->|"Queues AI analysis tasks"| AI_Analysis
+
+    %% External APIs
+    Fetch_Metrics -->|"Fetch daily OHLCV bars"| YF[("Yahoo Finance API<br>(v8/chart)")]
+    YF -->|"Return price data"| Fetch_Metrics
+    Fetch_Metrics -->|"Calculate ADR, Liquidity & Moving Averages"| DB
+
+    AI_Analysis -->|"Analyze stocks in batches of 7"| Gemini[("Gemini API<br>(generativelanguage.googleapis.com)")]
+    Gemini -->|"Receive verdicts (BUY/WAIT/SELL/STRONG BUY)"| AI_Analysis
+    AI_Analysis -->|"Write AI verdicts, tags, and reasoning"| DB
+
+    %% Dashboard tabs routing
+    Nav --> View_Grid
+    Nav --> View_Pulse
+    Nav --> View_Journal
+    View_Grid -->|"View Charts / Graphs"| Dashboard_Analytics
+```
+
+---
+
 ## 📂 Core File & Directory Mapping
 
 ```

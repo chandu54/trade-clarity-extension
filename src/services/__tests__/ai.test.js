@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getAiAnalysis, testConnection, PROMPT_TEMPLATES } from "../ai";
+import { getAiAnalysis, testConnection, PROMPT_TEMPLATES, classifySectorsInBulk } from "../ai";
 
 // Mock fetch
 const fetchMock = vi.fn();
@@ -9,6 +9,52 @@ describe("ai service", () => {
   beforeEach(() => {
     vi.clearAllMocks();
   });
+
+  describe("classifySectorsInBulk", () => {
+    it("should return empty object if apiKey or stocks is missing", async () => {
+      const result = await classifySectorsInBulk("", "model", [], "US", []);
+      expect(result).toEqual({});
+    });
+
+    it("should parse and return the sector mappings from Gemini JSON output", async () => {
+      const apiKey = "valid-gemini-api-key-long-enough-39-chars";
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          candidates: [{ content: { parts: [{ text: '{"AAPL": {"sector": "Custom Tech"}}' }] } }]
+        })
+      });
+
+      const result = await classifySectorsInBulk(
+        apiKey,
+        "gemini-model",
+        [{ symbol: "AAPL", companyName: "Apple Inc." }],
+        "US",
+        [{ name: "Custom Tech" }]
+      );
+      expect(result.AAPL?.sector).toBe("Custom Tech");
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("gemini-model"),
+        expect.any(Object)
+      );
+    });
+
+    it("should return empty object if the fetch or parsing fails", async () => {
+      const apiKey = "valid-gemini-api-key-long-enough-39-chars";
+      fetchMock.mockRejectedValueOnce(new Error("Gemini is offline"));
+
+      const result = await classifySectorsInBulk(
+        apiKey,
+        "gemini-model",
+        [{ symbol: "AAPL", companyName: "Apple Inc." }],
+        "US",
+        []
+      );
+      expect(result).toEqual({});
+    });
+  });
+
+
 
   describe("getAiAnalysis", () => {
     it("should throw error if API key is missing", async () => {

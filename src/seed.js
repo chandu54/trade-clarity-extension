@@ -168,6 +168,7 @@ export const DEFAULT_DATA = {
     sectorFilterable: true,
     tradableFilterable: true,
     enableApiHydration: true,
+    autoIdentifySectors: true,
   },
   isPro: false,
   theme: "dark",

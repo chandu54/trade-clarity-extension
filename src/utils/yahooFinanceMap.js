@@ -3,6 +3,7 @@ import { mapMovingAverageBucket } from './metrics.js';
 export async function fetchStockData(symbols, country, timeframe = '3mo', customInterval = null, signal = null) {
   if (!symbols || !symbols.length) return [];
 
+
   const validTimeframes = {
     '1d': { range: '5d', interval: '5m' },
     '5d': { range: '5d', interval: '15m' },
@@ -23,6 +24,8 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
     if (country === 'IN' && !symbol.endsWith('.NS') && !symbol.endsWith('.BO') && !symbol.startsWith('^')) {
       ticker = `${symbol}.NS`;
     }
+
+    const earningsDate = null;
 
     try {
       const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
@@ -147,7 +150,8 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
         high52w: meta.fiftyTwoWeekHigh || null,
         low52w: meta.fiftyTwoWeekLow || null,
         candlesticks,
-        movingAverages
+        movingAverages,
+        earningsDate
       };
     } catch (error) {
       return { symbol, error: error.message };
@@ -191,3 +195,5 @@ export async function fetchStockQuotes(symbols, country, signal = null) {
     return [];
   }
 }
+
+

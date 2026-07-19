@@ -6,6 +6,9 @@ import ImportWatchlistModal from "./ImportWatchlistModal";
 import TrashIcon from "./icons/TrashIcon";
 import { useToast } from "./ToastContext";
 import { useConfirm } from "./ConfirmContext";
+import { classifySectorsInBulk } from "../services/ai";
+import stockMetadata from "../constants/stockMetadata.json";
+
 import {
   doesParamPassCheck,
   isParamRelevantForCountry,
@@ -332,6 +335,7 @@ export default function StockGrid({
   onImportAll,
   availableTags,
   aiSettings,
+  onQuickLog,
 }) {
   const week = data.weeks?.[country]?.[weekKey];
   const params = data.paramDefinitions;
@@ -346,8 +350,144 @@ export default function StockGrid({
 
   const [quotes, setQuotes] = useState({});
   const [loadingQuotes, setLoadingQuotes] = useState(false);
+  const [detectingSectors, setDetectingSectors] = useState(false);
   const fetchQuotesCountRef = useRef(0);
   const fetchAbortControllerRef = useRef(null);
+
+  const applySectorMappings = useCallback((mappings) => {
+    setData((prev) => {
+      const prevWeek = prev.weeks?.[country]?.[weekKey];
+      if (!prevWeek) return prev;
+      const newStocks = { ...prevWeek.stocks };
+      const newCache = { ...(prev.stockSectorCache || {}) };
+      const newSectorsList = [...(prev.uiConfig?.sectors || prev.sectors || [])];
+
+      Object.entries(mappings).forEach(([symbol, sectorName]) => {
+        if (newStocks[symbol]) {
+          newStocks[symbol] = {
+            ...newStocks[symbol],
+            sector: sectorName,
+          };
+          newCache[symbol.toUpperCase()] = sectorName;
+
+          // Register sector in uiConfig if it doesn't exist
+          const exists = newSectorsList.some(
+            (s) => (s.name || "").toLowerCase() === sectorName.toLowerCase()
+          );
+          if (!exists) {
+            newSectorsList.push({ name: sectorName, countries: [country] });
+          } else {
+            const existing = newSectorsList.find(
+              (s) => (s.name || "").toLowerCase() === sectorName.toLowerCase()
+            );
+            if (existing && existing.countries && !existing.countries.includes(country)) {
+              existing.countries.push(country);
+            }
+          }
+        }
+      });
+
+      return {
+        ...prev,
+        stockSectorCache: newCache,
+        uiConfig: {
+          ...(prev.uiConfig || {}),
+          sectors: newSectorsList,
+        },
+        weeks: {
+          ...prev.weeks,
+          [country]: {
+            ...prev.weeks[country],
+            [weekKey]: {
+              ...prevWeek,
+              stocks: newStocks,
+            },
+          },
+        },
+      };
+    });
+  }, [country, weekKey, setData]);
+
+  const handleDetectSectors = useCallback(async () => {
+    const watchlistStocks = allStocks.filter(
+      (s) => selectedWatchlistId === "all" || s.watchlists?.includes(selectedWatchlistId)
+    );
+
+    const stocksToResolve = watchlistStocks.filter((s) => !s.sector);
+
+    if (stocksToResolve.length === 0) {
+      showToast("All stocks in this watchlist already have sectors defined.", "info");
+      return;
+    }
+
+    setDetectingSectors(true);
+    try {
+      const resolvedMappings = {};
+      const remainingForAi = [];
+
+      // 1. Local / Cache lookup first
+      stocksToResolve.forEach((s) => {
+        const cached = data.stockSectorCache?.[s.symbol.toUpperCase()];
+        if (cached) {
+          resolvedMappings[s.symbol] = cached;
+        } else {
+          const localMeta = stockMetadata[country]?.[s.symbol.toUpperCase()];
+          if (localMeta && localMeta.sector) {
+            resolvedMappings[s.symbol] = localMeta.sector;
+          } else {
+            remainingForAi.push(s);
+          }
+        }
+      });
+
+      // 2. AI Fallback if needed
+      if (remainingForAi.length > 0) {
+        const apiKey = aiSettings?.apiKey;
+        const model = aiSettings?.model || "gemini-2.5-flash";
+
+        if (!apiKey || !apiKey.trim()) {
+          if (Object.keys(resolvedMappings).length > 0) {
+            applySectorMappings(resolvedMappings);
+            showToast(`Resolved ${Object.keys(resolvedMappings).length} sectors locally. Please configure Gemini API Key for the remaining ${remainingForAi.length} stocks.`, "warning");
+          } else {
+            showToast("Gemini API Key is missing. Please configure it in Settings.", "error");
+          }
+          setDetectingSectors(false);
+          return;
+        }
+
+        showToast(`Detecting sectors for ${remainingForAi.length} stocks using AI...`, "info");
+        
+        const availableSectors = data.uiConfig?.sectors || [];
+        const aiMappings = await classifySectorsInBulk(
+          apiKey,
+          model,
+          remainingForAi.map((s) => ({ symbol: s.symbol, companyName: s.name || "" })),
+          country,
+          availableSectors
+        );
+
+        Object.entries(aiMappings).forEach(([sym, valObj]) => {
+          if (valObj && valObj.sector) {
+            resolvedMappings[sym] = valObj.sector;
+          }
+        });
+      }
+
+      if (Object.keys(resolvedMappings).length > 0) {
+        applySectorMappings(resolvedMappings);
+        showToast(`Successfully resolved sectors for ${Object.keys(resolvedMappings).length} stocks!`, "success");
+      } else {
+        showToast("No sectors could be resolved for the stocks.", "warning");
+      }
+    } catch (err) {
+      console.error("Manual sector detection failed:", err);
+      showToast(`Sector detection failed: ${err.message || err}`, "error");
+    } finally {
+      setDetectingSectors(false);
+    }
+  }, [allStocks, selectedWatchlistId, data.stockSectorCache, data.uiConfig?.sectors, country, aiSettings, showToast, applySectorMappings]);
+
 
   const fetchQuotesForGrid = useCallback(async () => {
     const symbols = symbolsSerialized ? symbolsSerialized.split(",") : [];
@@ -376,6 +516,7 @@ export default function StockGrid({
             dailyChangePct: r.dailyChangePct,
             isAdvancing: r.isAdvancing,
             longName: r.longName || r.name,
+            earningsDate: r.earningsDate,
           };
         });
         setQuotes(mapping);
@@ -414,6 +555,7 @@ export default function StockGrid({
   const [filters, setFilters] = useState({});
   const [sortBy, setSortBy] = useState("symbol");
   const [sortDir, setSortDir] = useState("asc");
+  const [priceTrendFilter, setPriceTrendFilter] = useState(null); // 'up' | 'down' | null
 
   const [activeTagDropdown, setActiveTagDropdown] = useState(null);
   const [pageSize, setPageSize] = useState(10);
@@ -446,25 +588,33 @@ export default function StockGrid({
       const prevWeek = prev.weeks?.[country]?.[weekKey];
       if (!prevWeek) return prev;
       const newStocks = { ...prevWeek.stocks };
+      
+      const newData = { ...prev };
       if (newStocks[symbol]) {
         newStocks[symbol] = {
           ...newStocks[symbol],
           [field]: value,
         };
       }
-      return {
-        ...prev,
-        weeks: {
-          ...prev.weeks,
-          [country]: {
-            ...prev.weeks[country],
-            [weekKey]: {
-              ...prevWeek,
-              stocks: newStocks,
-            },
+      
+      if (field === "sector") {
+        newData.stockSectorCache = {
+          ...(prev.stockSectorCache || {}),
+          [symbol.toUpperCase()]: value,
+        };
+      }
+
+      newData.weeks = {
+        ...prev.weeks,
+        [country]: {
+          ...prev.weeks[country],
+          [weekKey]: {
+            ...prevWeek,
+            stocks: newStocks,
           },
         },
       };
+      return newData;
     });
   };
 
@@ -698,7 +848,9 @@ export default function StockGrid({
   /* =====================
      COLUMN CONFIG
   ===================== */
-  const columnConfig = data.uiConfig?.columnVisibility || {};
+  const columnConfig = useMemo(() => {
+    return data.uiConfig?.columnVisibility || {};
+  }, [data.uiConfig?.columnVisibility]);
   const showNotes = columnConfig["__notes__"] !== false;
   const showLivePrice = columnConfig["__livePrice__"] !== false;
 
@@ -854,7 +1006,7 @@ export default function StockGrid({
         }
       }
       /*Param FILTER*/
-      return filterableParams.every(([key, p]) => {
+      const passesParams = filterableParams.every(([key, p]) => {
         const filterVal = filters[key];
         if (
           filterVal === undefined ||
@@ -876,8 +1028,6 @@ export default function StockGrid({
           const stockAboveMAs = parseMAs(stockVal);
           const isStockBelowAll = stockAboveMAs.includes("below");
 
-          // Handle Object format (new per-MA condition map)
-          // filterVal: { "5": "below", "50": "above" }
           if (filterVal && typeof filterVal === 'object' && !Array.isArray(filterVal)) {
             const conditions = Object.entries(filterVal);
             if (conditions.length === 0) return true;
@@ -899,23 +1049,26 @@ export default function StockGrid({
           return true;
         }
 
+        if (stockVal === undefined) return false;
+
         if (p.type === "checkbox") {
-          return Boolean(stockVal) === filterVal;
+          return Boolean(stockVal) === Boolean(filterVal);
         }
 
         if (p.type === "select") {
-          if (Array.isArray(filterVal)) {
-            return filterVal.includes(stockVal);
-          }
-          return stockVal === filterVal;
+          const filterArr = Array.isArray(filterVal)
+            ? filterVal
+            : filterVal
+              ? [filterVal]
+              : [];
+          if (filterArr.length === 0) return true;
+          return filterArr.includes(stockVal);
         }
 
         if (p.type === "number") {
-          let effectiveFilterVal = filterVal;
-          const isLiquidity = key.toLowerCase().includes("liquidity") || (p.label && p.label.toLowerCase().includes("liquidity"));
-          
-          if (isLiquidity && typeof effectiveFilterVal === "string" && effectiveFilterVal !== "") {
-             if (!/[cmk]/i.test(effectiveFilterVal)) {
+          let effectiveFilterVal = String(filterVal);
+          if (key.toLowerCase().includes("liquidity") || (p.label && p.label.toLowerCase().includes("liquidity"))) {
+             if (!/[MCr]/i.test(effectiveFilterVal)) {
                 const unit = country === "IN" ? "Cr" : "M";
                 // Append unit to any number in the filter (handles ranges and operators)
                 effectiveFilterVal = effectiveFilterVal.replace(/(\d+(?:\.\d+)?)/g, `$1${unit}`);
@@ -929,13 +1082,26 @@ export default function StockGrid({
         }
 
         if (p.type === "text") {
-          return (stockVal || "")
+          return (String(stockVal || ""))
             .toLowerCase()
             .includes(String(filterVal).toLowerCase());
         }
 
         return true;
       });
+
+      if (!passesParams) return false;
+
+      /* PRICE TREND FILTER */
+      if (priceTrendFilter === "up") {
+        const q = quotes[stock.symbol];
+        if (!q || q.dailyChangePct === undefined || q.dailyChangePct <= 0) return false;
+      } else if (priceTrendFilter === "down") {
+        const q = quotes[stock.symbol];
+        if (!q || q.dailyChangePct === undefined || q.dailyChangePct >= 0) return false;
+      }
+
+      return true;
     });
   }, [
     allStocks,
@@ -946,6 +1112,8 @@ export default function StockGrid({
     searchQuery,
     selectedWatchlistId,
     country,
+    priceTrendFilter,
+    quotes,
   ]);
 
 
@@ -962,8 +1130,8 @@ export default function StockGrid({
         aVal = getChecksCount(a);
         bVal = getChecksCount(b);
       } else if (sortBy === "__livePrice__") {
-        const aNum = quotes[a.symbol]?.currentPrice ?? 0;
-        const bNum = quotes[b.symbol]?.currentPrice ?? 0;
+        const aNum = quotes[a.symbol]?.dailyChangePct ?? 0;
+        const bNum = quotes[b.symbol]?.dailyChangePct ?? 0;
         return sortDir === "asc" ? aNum - bNum : bNum - aNum;
       } else {
         aVal = a[sortBy] ?? a.params?.[sortBy];
@@ -1020,11 +1188,7 @@ export default function StockGrid({
     let unchanged = 0;
     let totalWithQuotes = 0;
 
-    const watchlistStocks = selectedWatchlistId === "all"
-      ? allStocks
-      : allStocks.filter(stock => stock.watchlists?.includes(selectedWatchlistId));
-
-    watchlistStocks.forEach((stock) => {
+    filteredStocks.forEach((stock) => {
       const q = quotes[stock.symbol];
       if (q && q.dailyChangePct !== undefined) {
         totalWithQuotes++;
@@ -1039,7 +1203,7 @@ export default function StockGrid({
     });
 
     return { advances, declines, unchanged, total: totalWithQuotes };
-  }, [allStocks, selectedWatchlistId, quotes]);
+  }, [filteredStocks, quotes]);
 
   const totalPages = Math.max(1, Math.ceil(sortedStocks.length / pageSize));
 
@@ -1674,12 +1838,13 @@ export default function StockGrid({
                 </span>
               </div>
 
-              {activeFilters.length > 0 && (
+              {(activeFilters.length > 0 || priceTrendFilter !== null) && (
                 <button
                   className="reset-filters-btn-v2"
                   onClick={(e) => {
                     e.stopPropagation();
                     setFilters({});
+                    setPriceTrendFilter(null);
                   }}
                   title="Clear all active filters"
                 >
@@ -2006,14 +2171,22 @@ export default function StockGrid({
 
               {advancesAndDeclines.total > 0 && (
                 <div className="advances-declines-summary flex items-center gap-1.5 ml-2 pl-2 border-l border-slate-700">
-                  <span className="text-emerald-500 font-semibold" title="Advances (Price Up)">
+                  <span
+                    className={`advances-badge-interactive ${priceTrendFilter === "up" ? "active-up" : ""}`}
+                    onClick={() => setPriceTrendFilter(prev => prev === "up" ? null : "up")}
+                    title="Advances (Price Up)"
+                  >
                     ▲ {advancesAndDeclines.advances}
                   </span>
-                  <span className="text-rose-500 font-semibold" title="Declines (Price Down)">
+                  <span
+                    className={`declines-badge-interactive ${priceTrendFilter === "down" ? "active-down" : ""}`}
+                    onClick={() => setPriceTrendFilter(prev => prev === "down" ? null : "down")}
+                    title="Declines (Price Down)"
+                  >
                     ▼ {advancesAndDeclines.declines}
                   </span>
                   {advancesAndDeclines.unchanged > 0 && (
-                    <span className="text-slate-400 font-semibold" title="Unchanged">
+                    <span className="text-slate-400 font-semibold cursor-default select-none" title="Unchanged">
                       ■ {advancesAndDeclines.unchanged}
                     </span>
                   )}
@@ -2021,26 +2194,54 @@ export default function StockGrid({
               )}
               
               {!isReadOnly && (
-                <button 
-                  className={`force-sync-btn ${(fetchProgress.total > 0 || loadingQuotes) ? 'is-syncing' : ''}`}
-                  onClick={() => triggerFullSync(true)}
-                  title="Force refresh all stock metrics"
-                  disabled={fetchProgress.total > 0 || loadingQuotes}
-                >
-                  <svg 
-                    xmlns="http://www.w3.org/2000/svg" 
-                    width="14" 
-                    height="14" 
-                    viewBox="0 0 24 24" 
-                    fill="none" 
-                    stroke="currentColor" 
-                    strokeWidth="2.5" 
-                    strokeLinecap="round" 
-                    strokeLinejoin="round"
+                <>
+                  <button 
+                    className={`force-sync-btn ${(fetchProgress.total > 0 || loadingQuotes) ? 'is-syncing' : ''}`}
+                    onClick={() => triggerFullSync(true)}
+                    title="Force refresh all stock metrics"
+                    disabled={fetchProgress.total > 0 || loadingQuotes}
                   >
-                    <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.3" />
-                  </svg>
-                </button>
+                    <svg 
+                      xmlns="http://www.w3.org/2000/svg" 
+                      width="14" 
+                      height="14" 
+                      viewBox="0 0 24 24" 
+                      fill="none" 
+                      stroke="currentColor" 
+                      strokeWidth="2.5" 
+                      strokeLinecap="round" 
+                      strokeLinejoin="round"
+                    >
+                      <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.3" />
+                    </svg>
+                  </button>
+
+                  <button
+                    className={`force-sync-btn ${detectingSectors ? 'is-syncing' : ''}`}
+                    onClick={handleDetectSectors}
+                    title="Detect missing sectors using Cache & AI"
+                    disabled={detectingSectors}
+                  >
+                    {detectingSectors ? (
+                      <span className="spinner-mini" style={{ borderTopColor: 'currentColor', width: '10px', height: '10px' }} />
+                    ) : (
+                      <svg
+                        xmlns="http://www.w3.org/2000/svg"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        strokeWidth={2.5}
+                        stroke="currentColor"
+                        width="13"
+                        height="13"
+                      >
+                        <rect x="3" y="3" width="7" height="9" rx="1.5" />
+                        <rect x="14" y="3" width="7" height="5" rx="1.5" />
+                        <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                        <rect x="3" y="16" width="7" height="5" rx="1.5" />
+                      </svg>
+                    )}
+                  </button>
+                </>
               )}
             </div>
           )}
@@ -2173,6 +2374,8 @@ export default function StockGrid({
             />
           </div>
 
+
+
           <button
             className="add-stock-cta"
             onClick={() => setShowAddStock(true)}
@@ -2236,6 +2439,7 @@ export default function StockGrid({
           sortedStocks={sortedStocks}
           onSelectStock={setEditingStock}
           watchlistName={selectedWatchlistId === "all" ? "All Stocks" : (activeWatchlist?.name || "Watchlist")}
+          onQuickLog={onQuickLog}
         />
       )}
 
@@ -2412,20 +2616,45 @@ export default function StockGrid({
                   <div className="stock-cell-content">
                     <div className="stock-header-row">
                       <div className="symbol-cell-content">
-                        <span
-                          className={`stock-symbol ${!isReadOnly ? "clickable" : ""}`}
-                          onClick={() => {
-                            if (!isReadOnly) {
-                              setEditingStock(stock);
-                            }
-                          }}
-                          title={!isReadOnly ? "Click to edit details" : ""}
-                        >
-                          {stock.symbol}
-                          {stock.isInvalid && (
-                            <span className="symbol-invalid-icon" title="Symbol not found or data unavailable. Please verify the ticker.">!</span>
+                        <div className="flex items-center gap-1.5">
+                          <span
+                            className={`stock-symbol ${!isReadOnly ? "clickable" : ""}`}
+                            onClick={() => {
+                              if (!isReadOnly) {
+                                setEditingStock(stock);
+                              }
+                            }}
+                            title={!isReadOnly ? "Click to edit details" : ""}
+                          >
+                            {stock.symbol}
+                            {stock.isInvalid && (
+                              <span className="symbol-invalid-icon" title="Symbol not found or data unavailable. Please verify the ticker.">!</span>
+                            )}
+                          </span>
+                          {!isReadOnly && (
+                            <button
+                              className="quick-log-trigger-btn"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                onQuickLog(stock.symbol);
+                              }}
+                              title={`Log ${stock.symbol} to Journal`}
+                            >
+                              <svg
+                                xmlns="http://www.w3.org/2000/svg"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2.5"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                                className="quick-log-icon"
+                              >
+                                <path d="M12 5v14M5 12h14" />
+                              </svg>
+                            </button>
                           )}
-                        </span>
+                        </div>
                       </div>
 
                       {!isReadOnly && showTags && (
@@ -2506,25 +2735,39 @@ export default function StockGrid({
                 {showLivePrice && (
                   <td className="cw-livePrice">
                     {quotes[stock.symbol] ? (
-                      <div className="stock-grid-price-row">
-                        <span className="stock-grid-price-val">
-                          {(() => {
-                            const q = quotes[stock.symbol];
-                            const priceVal = q.currentPrice;
-                            const currencySymbol = country === 'US' ? '$' : '₹';
-                            const locale = country === 'US' ? 'en-US' : 'en-IN';
-                            return priceVal > 0 
-                              ? `${currencySymbol}${priceVal.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                              : '—';
-                          })()}
-                        </span>
-                        {quotes[stock.symbol].dailyChangePct !== undefined ? (
-                          <span className={`stock-grid-price-change ${quotes[stock.symbol].isAdvancing ? 'adv' : 'dec'}`}>
-                            {quotes[stock.symbol].dailyChangePct >= 0 ? '+' : ''}
-                            {quotes[stock.symbol].dailyChangePct.toFixed(2)}%
+                      <div className="flex flex-col gap-0.5 items-start">
+                        <div className="stock-grid-price-row">
+                          <span className="stock-grid-price-val">
+                            {(() => {
+                              const q = quotes[stock.symbol];
+                              const priceVal = q.currentPrice;
+                              const currencySymbol = country === 'US' ? '$' : '₹';
+                              const locale = country === 'US' ? 'en-US' : 'en-IN';
+                              return priceVal > 0 
+                                ? `${currencySymbol}${priceVal.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : '—';
+                            })()}
                           </span>
-                        ) : (
-                          <span className="stock-grid-price-change-placeholder">—</span>
+                          {quotes[stock.symbol].dailyChangePct !== undefined ? (
+                            <span className={`stock-grid-price-change ${quotes[stock.symbol].isAdvancing ? 'adv' : 'dec'}`}>
+                              {quotes[stock.symbol].dailyChangePct >= 0 ? '+' : ''}
+                              {quotes[stock.symbol].dailyChangePct.toFixed(2)}%
+                            </span>
+                          ) : (
+                            <span className="stock-grid-price-change decimal">—</span>
+                          )}
+                        </div>
+                        {quotes[stock.symbol].earningsDate && (
+                          <span className="text-[9px] font-bold text-slate-450 dark:text-slate-500 font-mono tracking-tight" title="Next Earnings Date">
+                            E: {(() => {
+                              try {
+                                const d = new Date(quotes[stock.symbol].earningsDate);
+                                return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                              } catch (_e) {
+                                return quotes[stock.symbol].earningsDate;
+                              }
+                            })()}
+                          </span>
                         )}
                       </div>
                     ) : (

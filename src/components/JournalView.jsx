@@ -5,11 +5,10 @@ import Modal from './Modal';
 import { fetchStockQuotes, fetchStockData } from '../utils/yahooFinanceMap';
 import MovingAverageRibbon from './MovingAverageRibbon';
 import BirdsEyeGrid from './BirdsEyeGrid';
-import { getPortfolioAnalysis } from '../services/ai';
+import { getPortfolioAnalysis, getRiskSuggestions } from '../services/ai';
 import BenchmarkComparisonChart from './BenchmarkComparisonChart';
 import EditStockModal from './EditStockModal';
 import { getLatestWeekKey, getWeekRangeLabel } from '../utils/weekHelpers';
-import { isParamRelevantForCountry } from '../utils/paramUtils';
 
 
 // ---------------------------------------------------------------------
@@ -220,7 +219,7 @@ const TICKER_COLORS = {
   '^DJI': '#ef4444'  // Crimson/Red
 };
 
-export default function JournalView({ country, data, setData }) {
+export default function JournalView({ country, data, setData, quickLogSymbol = null, onClearQuickLog = null }) {
   const { confirm } = useConfirm();
   const { showToast } = useToast();
 
@@ -515,6 +514,25 @@ export default function JournalView({ country, data, setData }) {
 
   const [formData, setFormData] = useState(initialFormState);
 
+  // Handle quick log redirection from Watchlist
+  useEffect(() => {
+    if (quickLogSymbol) {
+      Promise.resolve().then(() => {
+        setEditingTradeId(null);
+        setShowScalingForm(false);
+        setActiveModalTab('entry');
+        setFormData({
+          ...initialFormState,
+          symbol: quickLogSymbol
+        });
+        setShowModal(true);
+        if (onClearQuickLog) {
+          onClearQuickLog();
+        }
+      });
+    }
+  }, [quickLogSymbol, initialFormState, onClearQuickLog]);
+
   // Live Price States for Modal symbol input
   const [modalLivePrice, setModalLivePrice] = useState(null);
   const [isFetchingModalPrice, setIsFetchingModalPrice] = useState(false);
@@ -523,6 +541,75 @@ export default function JournalView({ country, data, setData }) {
   const [slPriceInput, setSlPriceInput] = useState('');
   const [slPctInput, setSlPctInput] = useState('');
   const [slCashInput, setSlCashInput] = useState('');
+
+  // AI Risk Suggestion States
+  const [aiRiskSuggestion, setAiRiskSuggestion] = useState(null);
+  const [loadingRiskAi, setLoadingRiskAi] = useState(false);
+  const [riskAiError, setRiskAiError] = useState(null);
+
+  // Reset risk suggestions when symbol, entryPrice, or modal open state changes
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      setAiRiskSuggestion(null);
+      setRiskAiError(null);
+      setLoadingRiskAi(false);
+    });
+  }, [formData.symbol, formData.entryPrice, showModal]);
+
+  const handleGetRiskSuggestions = async () => {
+    const sym = formData.symbol?.toUpperCase().trim();
+    const entry = Number(formData.entryPrice || modalLivePrice || 0);
+
+    if (!sym) {
+      setRiskAiError("Please specify a ticker symbol first.");
+      return;
+    }
+    if (entry <= 0) {
+      setRiskAiError("Please specify an entry price first.");
+      return;
+    }
+    if (!data.aiSettings?.apiKey) {
+      setRiskAiError("API Key is missing. Please configure it in Settings.");
+      return;
+    }
+
+    setLoadingRiskAi(true);
+    setRiskAiError(null);
+    setAiRiskSuggestion(null);
+
+    try {
+      // 1. Fetch historical price action (3 months context)
+      const chartData = await fetchStockData([sym], country, '3mo');
+      const candlesticks = chartData?.[0]?.candlesticks || [];
+
+      // 2. Call Gemini service
+      const result = await getRiskSuggestions(
+        data.aiSettings.apiKey,
+        data.aiSettings.model,
+        sym,
+        entry,
+        '3mo',
+        candlesticks
+      );
+
+      if (result) {
+        setAiRiskSuggestion(result);
+      } else {
+        throw new Error("No suggestions returned from AI model.");
+      }
+    } catch (err) {
+      setRiskAiError(err.message || "Failed to generate risk suggestions.");
+    } finally {
+      setLoadingRiskAi(false);
+    }
+  };
+
+  const handleApplyRiskSuggestion = () => {
+    if (!aiRiskSuggestion?.suggestedStopLoss) return;
+    const val = aiRiskSuggestion.suggestedStopLoss.toString();
+    handleSlPriceChange(val);
+    setAiRiskSuggestion(null);
+  };
 
   // Position Sizing Calculator local states
 
@@ -609,17 +696,19 @@ export default function JournalView({ country, data, setData }) {
       }
     });
     if (Object.keys(maMap).length > 0) {
-      setLiveMAs(prev => {
-        let changed = false;
-        const next = { ...prev };
-        for (const [sym, val] of Object.entries(maMap)) {
-          if (prev[sym] !== val) {
-            next[sym] = val;
-            changed = true;
+      setTimeout(() => {
+        setLiveMAs(prev => {
+          let changed = false;
+          const next = { ...prev };
+          for (const [sym, val] of Object.entries(maMap)) {
+            if (prev[sym] !== val) {
+              next[sym] = val;
+              changed = true;
+            }
           }
-        }
-        return changed ? next : prev;
-      });
+          return changed ? next : prev;
+        });
+      }, 0);
     }
   }, [journalSymbolsSerialized, getSyncedMA]);
 
@@ -2561,16 +2650,6 @@ export default function JournalView({ country, data, setData }) {
                               <div className="flex flex-col gap-0.5 group">
                                 <div className="flex items-center gap-1.5">
                                   <span className="tracking-tight font-black">{pos.symbol}</span>
-                                  <button
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      handleAnalyzeStockClick(pos.symbol);
-                                    }}
-                                    className="opacity-0 group-hover:opacity-100 hover:opacity-100 text-slate-400 dark:text-slate-500 hover:text-indigo-500 dark:hover:text-sky-450 transition-all p-0.5 rounded cursor-pointer flex items-center justify-center"
-                                    title={`View chart & analyze ${pos.symbol}`}
-                                  >
-                                    <IconTrendingUp className="w-3 h-3" />
-                                  </button>
                                 </div>
                                 <span className="text-xs text-slate-500 dark:text-slate-400 font-bold truncate max-w-[160px]">{pos.setup}</span>
                                 <div className="flex flex-wrap gap-1.5 mt-1.5">
@@ -3678,7 +3757,30 @@ export default function JournalView({ country, data, setData }) {
                 <div className="p-3.5 rounded-xl border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/25 flex flex-col gap-2.5">
                   <div className="flex justify-between items-center">
                     <span className="text-[9.5px] font-extrabold text-slate-500 dark:text-slate-400 tracking-wide">Stop Loss</span>
-                    <span className="text-[8.5px] text-slate-500 dark:text-slate-500 font-semibold font-mono">Edit any field to compute others</span>
+                    <div className="flex items-center gap-2">
+                      <div
+                        role="button"
+                        className={`btn-suggest-risk ${
+                          (loadingRiskAi || !formData.symbol || (!formData.entryPrice && !modalLivePrice)) 
+                            ? 'disabled' 
+                            : ''
+                        }`}
+                        onClick={
+                          (loadingRiskAi || !formData.symbol || (!formData.entryPrice && !modalLivePrice))
+                            ? undefined
+                            : handleGetRiskSuggestions
+                        }
+                        title={(!formData.symbol || (!formData.entryPrice && !modalLivePrice)) ? "Enter Symbol and Entry Price first" : "Get AI Stop Loss and Target suggestions"}
+                      >
+                        {loadingRiskAi ? (
+                          <>
+                            <span className="spinner-mini"></span>
+                            Calculating...
+                          </>
+                        ) : "Suggest Risk Levels"}
+                      </div>
+                      <span className="text-[8.5px] text-slate-500 dark:text-slate-500 font-semibold font-mono text-xs">Edit any field to compute others</span>
+                    </div>
                   </div>
                   
                   <div className="grid grid-cols-3 gap-3">
@@ -3729,6 +3831,76 @@ export default function JournalView({ country, data, setData }) {
                       />
                     </div>
                   </div>
+
+                  {/* AI Risk Suggestion Results Box */}
+                  {(loadingRiskAi || aiRiskSuggestion || riskAiError) && (
+                    <div className="ai-risk-suggestion-box mt-1">
+                      {loadingRiskAi && (
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 dark:text-slate-400 py-2 justify-center border border-dashed border-slate-200 dark:border-slate-800 rounded-lg">
+                          <span className="spinner-mini"></span>
+                          <span>Analyzing historical structure for optimal risk levels...</span>
+                        </div>
+                      )}
+                      
+                      {riskAiError && (
+                        <div className="text-[10px] text-rose-500 font-bold py-2 px-3 border border-rose-200 dark:border-rose-900 bg-rose-50/20 dark:bg-rose-950/10 rounded-lg">
+                          Error: {riskAiError}
+                        </div>
+                      )}
+
+                      {aiRiskSuggestion && (
+                        <div className="flex flex-col gap-2 p-3 rounded-lg border border-indigo-100 dark:border-indigo-900 bg-indigo-50/20 dark:bg-indigo-950/10">
+                          <div className="grid grid-cols-2 gap-3 text-xs border-b border-slate-200/50 dark:border-slate-800/50 pb-2">
+                            <div>
+                              <span className="block text-[9px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider">Suggested SL</span>
+                              <span className="font-mono font-black text-slate-800 dark:text-slate-100">
+                                {country === 'IN' ? '₹' : '$'}{aiRiskSuggestion.suggestedStopLoss} ({aiRiskSuggestion.suggestedStopLossPct}%)
+                              </span>
+                            </div>
+                            <div>
+                              <span className="block text-[9px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider">R:R Ratio</span>
+                              <span className="font-mono font-black text-indigo-600 dark:text-indigo-400">
+                                {aiRiskSuggestion.riskRewardRatio}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="block text-[9px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider">Suggested Target 1</span>
+                              <span className="font-mono font-black text-emerald-600 dark:text-emerald-400">
+                                {country === 'IN' ? '₹' : '$'}{aiRiskSuggestion.target1}
+                              </span>
+                            </div>
+                            <div>
+                              <span className="block text-[9px] font-bold text-slate-450 dark:text-slate-500 uppercase tracking-wider">Suggested Target 2</span>
+                              <span className="font-mono font-black text-emerald-650 dark:text-emerald-400">
+                                {country === 'IN' ? '₹' : '$'}{aiRiskSuggestion.target2}
+                              </span>
+                            </div>
+                          </div>
+                          
+                          <div className="text-[10px] text-slate-600 dark:text-slate-350 leading-relaxed font-semibold italic">
+                            {aiRiskSuggestion.justification}
+                          </div>
+
+                          <div className="flex gap-2 justify-end mt-1">
+                            <button
+                              type="button"
+                              onClick={() => setAiRiskSuggestion(null)}
+                              className="px-2.5 py-1 rounded bg-slate-200/60 hover:bg-slate-250 text-slate-700 dark:bg-slate-800/55 dark:hover:bg-slate-750 dark:text-slate-300 font-bold text-[9px] border border-slate-300 dark:border-slate-700"
+                            >
+                              Discard
+                            </button>
+                            <button
+                              type="button"
+                              onClick={handleApplyRiskSuggestion}
+                              className="px-2.5 py-1 rounded bg-indigo-600 hover:bg-indigo-700 text-white font-bold text-[9px] border border-indigo-700"
+                            >
+                              Apply Suggestion
+                            </button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                   
                   {/* Trailing Stop Loss Input Row */}
                   <div className="grid grid-cols-1 gap-3 mt-1.5 border-t border-slate-200 dark:border-slate-800 pt-2.5">

@@ -552,3 +552,111 @@ export async function getPortfolioAnalysis(
     throw new Error(safeErrorMsg, { cause: error });
   }
 }
+
+export async function getRiskSuggestions(
+  apiKey,
+  model,
+  symbol,
+  entryPrice,
+  timeframe = "3mo",
+  candlesticks = []
+) {
+  if (!apiKey)
+    throw new Error("API Key is missing. Please add it in Settings.");
+
+  const simplifiedCandles = (candlesticks || []).slice(-60).map(c => ({
+    close: Number(c.close?.toFixed(2) || 0),
+    high: Number(c.high?.toFixed(2) || 0),
+    low: Number(c.low?.toFixed(2) || 0),
+    open: Number(c.open?.toFixed(2) || 0)
+  }));
+
+  const prompt = `
+  Act as a senior institutional risk manager and technical analyst.
+  Analyze the technical structure of the stock: ${symbol}.
+  
+  Context:
+  - Entry Price: ${entryPrice}
+  - Timeframe Context: ${timeframe}
+  - Recent Price Action (Last 60 bars):
+  ${JSON.stringify(simplifiedCandles)}
+  
+  Your task is to identify key structural support/resistance levels, calculate a reasonable stop-loss and profit target, and calculate the risk-to-reward ratio.
+  
+  Suggest a stop-loss that is structurally sound (e.g. below a key moving average, swing low, or support zone) and not too tight (to avoid market noise) or too wide (to keep risk small).
+  Suggest 2 profit targets (Target 1 for partial trim, Target 2 for full exit).
+  
+  Respond ONLY with a valid JSON object matching this structure:
+  {
+    "suggestedStopLoss": 123.45,
+    "suggestedStopLossPct": 2.5,
+    "target1": 135.00,
+    "target2": 145.00,
+    "riskRewardRatio": "1 : 2.5",
+    "justification": "Muted, professional 2-3 sentence technical explanation of why these levels were chosen (referencing specific support, swing lows, or moving averages)."
+  }
+  
+  IMPORTANT: Return ONLY the raw JSON string. Do not wrap it in markdown code blocks.
+  `;
+
+  try {
+    let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
+    // Use isCustom=false to parse response as JSON
+    return await fetchGemini(apiKey, prompt, modelToUse, false);
+  } catch (error) {
+    const errorMsg = error.message || "Unknown error";
+    const safeErrorMsg = apiKey && apiKey.length > 5 ? errorMsg.replace(apiKey, "REDACTED") : errorMsg;
+    throw new Error(safeErrorMsg, { cause: error });
+  }
+}
+
+export async function classifySectorsInBulk(
+  apiKey,
+  model,
+  stocks,
+  country,
+  availableSectors = []
+) {
+  if (!apiKey || !stocks || stocks.length === 0) {
+    return {};
+  }
+  
+  const sectorsList = availableSectors.map(s => s.name || s).join(", ");
+  const stocksJson = JSON.stringify(stocks);
+
+  const prompt = `
+  You are an expert financial classification assistant.
+  Task: Classify the following list of stocks in market "${country}" into one of the user's defined sector categories.
+  
+  Stocks to Classify (JSON format):
+  ${stocksJson}
+  
+  User's Defined Sector Categories:
+  [${sectorsList}]
+  
+  Classification Rules:
+  1. Map each stock to the MOST appropriate category from the User's Defined Sector Categories list.
+  2. If none of the defined categories are a close or reasonable fit, suggest a new, concise, professionally standard sector name (e.g., "Defense", "Infrastructure", "Textiles", "Green Energy").
+  3. Ensure the sector names are clean, capitalized properly (Title Case), and concise.
+  
+  You MUST respond with a valid JSON object where the keys are the stock symbols and the values are objects containing the resolved sector.
+  Example output format:
+  {
+    "TCS": { "sector": "IT" },
+    "ADANIPORTS": { "sector": "Infrastructure" }
+  }
+  
+  Respond ONLY with the raw JSON string, do not wrap in markdown or include any other text.
+  `;
+
+  let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
+  try {
+    const res = await fetchGemini(apiKey, prompt, modelToUse, false);
+    return res || {};
+  } catch (error) {
+    console.error("[AI Bulk Sector Classification Failed]:", error);
+    return {};
+  }
+}
+
+

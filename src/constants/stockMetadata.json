@@ -1,0 +1,30 @@
+{
+  "IN": {
+    "RELIANCE": {
+      "sector": "Energy"
+    },
+    "TCS": {
+      "sector": "IT"
+    },
+    "HDFCBANK": {
+      "sector": "Banks"
+    },
+    "INFY": {
+      "sector": "IT"
+    },
+    "ADANIPORTS": {
+      "sector": "Infrastructure"
+    }
+  },
+  "US": {
+    "AAPL": {
+      "sector": "Technology"
+    },
+    "MSFT": {
+      "sector": "Technology"
+    },
+    "GOOGL": {
+      "sector": "Technology"
+    }
+  }
+}

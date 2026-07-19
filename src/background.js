@@ -2,6 +2,7 @@ import { mapAdrBucket, mapLiquidityBucket, mapMovingAverageBucket } from "./util
 import { getActualParamKeyAndDef } from "./utils/paramUtils.js";
 import { getBulkStockVerdicts } from "./services/ai.js";
 import { CONFIG } from "./constants/config.js";
+import stockMetadata from "./constants/stockMetadata.json";
 
 chrome.action.onClicked.addListener(() => {
   chrome.tabs.create({
@@ -150,10 +151,70 @@ async function processAiQueue() {
             throw chunkErr; // non-rate-limit error, or exhausted retries
           }
         }
-      }
-
-      if (chunkResults) {
+      }      if (chunkResults) {
         Object.assign(results, chunkResults);
+
+        // Write this chunk's results to chrome.storage.local immediately so they populate UI right away
+        await new Promise((resolve) => {
+          chrome.storage.local.get(["trading_app_data"], (res) => {
+            const db = res.trading_app_data;
+            if (!db || !db.weeks || !db.weeks[country] || !db.weeks[country][weekKey]) {
+              resolve();
+              return;
+            }
+
+            const currentWeekData = db.weeks[country][weekKey];
+            const newStocksData = { ...currentWeekData.stocks };
+            const summary = { BUY: 0, WAIT: 0, SELL: 0, "STRONG BUY": 0 };
+            let updatedCount = 0;
+
+            Object.entries(results).forEach(([symbol, analysisData]) => {
+              if (newStocksData[symbol] && analysisData && analysisData.verdict) {
+                const verdict = analysisData.verdict.toUpperCase();
+                if (summary[verdict] !== undefined) {
+                  summary[verdict]++;
+                } else {
+                  summary[verdict] = 1;
+                }
+
+                let currentTags = newStocksData[symbol].tags || [];
+                currentTags = currentTags.filter(t => !t.startsWith("AI: "));
+                currentTags.push(`AI: ${verdict}`);
+
+                newStocksData[symbol] = {
+                  ...newStocksData[symbol],
+                  tags: currentTags,
+                  aiAnalysis: `**Verdict:** ${verdict}\n\n**Reasoning:** ${analysisData.reasoning || ""}`,
+                  aiAnalysisDate: new Date().toLocaleString()
+                };
+                updatedCount++;
+              }
+            });
+
+            const enrichedBulkAnalysis = {
+              summary,
+              timestamp: new Date().toISOString(),
+              stockCount: total,
+              updatedCount,
+              watchlistName: watchlistName
+            };
+
+            db.weeks[country][weekKey].bulkAnalysis = enrichedBulkAnalysis;
+            db.weeks[country][weekKey].stocks = newStocksData;
+            
+            if (!db.uiConfig) db.uiConfig = {};
+            if (!db.uiConfig.tags) db.uiConfig.tags = [];
+            ["AI: STRONG BUY", "AI: BUY", "AI: WAIT", "AI: SELL"].forEach(t => {
+              if (!db.uiConfig.tags.includes(t)) {
+                db.uiConfig.tags.push(t);
+              }
+            });
+
+            chrome.storage.local.set({ trading_app_data: db }, () => {
+              resolve();
+            });
+          });
+        });
       }
 
       // Respect free-tier 20 RPM limit: wait ~65s between chunks so we never
@@ -168,72 +229,16 @@ async function processAiQueue() {
       payload: { completed: total, total, startTime, estimatedEndTime }
     }).catch(() => {});
 
-    // Now update storage
-    const summary = { BUY: 0, WAIT: 0, SELL: 0, "STRONG BUY": 0 };
-    let updatedCount = 0;
+    // Send completion message with final counts
+    const finalUpdatedCount = Object.keys(results).filter(symbol => {
+      const data = results[symbol];
+      return data && data.verdict;
+    }).length;
 
-    await new Promise((resolve) => {
-      chrome.storage.local.get(["trading_app_data"], (res) => {
-        const db = res.trading_app_data;
-        if (!db || !db.weeks || !db.weeks[country] || !db.weeks[country][weekKey]) {
-          resolve();
-          return;
-        }
-
-        const currentWeekData = db.weeks[country][weekKey];
-        const newStocksData = { ...currentWeekData.stocks };
-
-        Object.entries(results).forEach(([symbol, analysisData]) => {
-          if (newStocksData[symbol] && analysisData && analysisData.verdict) {
-            const verdict = analysisData.verdict.toUpperCase();
-            if (summary[verdict] !== undefined) {
-               summary[verdict]++;
-            } else {
-               summary[verdict] = 1;
-            }
-
-            let currentTags = newStocksData[symbol].tags || [];
-            currentTags = currentTags.filter(t => !t.startsWith("AI: "));
-            currentTags.push(`AI: ${verdict}`);
-
-            newStocksData[symbol] = {
-              ...newStocksData[symbol],
-              tags: currentTags,
-              aiAnalysis: `**Verdict:** ${verdict}\n\n**Reasoning:** ${analysisData.reasoning || ""}`,
-              aiAnalysisDate: new Date().toLocaleString()
-            };
-            updatedCount++;
-          }
-        });
-
-        const enrichedBulkAnalysis = {
-          summary,
-          timestamp: new Date().toISOString(),
-          stockCount: total,
-          updatedCount,
-          watchlistName: watchlistName
-        };
-
-        db.weeks[country][weekKey].bulkAnalysis = enrichedBulkAnalysis;
-        db.weeks[country][weekKey].stocks = newStocksData;
-        
-        if (!db.uiConfig) db.uiConfig = {};
-        if (!db.uiConfig.tags) db.uiConfig.tags = [];
-        ["AI: STRONG BUY", "AI: BUY", "AI: WAIT", "AI: SELL"].forEach(t => {
-          if (!db.uiConfig.tags.includes(t)) {
-             db.uiConfig.tags.push(t);
-          }
-        });
-
-        chrome.storage.local.set({ trading_app_data: db }, () => {
-          chrome.runtime.sendMessage({
-            action: "BULK_AI_ANALYSIS_COMPLETE",
-            payload: { updatedCount }
-          }).catch(() => {});
-          resolve();
-        });
-      });
-    });
+    chrome.runtime.sendMessage({
+      action: "BULK_AI_ANALYSIS_COMPLETE",
+      payload: { updatedCount: finalUpdatedCount }
+    }).catch(() => {});
 
   } catch (error) {
     console.error("Background AI Analysis Failed:", error);
@@ -289,6 +294,7 @@ async function processQueue() {
 
   if (successfulUpdates.length > 0) {
     await updateStorageWithMetrics(successfulUpdates);
+    triggerBackgroundSectorClassification(successfulUpdates);
   }
 
   completedJobs += batch.length;
@@ -322,6 +328,14 @@ async function fetchWithRetryAndTimeout(symbol, country, paramDefs, adrDays, liq
       await new Promise(r => setTimeout(r, waitTime));
     }
   }
+}
+
+function _getStorageData() {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["trading_app_data"], (res) => {
+      resolve(res?.trading_app_data || {});
+    });
+  });
 }
 
 async function fetchAndCalculateMetrics(
@@ -531,6 +545,8 @@ async function updateStorageWithMetrics(updates) {
             dataChanged = true;
           }
 
+
+
           // Mark stock as successfully synced today
           stock.lastSyncTime = Date.now();
           dataChanged = true;
@@ -558,5 +574,207 @@ async function updateStorageWithMetrics(updates) {
     });
   });
 }
+
+const SECTOR_ALIASES = {
+  "banking": "Banks",
+  "bank": "Banks",
+  "banks": "Banks",
+  "it services": "IT",
+  "information technology": "IT",
+  "software": "IT",
+  "software services": "IT",
+  "pharmaceuticals": "Pharma",
+  "pharmaceutical": "Pharma",
+  "pharma": "Pharma",
+  "automobile": "Auto",
+  "automobiles": "Auto",
+  "defense": "Defence",
+  "defence": "Defence",
+  "aerospace & defense": "Defence",
+  "aerospace & defence": "Defence",
+  "financial services": "Finance",
+  "financial": "Finance",
+  "oil & gas": "Oil Refinery",
+  "refinery": "Oil Refinery",
+  "metals": "Metals/Minerals",
+  "minerals": "Metals/Minerals",
+  "metals/minerals": "Metals/Minerals",
+  "mining": "Metals/Minerals",
+  "electricals": "Electricals",
+  "electrical equipment": "Electricals",
+  "construction": "Construction",
+  "real estate": "Construction",
+  "infrastructure": "Construction",
+  "telecom": "Communications",
+  "communications": "Communications",
+  "telecommunications": "Communications"
+};
+
+function normalizeSectorName(name, existingSectors = []) {
+  if (!name) return "Miscellaneous";
+  const clean = name.trim().toLowerCase();
+  
+  // 1. Check alias dictionary
+  if (SECTOR_ALIASES[clean]) {
+    return SECTOR_ALIASES[clean];
+  }
+  
+  // 2. Case-insensitive exact check in user's existing sectors
+  const matchedSector = existingSectors.find(
+    (s) => (s.name || "").toLowerCase() === clean
+  );
+  if (matchedSector) {
+    return matchedSector.name || matchedSector;
+  }
+  
+  // 3. Fallback: stem matching (plurals/singulars)
+  const cleanStem = clean.replace(/s$/, ""); // remove plural 's'
+  const matchedStem = existingSectors.find((s) => {
+    const sClean = (s.name || "").toLowerCase().replace(/s$/, "");
+    return sClean === cleanStem;
+  });
+  if (matchedStem) {
+    return matchedStem.name || matchedStem;
+  }
+  
+  // Return the original capitalized sector
+  return name;
+}
+
+async function updateStorageWithSectors(mappings, country, weekKey) {
+  return new Promise((resolve) => {
+    chrome.storage.local.get(["trading_app_data"], (result) => {
+      const db = result.trading_app_data;
+      if (!db || !db.weeks) {
+        resolve();
+        return;
+      }
+
+      let dataChanged = false;
+      let cacheChanged = false;
+      
+      if (!db.stockSectorCache) {
+        db.stockSectorCache = {};
+      }
+
+      Object.entries(mappings).forEach(([symbol, valObj]) => {
+        let resolvedSector = valObj?.sector;
+        if (!resolvedSector) return;
+
+        const symUpper = symbol.toUpperCase();
+        if (db.stockSectorCache[symUpper] !== resolvedSector) {
+          db.stockSectorCache[symUpper] = resolvedSector;
+          cacheChanged = true;
+        }
+
+        const weekData = db.weeks[country]?.[weekKey];
+        if (weekData && weekData.stocks && weekData.stocks[symbol]) {
+          const stock = weekData.stocks[symbol];
+          
+          // Update sector if currently unset/empty
+          if (resolvedSector && !stock.sector) {
+            // Normalize resolved sector name using aliases & user's configuration
+            db.uiConfig = db.uiConfig || {};
+            db.uiConfig.sectors = db.uiConfig.sectors || [];
+            
+            resolvedSector = normalizeSectorName(resolvedSector, db.uiConfig.sectors);
+            
+            stock.sector = resolvedSector;
+            dataChanged = true;
+
+            // Register sector in config if missing
+            const existingSector = db.uiConfig.sectors.find(
+              (s) => (s.name || "").toLowerCase() === resolvedSector.toLowerCase()
+            );
+
+            if (!existingSector) {
+              const newSector = { name: resolvedSector, countries: [country] };
+              db.uiConfig.sectors.push(newSector);
+              if (Array.isArray(db.sectors)) {
+                db.sectors.push(newSector);
+              }
+            } else {
+              existingSector.countries = existingSector.countries || [];
+              if (!existingSector.countries.includes(country)) {
+                existingSector.countries.push(country);
+                if (Array.isArray(db.sectors)) {
+                  const legacySector = db.sectors.find(
+                    (s) => (s.name || "").toLowerCase() === resolvedSector.toLowerCase()
+                  );
+                  if (legacySector) {
+                    legacySector.countries = legacySector.countries || [];
+                    if (!legacySector.countries.includes(country)) {
+                      legacySector.countries.push(country);
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      });
+
+      if (dataChanged || cacheChanged) {
+        chrome.storage.local.set({ trading_app_data: db }, resolve);
+      } else {
+        resolve();
+      }
+    });
+  });
+}
+
+async function triggerBackgroundSectorClassification(updates) {
+  chrome.storage.local.get(["trading_app_data"], async (result) => {
+    const db = result.trading_app_data;
+    if (!db || !db.weeks) return;
+    
+    const uiConfig = db.uiConfig || {};
+    const autoIdentify = uiConfig.autoIdentifySectors !== false;
+    if (!autoIdentify) return;
+    
+    const localResolvedMappingsByGroup = {}; // keyed by `country_weekKey`
+
+    updates.forEach(({ symbol, country, weekKey }) => {
+      const weekData = db.weeks[country]?.[weekKey];
+      const stock = weekData?.stocks?.[symbol];
+      if (stock && !stock.sector) {
+        const symUpper = symbol.toUpperCase();
+        // 1. Try global cache first
+        const cachedSector = db.stockSectorCache?.[symUpper];
+        if (cachedSector) {
+          const groupKey = `${country}_${weekKey}`;
+          if (!localResolvedMappingsByGroup[groupKey]) {
+            localResolvedMappingsByGroup[groupKey] = {};
+          }
+          localResolvedMappingsByGroup[groupKey][symbol] = {
+            sector: cachedSector
+          };
+          console.log(`[Sync] Cache resolved sector for ${symbol}: ${cachedSector}`);
+        } else {
+          // 2. Try local stockMetadata JSON lookup
+          const localMeta = stockMetadata[country]?.[symUpper];
+          if (localMeta && localMeta.sector) {
+            const groupKey = `${country}_${weekKey}`;
+            if (!localResolvedMappingsByGroup[groupKey]) {
+              localResolvedMappingsByGroup[groupKey] = {};
+            }
+            localResolvedMappingsByGroup[groupKey][symbol] = {
+              sector: localMeta.sector
+            };
+            console.log(`[Sync] Locally resolved sector for ${symbol}: ${localMeta.sector}`);
+          }
+        }
+      }
+    });
+
+    // Save any locally resolved sector mappings immediately
+    for (const [groupKey, mappings] of Object.entries(localResolvedMappingsByGroup)) {
+      const [country, weekKey] = groupKey.split("_");
+      await updateStorageWithSectors(mappings, country, weekKey);
+      chrome.runtime.sendMessage({ action: "SECTORS_UPDATED" }).catch(() => {});
+    }
+  });
+}
+
 
 

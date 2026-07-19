@@ -110,13 +110,123 @@ export default function EditStockModal({
   watchlists = [],
   sortedStocks = [],
   onSelectStock = null,
-  watchlistName = "Watchlist"
+  watchlistName = "Watchlist",
+  onQuickLog = null
 }) {
-  const [formData, setFormData] = useState(null);
+  const [formData, setFormData] = useState(() => stock ? structuredClone(stock) : null);
   const [isParamsCollapsed, setIsParamsCollapsed] = useState(true);
   const [timeframe, setTimeframe] = useState('3mo');
   const [interval, setInterval] = useState('auto');
   const [loadingChart, setLoadingChart] = useState(false);
+  const [maSettings, setMaSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('trade_clarity_ma_settings');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {
+      console.warn("Failed to parse saved MA settings:", e);
+    }
+    return {
+      '5': { visible: false, color: '#10b981', thickness: 1 },
+      '10': { visible: false, color: '#06b6d4', thickness: 1 },
+      '21': { visible: false, color: '#3b82f6', thickness: 1 },
+      '50': { visible: true, color: '#f59e0b', thickness: 2 },
+      '200': { visible: true, color: '#ef4444', thickness: 2 }
+    };
+  });
+  const [isMaPopoverOpen, setIsMaPopoverOpen] = useState(false);
+  const [isGroupingPopoverOpen, setIsGroupingPopoverOpen] = useState(false);
+  const [sidebarGrouping, setSidebarGrouping] = useState('none'); // 'none' | 'sector' | 'tag'
+  const [collapsedGroups, setCollapsedGroups] = useState({}); // { [groupKey]: boolean }
+  const maSettingsRef = useRef(null);
+  const groupingPopoverRef = useRef(null);
+
+  const groupedStocks = useMemo(() => {
+    if (!sortedStocks) return [];
+    if (sidebarGrouping === 'none') {
+      return [{ key: 'all', title: '', stocks: sortedStocks }];
+    }
+    
+    const groups = {};
+    if (sidebarGrouping === 'sector') {
+      sortedStocks.forEach(s => {
+        const sec = s.sector || 'Unassigned';
+        if (!groups[sec]) groups[sec] = [];
+        groups[sec].push(s);
+      });
+    } else if (sidebarGrouping === 'tag') {
+      sortedStocks.forEach(s => {
+        const tags = s.tags && s.tags.length > 0 ? s.tags : ['No Tags'];
+        tags.forEach(t => {
+          if (!groups[t]) groups[t] = [];
+          groups[t].push(s);
+        });
+      });
+    }
+    
+    return Object.entries(groups)
+      .map(([key, list]) => ({
+        key,
+        title: key,
+        stocks: list
+      }))
+      .sort((a, b) => {
+        if (a.key === 'Unassigned' || a.key === 'No Tags') return 1;
+        if (b.key === 'Unassigned' || b.key === 'No Tags') return -1;
+        return a.title.localeCompare(b.title);
+      });
+  }, [sortedStocks, sidebarGrouping]);
+
+  // Auto-expand the active stock's parent group(s)
+  useEffect(() => {
+    if (!formData?.symbol || sidebarGrouping === 'none') return;
+    const groupsToExpand = {};
+    groupedStocks.forEach(g => {
+      const hasActive = g.stocks.some(s => s.symbol === formData.symbol);
+      if (hasActive) {
+        groupsToExpand[g.key] = false; // false = expanded (not collapsed)
+      }
+    });
+    if (Object.keys(groupsToExpand).length > 0) {
+      Promise.resolve().then(() => {
+        setCollapsedGroups(prev => ({ ...prev, ...groupsToExpand }));
+      });
+    }
+  }, [formData?.symbol, sidebarGrouping, groupedStocks]);
+
+  const handleUpdateMaSetting = useCallback((ma, key, value) => {
+    setMaSettings(prev => {
+      const next = { ...prev };
+      next[ma] = {
+        ...next[ma],
+        [key]: value
+      };
+      try {
+        localStorage.setItem('trade_clarity_ma_settings', JSON.stringify(next));
+      } catch (e) {
+        console.warn("Failed to save MA settings:", e);
+      }
+      return next;
+    });
+  }, []);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (maSettingsRef.current && !maSettingsRef.current.contains(event.target)) {
+        setIsMaPopoverOpen(false);
+      }
+      if (groupingPopoverRef.current && !groupingPopoverRef.current.contains(event.target)) {
+        setIsGroupingPopoverOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+
 
   // Resizability State
   const [topHeight, setTopHeight] = useState(340); // px
@@ -204,54 +314,48 @@ export default function EditStockModal({
     return (sortedStocks || []).map(s => s.symbol).join(",");
   }, [sortedStocks]);
 
-  const fetchSidebarQuotesRef = useRef(null);
-
-  useEffect(() => {
-    fetchSidebarQuotesRef.current = async (signal) => {
-      if (!sortedStocks || sortedStocks.length === 0) return;
-      setLoadingQuotes(true);
-      try {
-        const symbols = sortedStocks.map(s => s.symbol);
-        const results = await fetchStockQuotes(symbols, country, signal);
-        if (results && results.length > 0) {
-          const mapping = {};
-          results.forEach(r => {
-            mapping[r.symbol] = {
-              dailyChangePct: r.dailyChangePct,
-              isAdvancing: r.isAdvancing,
-              currentPrice: r.currentPrice
-            };
-          });
-          setSidebarStockData(mapping);
-        }
-      } catch (err) {
-        if (err.name !== 'AbortError') {
-          console.error("Failed to fetch sidebar quote data:", err);
-        }
-      } finally {
-        setLoadingQuotes(false);
+  const fetchSidebarQuotes = useCallback(async (signal) => {
+    if (!sortedStocks || sortedStocks.length === 0) return;
+    setLoadingQuotes(true);
+    try {
+      const symbols = sortedStocks.map(s => s.symbol);
+      const results = await fetchStockQuotes(symbols, country, signal);
+      if (results && results.length > 0) {
+        const mapping = {};
+        results.forEach(r => {
+          mapping[r.symbol] = {
+            dailyChangePct: r.dailyChangePct,
+            isAdvancing: r.isAdvancing,
+            currentPrice: r.currentPrice,
+            earningsDate: r.earningsDate
+          };
+        });
+        setSidebarStockData(mapping);
       }
-    };
+    } catch (err) {
+      if (err.name !== 'AbortError') {
+        console.error("Failed to fetch sidebar quote data:", err);
+      }
+    } finally {
+      setLoadingQuotes(false);
+    }
   }, [sortedStocks, country]);
 
-  // Fetch 1d daily quotes in background on mount or symbols list changes
+  // Fetch 1d daily quotes in background on mount or symbols list changes (once sidebar is visible)
   useEffect(() => {
     if (!isOpen || !sortedSymbolsSerialized) return;
     const controller = new AbortController();
-    if (fetchSidebarQuotesRef.current) {
-      fetchSidebarQuotesRef.current(controller.signal);
-    }
+    // eslint-disable-next-line react-hooks/set-state-in-effect
+    fetchSidebarQuotes(controller.signal);
     return () => {
       controller.abort();
     };
-  }, [isOpen, sortedSymbolsSerialized]);
+  }, [isOpen, sortedSymbolsSerialized, fetchSidebarQuotes]);
 
   // Manual refresh callback
   const handleRefreshSidebarQuotes = useCallback(() => {
-    if (fetchSidebarQuotesRef.current) {
-      fetchSidebarQuotesRef.current();
-    }
-  }, []);
+    fetchSidebarQuotes();
+  }, [fetchSidebarQuotes]);
 
   const symbolToFetch = formData?.symbol;
 
@@ -869,12 +973,55 @@ export default function EditStockModal({
               <div className="modal-title-group-premium">
                 <div className="terminal-header-title-wrapper">
                   <h1 className="symbol-header-hero">{formData.symbol}</h1>
+                  
+                  {(() => {
+                    const price = (sidebarStockData[formData.symbol]?.currentPrice !== undefined)
+                      ? sidebarStockData[formData.symbol].currentPrice
+                      : (formData.currentPrice || 0);
+
+                    const changePct = (sidebarStockData[formData.symbol]?.dailyChangePct !== undefined)
+                      ? sidebarStockData[formData.symbol].dailyChangePct
+                      : (formData.dailyChangePct || 0);
+
+                    if (price > 0) {
+                      const currencySymbol = country === 'US' ? '$' : '₹';
+                      const formattedPrice = price.toLocaleString(country === 'US' ? 'en-US' : 'en-IN', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      });
+                      const formattedChange = changePct.toFixed(2);
+                      const isUp = changePct >= 0;
+
+                      return (
+                        <div className="modal-header-price-tag">
+                          <span className="price-num">{currencySymbol}&nbsp;{formattedPrice}</span>
+                          <span className={`price-change-pct ${isUp ? 'up' : 'down'}`}>
+                            {isUp ? '+' : ''}{formattedChange}%
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
                   {typeof weekInfo === 'string' && weekInfo.trim() !== '' && (
                     <span className="header-week-info-badge ml-3">{weekInfo}</span>
                   )}
                 </div>
-                <div className="flex items-center gap-3">
+                <div className="flex items-center gap-3 flex-wrap">
                   <p className="modal-subtitle-hero">{formData.longName || formData.name || ''}</p>
+                  {formData.earningsDate && (
+                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 font-mono" title="Next Earnings Date">
+                      Earnings: {(() => {
+                        try {
+                          const d = new Date(formData.earningsDate);
+                          return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                        } catch (_e) {
+                          return formData.earningsDate;
+                        }
+                      })()}
+                    </span>
+                  )}
                   {formData.params?.movingAverages && (
                     <div className="self-center">
                       <MovingAverageRibbon value={formData.params.movingAverages} variant="compact" />
@@ -1039,6 +1186,67 @@ export default function EditStockModal({
                           <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.3" />
                         </svg>
                       </button>
+                      <div className="grouping-popover-wrapper-premium" ref={groupingPopoverRef}>
+                        <button
+                          type="button"
+                          className={`sidebar-refresh-btn-premium ${sidebarGrouping !== 'none' ? 'active-group' : ''}`}
+                          onClick={() => setIsGroupingPopoverOpen(!isGroupingPopoverOpen)}
+                          title="Group & Categorize watchlist"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            width="12"
+                            height="12"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polygon points="12 2 2 7 12 12 22 7 12 2"/>
+                            <polyline points="2 17 12 22 22 17"/>
+                            <polyline points="2 12 12 17 22 12"/>
+                          </svg>
+                        </button>
+                        
+                        {isGroupingPopoverOpen && (
+                          <div className="grouping-popover-dropdown-premium">
+                            <div className="popover-section-title-premium">Group by:</div>
+                            <div 
+                              className={`popover-option-premium ${sidebarGrouping === 'none' ? 'selected' : ''}`}
+                              onClick={() => {
+                                setSidebarGrouping('none');
+                                setIsGroupingPopoverOpen(false);
+                              }}
+                            >
+                              <span className="popover-option-dot-premium" />
+                              <span>None (Flat List)</span>
+                            </div>
+                            <div 
+                              className={`popover-option-premium ${sidebarGrouping === 'sector' ? 'selected' : ''}`}
+                              onClick={() => {
+                                setSidebarGrouping('sector');
+                                setIsGroupingPopoverOpen(false);
+                              }}
+                            >
+                              <span className="popover-option-dot-premium" />
+                              <span>Sector</span>
+                            </div>
+                            <div 
+                              className={`popover-option-premium ${sidebarGrouping === 'tag' ? 'selected' : ''}`}
+                              onClick={() => {
+                                setSidebarGrouping('tag');
+                                setIsGroupingPopoverOpen(false);
+                              }}
+                            >
+                              <span className="popover-option-dot-premium" />
+                              <span>Tag</span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
                       <span className="sidebar-count-premium">{sortedStocks.length}</span>
                       <button
                         type="button"
@@ -1053,42 +1261,89 @@ export default function EditStockModal({
                       </button>
                     </div>
                   </div>
+
                   <div className="sidebar-list-premium themed-scroll" ref={sidebarListRef}>
-                    {sortedStocks.map((s) => {
-                      const isActive = s.symbol === formData.symbol;
-                      const sidebarData = sidebarStockData[s.symbol] || {};
-                      const hasChange = sidebarData.dailyChangePct !== undefined;
-                      const changeVal = hasChange ? sidebarData.dailyChangePct : (s.dailyChangePct || 0);
-                      const changeText = hasChange ? `${changeVal >= 0 ? '+' : ''}${changeVal.toFixed(2)}%` : '';
-                      const isAdv = sidebarData.isAdvancing ?? s.isAdvancing ?? (changeVal >= 0);
-                      
-                      const priceVal = sidebarData.currentPrice !== undefined ? sidebarData.currentPrice : (s.currentPrice || 0);
-                      const currencySymbol = country === 'US' ? '$' : '₹';
-                      const locale = country === 'US' ? 'en-US' : 'en-IN';
-                      const priceText = priceVal > 0 
-                        ? `${currencySymbol}${priceVal.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
-                        : '';
+                    {groupedStocks.map((group) => {
+                      const isCollapsed = collapsedGroups[group.key] ?? false;
+                      const hasTitle = group.title !== '';
 
                       return (
-                        <div
-                          key={s.symbol}
-                          className={`sidebar-item-premium ${isActive ? 'active' : ''}`}
-                          onClick={() => handleSelectStock(s)}
-                          title={`${s.symbol} - ${priceText || 'No price available'}`}
-                        >
-                          <div className="sidebar-item-left-premium">
-                            <span className="sidebar-item-symbol-premium">{s.symbol}</span>
-                            {priceText && (
-                              <span className="sidebar-item-price-premium">{priceText}</span>
-                            )}
-                          </div>
-                          {hasChange ? (
-                            <span className={`sidebar-item-change-premium ${isAdv ? 'adv' : 'dec'}`}>
-                              {changeText}
-                            </span>
-                          ) : (
-                            <span className="sidebar-item-change-placeholder-premium">—</span>
+                        <div key={group.key} className="sidebar-group-wrapper-premium">
+                          {hasTitle && (
+                            <div 
+                              className={`sidebar-group-header-premium ${isCollapsed ? 'collapsed' : ''}`}
+                              onClick={() => {
+                                setCollapsedGroups(prev => ({
+                                  ...prev,
+                                  [group.key]: !prev[group.key]
+                                }));
+                              }}
+                            >
+                              <span className="group-title-text-premium">
+                                {group.title}
+                              </span>
+                              <span className="group-meta-info-premium">
+                                <span className="group-count-badge-premium">{group.stocks.length}</span>
+                                <svg 
+                                  className="group-chevron-icon-premium" 
+                                  width="8" 
+                                  height="8" 
+                                  viewBox="0 0 24 24" 
+                                  fill="none" 
+                                  stroke="currentColor" 
+                                  strokeWidth="3" 
+                                  strokeLinecap="round" 
+                                  strokeLinejoin="round"
+                                >
+                                  <polyline points="6 9 12 15 18 9" />
+                                </svg>
+                              </span>
+                            </div>
                           )}
+                          
+                          <div className={`sidebar-group-content-premium ${isCollapsed ? 'collapsed' : ''}`}>
+                            {group.stocks.map((s) => {
+                              const isActive = s.symbol === formData.symbol;
+                              const sidebarData = sidebarStockData[s.symbol] || {};
+                              const hasChange = sidebarData.dailyChangePct !== undefined;
+                              const changeVal = hasChange ? sidebarData.dailyChangePct : (s.dailyChangePct || 0);
+                              const changeText = hasChange ? `${changeVal >= 0 ? '+' : ''}${changeVal.toFixed(2)}%` : '';
+                              const isAdv = sidebarData.isAdvancing ?? s.isAdvancing ?? (changeVal >= 0);
+                              
+                              const priceVal = sidebarData.currentPrice !== undefined ? sidebarData.currentPrice : (s.currentPrice || 0);
+                              const currencySymbol = country === 'US' ? '$' : '₹';
+                              const locale = country === 'US' ? 'en-US' : 'en-IN';
+                              const priceText = priceVal > 0 
+                                ? `${currencySymbol}${priceVal.toLocaleString(locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                                : '';
+
+                              return (
+                                <div
+                                  key={s.symbol}
+                                  className={`sidebar-item-premium ${isActive ? 'active' : ''}`}
+                                  onClick={() => handleSelectStock(s)}
+                                  title={`${s.symbol} - ${priceText || 'No price available'}`}
+                                >
+                                  <div className="sidebar-item-left-premium">
+                                    <span className="sidebar-item-symbol-premium">{s.symbol}</span>
+                                  </div>
+                                  
+                                  <div className="sidebar-item-right-premium flex flex-col items-end">
+                                    {priceText && (
+                                      <span className="sidebar-item-price-premium-v2">{priceText}</span>
+                                    )}
+                                    {hasChange ? (
+                                      <span className={`sidebar-item-change-premium-v2 ${isAdv ? 'up' : 'down'}`}>
+                                        {changeText}
+                                      </span>
+                                    ) : (
+                                      <span className="sidebar-item-change-placeholder-premium">—</span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
                         </div>
                       );
                     })}
@@ -1190,6 +1445,69 @@ export default function EditStockModal({
                         })()}
                       </select>
                     </div>
+                    <div className="ma-settings-container" ref={maSettingsRef}>
+                      <button
+                        type="button"
+                        className={`ma-settings-trigger ${isMaPopoverOpen ? 'active' : ''}`}
+                        onClick={() => setIsMaPopoverOpen(!isMaPopoverOpen)}
+                        title="Moving Average Settings"
+                      >
+                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="icon-12">
+                          <circle cx="12" cy="12" r="3"/>
+                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                        </svg>
+                        <span>MAs</span>
+                        <span className="ma-active-count-badge">
+                          {Object.values(maSettings).filter(s => s.visible).length}
+                        </span>
+                      </button>
+                      
+                      {isMaPopoverOpen && (
+                        <div className="ma-settings-popover shadow">
+                          <div className="popover-header">Moving Averages</div>
+                          <div className="ma-rows-list">
+                            {['5', '10', '21', '50', '200'].map(ma => {
+                              const setting = maSettings[ma] || { visible: false, color: '#8b5cf6', thickness: 1 };
+                              return (
+                                <div className="ma-setting-row" key={ma}>
+                                  <label className="ma-checkbox-label">
+                                    <input
+                                      type="checkbox"
+                                      className="ma-checkbox"
+                                      checked={setting.visible}
+                                      onChange={(e) => handleUpdateMaSetting(ma, 'visible', e.target.checked)}
+                                    />
+                                    <span className="ma-label-text">{ma}-day SMA</span>
+                                  </label>
+                                  <div className="ma-controls-group">
+                                    <div className="ma-color-picker-wrapper" style={{ backgroundColor: setting.color }}>
+                                      <input
+                                        type="color"
+                                        value={setting.color}
+                                        onChange={(e) => handleUpdateMaSetting(ma, 'color', e.target.value)}
+                                        className="ma-color-input"
+                                        title={`Change ${ma} SMA color`}
+                                      />
+                                    </div>
+                                    <select
+                                      value={setting.thickness}
+                                      onChange={(e) => handleUpdateMaSetting(ma, 'thickness', Number(e.target.value))}
+                                      className="ma-thickness-select"
+                                      title={`Change ${ma} SMA line thickness`}
+                                    >
+                                      <option value={1}>1px</option>
+                                      <option value={2}>2px</option>
+                                      <option value={3}>3px</option>
+                                      <option value={4}>4px</option>
+                                    </select>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      )}
+                    </div>
                   </div>
                 </div>
                 <div className="chart-wrapper-large">
@@ -1206,6 +1524,7 @@ export default function EditStockModal({
                     interactive={true}
                     disableZoom={false}
                     height="100%"
+                    maSettings={maSettings}
                   />
                 </div>
               </div>
@@ -1288,6 +1607,17 @@ export default function EditStockModal({
                 {/* Secondary metadata can go here if needed in future */}
               </div>
               <div className="footer-actions">
+                {onQuickLog && (
+                  <button 
+                    onClick={() => {
+                      onClose();
+                      onQuickLog(formData.symbol);
+                    }} 
+                    className="btn-premium-secondary quick-log-modal-btn"
+                  >
+                    Log Position
+                  </button>
+                )}
                 <button onClick={onClose} className="btn-premium-secondary">Cancel</button>
                 <button onClick={handleSave} className="btn-premium-primary">Save</button>
               </div>
@@ -1300,6 +1630,17 @@ export default function EditStockModal({
               {renderFormContent()}
             </div>
             <div className="standard-modal-footer-v2">
+              {onQuickLog && (
+                <button 
+                  onClick={() => {
+                    onClose();
+                    onQuickLog(formData.symbol);
+                  }} 
+                  className="btn-premium-secondary quick-log-modal-btn"
+                >
+                  Log Position
+                </button>
+              )}
               <button onClick={onClose} className="btn-premium-secondary">Cancel</button>
               <button onClick={handleSave} className="btn-premium-primary">Save Changes</button>
             </div>

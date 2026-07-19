@@ -40,6 +40,7 @@ function AppContent() {
   const [weekKey, setWeekKey] = useState(null);
   const [selectedWatchlistId, setSelectedWatchlistId] = useState("all");
   const [activeTab, setActiveTab] = useState("watchlists");
+  const [quickLogSymbol, setQuickLogSymbol] = useState(null);
 
   const { theme, toggleTheme } = useTheme(data?.theme, (newTheme) => {
     setData(prev => ({ ...prev, theme: newTheme }));
@@ -286,6 +287,12 @@ function AppContent() {
       const weekStocks = newData.weeks[country][weekKey].stocks;
       if (weekStocks[updatedStock.symbol]) {
         weekStocks[updatedStock.symbol] = updatedStock;
+        
+        if (updatedStock.sector) {
+          if (!newData.stockSectorCache) newData.stockSectorCache = {};
+          newData.stockSectorCache[updatedStock.symbol.toUpperCase()] = updatedStock.sector;
+        }
+
         showToast(`Updated ${updatedStock.symbol}`, "success");
       }
       return newData;
@@ -409,12 +416,22 @@ function AppContent() {
             onImportAll={importAllData}
             availableTags={availableTags}
             aiSettings={data.aiSettings}
+            onQuickLog={(symbol) => {
+              setQuickLogSymbol(symbol);
+              setActiveTab("journal");
+            }}
           />
         </>
       ) : activeTab === 'market-pulse' ? (
-        <MarketPulseView country={country} />
+        <MarketPulseView country={country} aiSettings={data.aiSettings} />
       ) : (
-        <JournalView country={country} data={data} setData={setData} />
+        <JournalView 
+          country={country} 
+          data={data} 
+          setData={setData} 
+          quickLogSymbol={quickLogSymbol} 
+          onClearQuickLog={() => setQuickLogSymbol(null)} 
+        />
       )}
 
       <footer className="py-6 text-center text-[11px] text-slate-500 opacity-60">

@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { createChart, CrosshairMode, CandlestickSeries } from 'lightweight-charts';
+import { createChart, CrosshairMode, CandlestickSeries, LineSeries } from 'lightweight-charts';
 
 export default function MiniCandlestickChart({ 
   data, 
@@ -9,7 +9,8 @@ export default function MiniCandlestickChart({
   interactive = false,
   disableZoom = false,
   height = '150px',
-  accountCapital
+  accountCapital,
+  maSettings = {}
 }) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -108,6 +109,37 @@ export default function MiniCandlestickChart({
 
     if (candlesticks && candlesticks.length > 0) {
       series.setData(candlesticks);
+
+      // Add moving average lines if maSettings is provided
+      if (maSettings) {
+        const maColors = {
+          '5': '#10b981', // green
+          '10': '#06b6d4', // cyan
+          '21': '#3b82f6', // blue
+          '50': '#f59e0b', // yellow/orange
+          '200': '#ef4444' // red
+        };
+
+        Object.entries(maSettings).forEach(([maKey, config]) => {
+          if (config && config.visible) {
+            const period = parseInt(maKey, 10);
+            if (!isNaN(period)) {
+              const smaData = calculateSMA(candlesticks, period);
+              if (smaData.length > 0) {
+                const lineSeries = chart.addSeries(LineSeries, {
+                  color: config.color || maColors[maKey] || '#8b5cf6',
+                  lineWidth: config.thickness || 1.2,
+                  title: `${maKey} SMA`,
+                  priceLineVisible: false,
+                });
+                lineSeries.setData(smaData);
+              }
+            }
+          }
+        });
+      }
+
+
 
       // Add price lines for entry & stop‑loss only when the card represents a position
       if (hasPosition) {
@@ -249,7 +281,7 @@ export default function MiniCandlestickChart({
       themeObserver.disconnect();
       chart.remove();
     };
-  }, [data, interactive, disableZoom]);
+  }, [data, interactive, disableZoom, maSettings]);
 
   if (!data) return null;
 
@@ -468,3 +500,20 @@ export default function MiniCandlestickChart({
     </div>
   );
 }
+
+function calculateSMA(candlesticks, period) {
+  const smaData = [];
+  for (let i = 0; i < candlesticks.length; i++) {
+    if (i < period - 1) continue;
+    let sum = 0;
+    for (let j = 0; j < period; j++) {
+      sum += candlesticks[i - j].close;
+    }
+    smaData.push({
+      time: candlesticks[i].time,
+      value: sum / period
+    });
+  }
+  return smaData;
+}
+

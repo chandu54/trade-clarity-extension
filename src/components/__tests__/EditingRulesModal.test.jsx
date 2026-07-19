@@ -20,15 +20,35 @@ describe('EditingRulesModal', () => {
     render(<EditingRulesModal {...defaultProps} />);
     expect(screen.getByText('Rules')).toBeDefined();
     expect(screen.getByText('Auto-Refresh Metrics Daily')).toBeDefined();
+    expect(screen.getByText('Auto-Identify Stock Sectors')).toBeDefined();
+  });
+
+  it('toggles "Auto-Identify Stock Sectors" correctly', () => {
+    const setData = vi.fn();
+    render(<EditingRulesModal {...defaultProps} setData={setData} />);
+    
+    const switches = screen.getAllByRole('checkbox');
+    // switches:
+    // 0: lockPreviousWeeks
+    // 1: enableApiHydration
+    // 2: autoIdentifySectors
+    // 3: autoRefreshMetrics
+    const autoIdentifyToggle = switches[2];
+    
+    fireEvent.click(autoIdentifyToggle);
+    
+    expect(setData).toHaveBeenCalled();
+    const callArg = setData.mock.calls[0][0];
+    expect(callArg.uiConfig.autoIdentifySectors).toBe(false);
   });
 
   it('toggles "Auto-Refresh Metrics Daily" correctly', () => {
     const setData = vi.fn();
     render(<EditingRulesModal {...defaultProps} setData={setData} />);
     
-    // Find the third switch (Auto-Refresh is at the bottom)
+    // Find the fourth switch (Auto-Refresh is at the bottom)
     const switches = screen.getAllByRole('checkbox');
-    const autoRefreshToggle = switches[2];
+    const autoRefreshToggle = switches[3];
     
     fireEvent.click(autoRefreshToggle);
     

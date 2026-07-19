@@ -523,6 +523,14 @@ export default function UserGuideModal({
                     Criteria appear above the grid. Use them to hide noise and focus
                     on quality.
                   </li>
+                  <li>
+                    <strong>Interactive Daily Trend Filters:</strong> Click the
+                    Advances (▲) or Declines (▼) count badges in the grid header
+                    to filter the list instantly for stocks that are UP or DOWN
+                    today. The list is automatically sorted by the daily percent
+                    change, letting you spot momentum leaders immediately. Click
+                    the active badge again to clear the filter.
+                  </li>
                 </ul>
               </Section>
 
@@ -607,7 +615,31 @@ export default function UserGuideModal({
                 </div>
               </Section>
 
-              <Section title="8. Keyboard Shortcuts" icon="⌨️">
+              <Section
+                title="8. Deep View Workspace & Watchlist Grouping"
+                icon="📋"
+                location="Stock Symbol Click"
+              >
+                <p>
+                  Click any stock symbol to open the <strong>Deep View Workspace</strong> for technical research, chart overlays, and watchlist organization.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Watchlist Grouping:</strong> Click the <em>Layers Icon (Group & Categorize)</em> in the sidebar toolbar to group stocks by <strong>Sector</strong>, <strong>Tag</strong>, or keep them flat.
+                  </li>
+                  <li>
+                    <strong>Collapsible Groups:</strong> Sidebar sections collapse and expand dynamically. Stocks with no assigned category are placed under "Unassigned" at the bottom.
+                  </li>
+                  <li>
+                    <strong>Moving Average settings (MAs):</strong> Click the <em>Gear Icon (MAs)</em> next to the timeframe selector to toggle which SMAs are displayed on the chart, customize line colors, and adjust thicknesses (1px to 4px).
+                  </li>
+                  <li>
+                    <strong>Navigation:</strong> Use <code>ArrowUp</code> / <code>ArrowDown</code> and <code>ArrowLeft</code> / <code>ArrowRight</code> keys to browse watchlist stocks. Switch symbols quickly via the <em>Search (Ctrl+K)</em> bar.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="9. Keyboard Shortcuts" icon="⌨️">
                 <ul className="guide-list">
                   <li><strong>Alt + N:</strong> Add New Stock</li>
                   <li><strong>Ctrl + K</strong> (or Cmd + K): Focus Search Bar</li>

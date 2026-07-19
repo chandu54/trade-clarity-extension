@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { fetchMarketPulseData, generateTechnicalThesis } from '../services/marketPulse';
 import MiniCandlestickChart from './MiniCandlestickChart';
+import { getSingleStockAnalysis, PROMPT_TEMPLATES } from '../services/ai';
 
 const formatSymbolBadge = (symbol) => {
   if (!symbol) return '';
@@ -9,7 +10,182 @@ const formatSymbolBadge = (symbol) => {
   return symbol.replace('^', '').replace('.NS', '');
 };
 
-export default function MarketPulseView({ country }) {
+// Safe markdown-lite parser to handle bullet points and inline bold formatting safely
+const SafeMarkdown = ({ text }) => {
+  if (!text) return null;
+
+  // Split by lines to handle bullet points and blocks
+  const lines = text.split('\n');
+  const elements = [];
+  let currentList = [];
+  const flushList = (key) => {
+    if (currentList.length > 0) {
+      elements.push(
+        <ul key={`list-${key}`} className="analysis-unordered-list">
+          {currentList.map((item, i) => <li key={i}>{parseInline(item)}</li>)}
+        </ul>
+      );
+      currentList = [];
+    }
+  };
+
+  const parseInline = (str) => {
+    // Handle bold **text**
+    const parts = str.split(/(\*\*.*?\*\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={i}>{part.slice(2, -2)}</strong>;
+      }
+      return part;
+    });
+  };
+
+  lines.forEach((line, index) => {
+    const trimmed = line.trim();
+    if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
+      currentList.push(trimmed.slice(2));
+    } else {
+      flushList(index);
+      if (trimmed) {
+        elements.push(<p key={index} className="analysis-text-block">{parseInline(trimmed)}</p>);
+      }
+    }
+  });
+  flushList('final');
+
+  return <>{elements}</>;
+};
+
+// Main AI analysis formatter splitting by headers (###)
+const renderAiAnalysis = (aiAnalysis) => {
+  if (!aiAnalysis) return null;
+
+  // Check if the analysis contains section headers
+  const hasHeaders = aiAnalysis.includes('###');
+
+  if (!hasHeaders) {
+    const lines = aiAnalysis.split('\n');
+    const sections = [];
+    let currentSection = null;
+
+    lines.forEach((line) => {
+      const trimmed = line.trim();
+      if (!trimmed) return;
+
+      // Check if the line matches a key-value pattern like: **Key:** Value
+      const match = trimmed.match(/^(\*\*([^*]+)\*\*|([A-Za-z0-9\s]+)):(.*)$/);
+      const rawKey = match ? (match[2] || match[3] || '') : '';
+      if (match && rawKey.trim().length > 0 && rawKey.trim().length <= 25) {
+        // If we had a previous section, push it
+        if (currentSection) {
+          sections.push(currentSection);
+        }
+        const key = rawKey.toUpperCase().trim();
+        const value = match[4].trim();
+        currentSection = {
+          title: key,
+          content: value,
+        };
+      } else {
+        // If it's a continuation line and we have an active section, append to it
+        if (currentSection) {
+          currentSection.content += '\n' + trimmed;
+        } else {
+          // No active section, create a default one
+          currentSection = {
+            title: '',
+            content: trimmed,
+          };
+        }
+      }
+    });
+
+    if (currentSection) {
+      sections.push(currentSection);
+    }
+
+    if (sections.length > 0 && sections.some(s => s.title)) {
+      return (
+        <div className="deep-analysis-results themed-scroll">
+          {sections.map((section, idx) => (
+            <div key={idx} className="analysis-section-box">
+              {section.title && <h4 className="analysis-section-title">{section.title}</h4>}
+              {section.content && (
+                <div className="analysis-section-content">
+                  <SafeMarkdown text={section.content} />
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+      );
+    }
+
+    // Fallback: Just render the whole text as markdown
+    return (
+      <div className="deep-analysis-results themed-scroll">
+        <div className="analysis-section-content">
+          <SafeMarkdown text={aiAnalysis} />
+        </div>
+      </div>
+    );
+  }
+
+  const parseInlineHeader = (str) => {
+    const parts = str.split(/(\*\*.*?\*\*)/g);
+    return parts.map((part, i) => {
+      if (part.startsWith('**') && part.endsWith('**')) {
+        return <strong key={i}>{part.slice(2, -2)}</strong>;
+      }
+      return part;
+    });
+  };
+
+  // If it has headers, split by '###'
+  const parts = aiAnalysis.split(/###\s+/);
+  const elements = [];
+
+  parts.forEach((part, idx) => {
+    const trimmedPart = part.trim();
+    if (!trimmedPart) return;
+
+    // If it's the very first part, and the original text didn't start with '###',
+    // then this part is introductory text and has no title.
+    const isIntro = idx === 0 && !aiAnalysis.startsWith('###');
+
+    if (isIntro) {
+      elements.push(
+        <div key={idx} className="analysis-section-box no-title">
+          <div className="analysis-section-content">
+            <SafeMarkdown text={trimmedPart} />
+          </div>
+        </div>
+      );
+    } else {
+      const lines = trimmedPart.split('\n');
+      const title = lines[0].trim();
+      const content = lines.slice(1).join('\n').trim();
+      elements.push(
+        <div key={idx} className="analysis-section-box">
+          {title && <h4 className="analysis-section-title">{parseInlineHeader(title)}</h4>}
+          {content && (
+            <div className="analysis-section-content">
+              <SafeMarkdown text={content} />
+            </div>
+          )}
+        </div>
+      );
+    }
+  });
+
+  return (
+    <div className="deep-analysis-results themed-scroll">
+      {elements}
+    </div>
+  );
+};
+
+export default function MarketPulseView({ country, aiSettings }) {
   const [subTab, setSubTab] = useState('snapshot'); // snapshot | intelligence | heatmap
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -25,6 +201,60 @@ export default function MarketPulseView({ country }) {
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [favorites, setFavorites] = useState({}); // { symbol: true }
   const searchInputRef = React.useRef(null);
+
+  // AI Sector Analysis State
+  const [aiAnalysis, setAiAnalysis] = useState(null);
+  const [loadingAi, setLoadingAi] = useState(false);
+  const [aiError, setAiError] = useState(null);
+  const [showAiPane, setShowAiPane] = useState(false);
+
+  // Reset AI state when switching fullscreen index or timeframe
+  useEffect(() => {
+    Promise.resolve().then(() => {
+      setAiAnalysis(null);
+      setLoadingAi(false);
+      setAiError(null);
+      setShowAiPane(false);
+    });
+  }, [fullScreenIndex, timeframe]);
+
+  const handleRunAi = async () => {
+    if (!aiSettings?.apiKey) {
+      setAiError("API Key is missing. Please configure it in Settings.");
+      setShowAiPane(true);
+      return;
+    }
+    setLoadingAi(true);
+    setAiError(null);
+    setShowAiPane(true);
+    try {
+      const defaultPrompt = PROMPT_TEMPLATES.find(t => t.value === 'deep_view')?.text;
+      
+      const stockPayload = {
+        symbol: fullScreenIndex.symbol,
+        longName: fullScreenIndex.longName || fullScreenIndex.symbol,
+        currentPrice: fullScreenIndex.currentPrice || 0,
+        dailyChangePct: fullScreenIndex.dailyChangePct || 0,
+        periodChangePct: timeframe === '1d' ? (fullScreenIndex.dailyChangePct || 0) : (fullScreenIndex.periodChangePct || 0),
+        sector: "Market Index / Sector ETF",
+        tags: [],
+        notes: `RSI(14): ${fullScreenIndex.rsi ? fullScreenIndex.rsi.toFixed(1) : 'N/A'}. SMA 5: ${fullScreenIndex.sma5 ? fullScreenIndex.sma5.toFixed(1) : 'N/A'}. SMA 10: ${fullScreenIndex.sma10 ? fullScreenIndex.sma10.toFixed(1) : 'N/A'}. SMA 21: ${fullScreenIndex.sma21 ? fullScreenIndex.sma21.toFixed(1) : 'N/A'}. SMA 50: ${fullScreenIndex.sma50 ? fullScreenIndex.sma50.toFixed(1) : 'N/A'}. SMA 200: ${fullScreenIndex.sma200 ? fullScreenIndex.sma200.toFixed(1) : 'N/A'}. Dist from 52W High: ${fullScreenIndex.dist52wH ? fullScreenIndex.dist52wH.toFixed(2) + '%' : 'N/A'}.`
+      };
+
+      const result = await getSingleStockAnalysis(
+        aiSettings.apiKey,
+        aiSettings.model,
+        stockPayload,
+        timeframe,
+        defaultPrompt
+      );
+      setAiAnalysis(result.rawText || result.text || result.content || "No analysis returned.");
+    } catch (err) {
+      setAiError(err.message || "An error occurred during AI analysis.");
+    } finally {
+      setLoadingAi(false);
+    }
+  };
 
   // Global Ctrl+K / Cmd+K handler
   useEffect(() => {
@@ -775,28 +1005,73 @@ export default function MarketPulseView({ country }) {
                     {loading && <span style={{ marginLeft: '12px', color: 'var(--primary)' }}>↻ Syncing...</span>}
                   </div>
                   <button 
-                    className="fs-analyze-btn"
+                    className={`btn-ai-gradient fs-ai-btn-gradient ${showAiPane ? 'active' : ''}`}
                     onClick={() => {
-                      const url = country === 'IN' 
-                        ? `https://www.tradingview.com/chart/?symbol=NSE:${fullScreenIndex.symbol.replace('.NS', '').replace('^', '')}` 
-                        : `https://www.tradingview.com/chart/?symbol=${fullScreenIndex.symbol.replace('^', '')}`;
-                      window.open(url, '_blank');
+                      if (aiAnalysis) {
+                        setShowAiPane(!showAiPane);
+                      } else {
+                        handleRunAi();
+                      }
                     }}
+                    disabled={loadingAi}
+                    title="Run Gemini AI Technical Analysis on this chart"
                   >
-                    Analyze ↗
+                    {loadingAi ? (
+                      <>
+                        <span className="spinner-mini"></span>
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <span>✨</span>
+                        {aiAnalysis ? (showAiPane ? 'Hide AI' : 'Show AI') : 'Analyze with AI'}
+                      </>
+                    )}
                   </button>
                 </div>
               </div>
 
-              <div className="fs-chart-main">
-                <MiniCandlestickChart 
-                  data={fullScreenIndex} 
-                  country={country}
-                  interactive={true}
-                  hideHeaders={true}
-                  disableZoom={true}
-                  height="550px"
-                />
+              <div className={`fs-main-layout ${showAiPane ? 'with-sidebar' : ''}`}>
+                <div className="fs-chart-main">
+                  <MiniCandlestickChart 
+                    data={fullScreenIndex} 
+                    country={country}
+                    interactive={true}
+                    hideHeaders={true}
+                    disableZoom={true}
+                    height="550px"
+                  />
+                </div>
+                {showAiPane && (
+                  <div className="fs-ai-panel">
+                    <div className="fs-ai-panel-header">
+                      <h4>AI Technical Thesis</h4>
+                      {aiAnalysis && (
+                        <button className="fs-ai-refresh-btn" onClick={handleRunAi} disabled={loadingAi} title="Recalculate AI analysis">
+                          ↻
+                        </button>
+                      )}
+                    </div>
+                    <div className="fs-ai-panel-content themed-scroll">
+                      {loadingAi ? (
+                        <div className="ai-loading-state">
+                          <div className="spinner"></div>
+                          <span>Generating AI Technical Analysis...</span>
+                        </div>
+                      ) : aiError ? (
+                        <div className="ai-error-state">
+                          <div className="error-icon">⚠️</div>
+                          <span className="error-text">{aiError}</span>
+                          <button className="fs-ai-retry-btn" onClick={handleRunAi} style={{ marginTop: '10px' }}>
+                            Retry
+                          </button>
+                        </div>
+                      ) : (
+                        renderAiAnalysis(aiAnalysis)
+                      )}
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           </div>
