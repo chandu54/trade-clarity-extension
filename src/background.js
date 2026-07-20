@@ -110,6 +110,21 @@ async function processAiQueue() {
     isAiProcessing = false;
     return;
   }
+  
+  // Check if AI is currently blocked
+  const db = await _getStorageData();
+  const blockedUntil = db.aiSettings?.aiState?.blockedUntil || 0;
+  if (blockedUntil > Date.now()) {
+    console.warn("[BG] AI is currently blocked. Clearing bulk AI queue.");
+    bulkAiQueue = [];
+    isAiProcessing = false;
+    chrome.runtime.sendMessage({
+      action: "BULK_AI_ANALYSIS_FAILED",
+      payload: { error: "AI requests blocked due to rate limit/errors." }
+    }).catch(() => {});
+    return;
+  }
+
   isAiProcessing = true;
   const payload = bulkAiQueue.shift();
   

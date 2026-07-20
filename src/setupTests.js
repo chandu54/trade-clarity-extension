@@ -14,8 +14,8 @@ global.chrome = {
   },
   storage: {
     local: {
-      get: vi.fn(),
-      set: vi.fn(),
+      get: vi.fn((keys, cb) => cb && cb({})),
+      set: vi.fn((data, cb) => cb && cb()),
       onChanged: {
         addListener: vi.fn(),
         removeListener: vi.fn()

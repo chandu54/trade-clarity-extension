@@ -58,12 +58,13 @@ const getTooltip = (item) => {
   return `${item.name}: ${item.value}\nStocks: ${stockList}${suffix}`;
 };
 
-const PrintStockList = ({ stocks }) => {
+const PrintStockList = ({ stocks, label = "Stocks" }) => {
   if (!stocks || stocks.length === 0) return null;
+  const displayLabel = label.endsWith(":") ? label : `${label}:`;
   return (
     <div className="print-stock-list mt-2 pt-2 border-t border-slate-200 border-dashed">
       <div className="print-stock-label text-[10px] font-bold mb-1">
-        Stocks:
+        {displayLabel}
       </div>
       <div className="print-stock-values text-[11px] leading-relaxed flex flex-wrap gap-x-2">
         {stocks.map((s) => (

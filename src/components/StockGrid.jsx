@@ -21,6 +21,14 @@ import MovingAverageRibbon from "./MovingAverageRibbon";
 import { fetchStockQuotes } from "../utils/yahooFinanceMap";
 
 
+const FLAG_COLOR_MAP = {
+  red: '#ef4444',
+  blue: '#3b82f6',
+  green: '#22c55e',
+  orange: '#f97316',
+  purple: '#a855f7'
+};
+
 function getWeekRangeLabel(sundayDateStr) {
   if (!sundayDateStr) return "";
   const [y, m, d] = sundayDateStr.split("-").map(Number);
@@ -562,6 +570,7 @@ export default function StockGrid({
   const [currentPage, setCurrentPage] = useState(1);
 
   const [editingStock, setEditingStock] = useState(null);
+  const [activeFlagMenuSymbol, setActiveFlagMenuSymbol] = useState(null);
   const [showAddStock, setShowAddStock] = useState(false);
   const [fetchProgress, setFetchProgress] = useState({
     total: 0,
@@ -1381,7 +1390,7 @@ export default function StockGrid({
       ? `Remove ${symbol} from watchlist "${activeWatchlist.name}"?`
       : `Delete ${symbol}?`;
 
-    if (!(await confirm(confirmMessage, { confirmSettingsKey: 'skipDeleteConfirm' }))) return;
+    if (!(await confirm(confirmMessage, { confirmSettingsKey: 'skipDeleteConfirm' }))) return false;
 
     setData((prev) => {
       const prevWeek = prev.weeks[country][weekKey];
@@ -1414,6 +1423,9 @@ export default function StockGrid({
         },
       };
     });
+
+    showToast(isWatchlistSpecific ? `Removed ${symbol} from watchlist` : `Deleted ${symbol}`, "success");
+    return true;
   }
 
   function addTag(stock, tag) {
@@ -2427,6 +2439,12 @@ export default function StockGrid({
           onClose={() => setEditingStock(null)}
           stock={week?.stocks?.[editingStock.symbol] || editingStock}
           onSave={handleUpdateStock}
+          onDeleteStock={async (symbol) => {
+            const deleted = await deleteStock(symbol);
+            if (deleted) {
+              setEditingStock(null);
+            }
+          }}
           paramDefinitions={data.paramDefinitions}
           sectors={sectors}
           availableTags={availableTags}
@@ -2616,7 +2634,115 @@ export default function StockGrid({
                   <div className="stock-cell-content">
                     <div className="stock-header-row">
                       <div className="symbol-cell-content">
-                        <div className="flex items-center gap-1.5">
+                        <div className="flex items-center gap-1">
+                          {!isReadOnly && (
+                            <div style={{ position: 'relative', display: 'inline-flex', flexShrink: 0, marginLeft: '-6px' }}>
+                              <div 
+                                className="stock-grid-flag-trigger"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setActiveFlagMenuSymbol(activeFlagMenuSymbol === stock.symbol ? null : stock.symbol);
+                                }}
+                                style={{
+                                  display: 'flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  cursor: 'pointer',
+                                  padding: '2px',
+                                  borderRadius: '4px',
+                                  transition: 'background 0.2s',
+                                  flexShrink: 0
+                                }}
+                                title="Flag Stock"
+                              >
+                                <svg 
+                                  xmlns="http://www.w3.org/2000/svg" 
+                                  width="12" 
+                                  height="12" 
+                                  viewBox="0 0 24 24" 
+                                  fill={stock.flagColor ? FLAG_COLOR_MAP[stock.flagColor] : 'none'} 
+                                  stroke={stock.flagColor ? FLAG_COLOR_MAP[stock.flagColor] : 'currentColor'} 
+                                  strokeWidth="2.5" 
+                                  strokeLinecap="round" 
+                                  strokeLinejoin="round"
+                                  style={{
+                                    opacity: stock.flagColor ? 1 : 0.2,
+                                    transition: 'opacity 0.2s',
+                                  }}
+                                >
+                                  <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                                  <line x1="4" y1="22" x2="4" y2="15"/>
+                                </svg>
+                              </div>
+
+                              {activeFlagMenuSymbol === stock.symbol && (
+                                <div 
+                                  className="flag-row-popover" 
+                                  style={{
+                                    position: 'absolute',
+                                    left: '20px',
+                                    top: '50%',
+                                    transform: 'translateY(-50%)',
+                                    display: 'flex',
+                                    alignItems: 'center',
+                                    gap: '6px',
+                                    background: 'var(--panel, #1e293b)',
+                                    border: '1px solid var(--border, rgba(255,255,255,0.15))',
+                                    borderRadius: '20px',
+                                    padding: '4px 8px',
+                                    boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                    zIndex: 1000
+                                  }}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  {Object.entries(FLAG_COLOR_MAP).map(([colorName, colorHex]) => (
+                                    <button
+                                      key={colorName}
+                                      className="flag-color-dot"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const updated = { ...stock, flagColor: colorName };
+                                        handleUpdateStock(updated);
+                                        setActiveFlagMenuSymbol(null);
+                                      }}
+                                      style={{
+                                        background: colorHex,
+                                        backgroundColor: colorHex
+                                      }}
+                                      title={`${colorName.charAt(0).toUpperCase() + colorName.slice(1)} Flag`}
+                                    />
+                                  ))}
+                                  <button
+                                    className="flag-clear-btn"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      const updated = { ...stock, flagColor: null };
+                                      handleUpdateStock(updated);
+                                      setActiveFlagMenuSymbol(null);
+                                    }}
+                                    title="Clear Flag"
+                                  >
+                                    ×
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {isReadOnly && stock.flagColor && (
+                            <span 
+                              style={{
+                                width: '6px',
+                                height: '14px',
+                                borderRadius: '2px',
+                                backgroundColor: FLAG_COLOR_MAP[stock.flagColor],
+                                display: 'inline-block',
+                                flexShrink: 0,
+                                marginLeft: '-6px'
+                              }}
+                              title={`${stock.flagColor.toUpperCase()} Flagged`}
+                            />
+                          )}
                           <span
                             className={`stock-symbol ${!isReadOnly ? "clickable" : ""}`}
                             onClick={() => {

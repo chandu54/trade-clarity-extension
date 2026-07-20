@@ -16,6 +16,11 @@ export const PROMPT_TEMPLATES = [
     label: "Single Stock Deep Analysis",
     text: "Act as a senior institutional technical analyst. \nConduct a high-conviction deep dive on the stock: {symbol} ({name}).\n\nCurrent Quote Context:\n- Price: {price}\n- Day Change: {dailyChangePct}%\n- Period ({timeframe}) Change: {periodChangePct}%\n- Sector: {sector}\n- Tags: {tags}\n- Notes: {notes}\n\nOutput MUST follow this EXACT structure:\n\n### TREND\n[Primary bias & momentum state]\n\n### KEY LEVELS\n[S1/S2 | R1/R2 with brief context]\n\n### SETUP\n[Specific technical pattern or context]\n\n### TRIGGER\n[The exact 'if this, then that' entry condition]\n\n### VERDICT\n[BUY/WAIT/SELL] - [Brief summary of reasoning]",
   },
+  {
+    value: "daily_move",
+    label: "Daily Price Action & Sentiment Analysis",
+    text: "Act as a senior institutional technical analyst.\nConduct a structured daily momentum report for: {symbol} ({name}).\n\nAnalyze the price action today (Change: {dailyChangePct}%) within the broader trend context ({timeframe} Change: {periodChangePct}%).\nYour goal is to explain the driving force behind this daily move (e.g., potential Circuit Limit breakouts, volume spikes, or trend reversals).\n\nCurrent Quote Context:\n- Price: {price}\n- Day Change: {dailyChangePct}%\n- Period ({timeframe}) Change: {periodChangePct}%\n- Sector: {sector}\n- Tags: {tags}\n- Notes: {notes}\n\nOutput MUST follow this EXACT structure:\n\n### CATALYST & MOVE ANALYSIS\n- **Move Type**: [Specify if UC (Upper Circuit), LC (Lower Circuit), High Volume Breakout, or Standard Range]\n- **Key Driver**: [Identify the likely technical/narrative reason for today's price behavior]\n- **Volume Profile**: [Assess today's volume relative to typical liquidity]\n\n### MOMENTUM & METRIC ANALYSIS\n- **Trend Alignment**: [Is today's move aligning with or counter to the broader trend?]\n- **Relative Strength vs. Sector**: [How did the stock perform relative to the {sector} sector today?]\n\n### CRITICAL LEVELS\n- **Support Levels**: [Key support levels where buyers are expected to stand]\n- **Resistance Levels**: [Immediate resistance levels or target boundaries]\n\n### OUTLOOK & ACTION PLAN\n- **Next-Day Expectation**: [What is the expected follow-through price action tomorrow?]\n- **Invalidation Level**: [The price level where today's move is technically invalidated]\n\n### VERDICT\n[BUY/WAIT/SELL] - [Brief decision-driven summary based on today's move]",
+  },
 ];
 
 export async function getAiAnalysis(
@@ -252,7 +257,69 @@ function parseRetryAfterMs(errorMessage, fallbackMs = 65000) {
   return fallbackMs;
 }
 
+async function getAiState() {
+  if (typeof chrome !== "undefined" && chrome.storage?.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(["trading_app_data"], (res) => {
+        const db = res?.trading_app_data || {};
+        resolve(db.aiSettings?.aiState || { continuousFailures: 0, blockedUntil: 0 });
+      });
+    });
+  } else {
+    try {
+      const db = JSON.parse(localStorage.getItem("trading_app_data")) || {};
+      return db.aiSettings?.aiState || { continuousFailures: 0, blockedUntil: 0 };
+    } catch {
+      return { continuousFailures: 0, blockedUntil: 0 };
+    }
+  }
+}
+
+async function updateAiState(failures, blockedUntil) {
+  if (typeof chrome !== "undefined" && chrome.storage?.local) {
+    return new Promise((resolve) => {
+      chrome.storage.local.get(["trading_app_data"], (res) => {
+        const db = res?.trading_app_data || {};
+        if (!db.aiSettings) db.aiSettings = {};
+        db.aiSettings.aiState = { continuousFailures: failures, blockedUntil };
+        chrome.storage.local.set({ trading_app_data: db }, resolve);
+      });
+    });
+  } else {
+    try {
+      const db = JSON.parse(localStorage.getItem("trading_app_data")) || {};
+      if (!db.aiSettings) db.aiSettings = {};
+      db.aiSettings.aiState = { continuousFailures: failures, blockedUntil };
+      localStorage.setItem("trading_app_data", JSON.stringify(db));
+    } catch (_err) {
+      // ignore local storage set failures
+    }
+  }
+}
+
+async function resetAiFailureCount() {
+  await updateAiState(0, 0);
+}
+
+async function incrementAiFailureCount(errMsg) {
+  const state = await getAiState();
+  const newFailures = (state.continuousFailures || 0) + 1;
+  let blockedUntil = 0;
+  if (newFailures >= 3) {
+    const delayMs = parseRetryAfterMs(errMsg, 60000);
+    blockedUntil = Date.now() + delayMs;
+  }
+  await updateAiState(newFailures, blockedUntil);
+}
+
 async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3) {
+  // Check if AI is currently blocked
+  const state = await getAiState();
+  if (state.blockedUntil && state.blockedUntil > Date.now()) {
+    const remainingSecs = Math.ceil((state.blockedUntil - Date.now()) / 1000);
+    throw new Error(`AI Request Limit Reached. Available again in ${remainingSecs}s.`);
+  }
+
   // 1. Clean the model ID (ensure no redundant prefix)
   const cleanModel = (model || CONFIG.DEFAULT_AI_MODEL).replace(
     /^models\//,
@@ -316,14 +383,23 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3)
 
       if (!text) throw new Error("Empty response from Gemini");
 
+      await resetAiFailureCount();
       return parseResponse(text, isCustom);
     } catch (error) {
       clearTimeout(timeoutId);
-      if (error.name === 'AbortError') {
-        throw new Error("The AI request timed out. Please try again.", { cause: error });
+      
+      // If it is the block error we threw on entry, don't count it as a failure
+      if (error.message && error.message.includes("AI Request Limit Reached")) {
+        throw error;
       }
-      // Re-throw non-rate-limit errors immediately
-      throw error;
+
+      let finalError = error;
+      if (error.name === 'AbortError') {
+        finalError = new Error("The AI request timed out. Please try again.", { cause: error });
+      }
+
+      await incrementAiFailureCount(finalError.message || String(finalError));
+      throw finalError;
     }
   }
 

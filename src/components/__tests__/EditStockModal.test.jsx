@@ -547,5 +547,63 @@ describe('EditStockModal', () => {
       expect(thicknessSelect).toBeDefined();
       fireEvent.change(thicknessSelect, { target: { value: '3' } });
     });
+
+    it('renders Delete Stock button when onDeleteStock prop is provided and triggers callback', () => {
+      const onDeleteStock = vi.fn();
+      render(<EditStockModal {...props} isDeepView={true} onDeleteStock={onDeleteStock} />);
+      
+      const deleteBtn = screen.getAllByText('Delete Stock')[0];
+      expect(deleteBtn).toBeDefined();
+      fireEvent.click(deleteBtn);
+      expect(onDeleteStock).toHaveBeenCalledWith('AAPL');
+    });
+
+    it('allows choosing a flag color and calling onSave with it', () => {
+      const customProps = {
+        ...props,
+        sortedStocks: [mockStock]
+      };
+      render(<EditStockModal {...customProps} isDeepView={true} />);
+      
+      const flagBtn = screen.getByTitle('Flag Stock');
+      expect(flagBtn).toBeDefined();
+      fireEvent.click(flagBtn);
+      
+      const greenFlagOption = screen.getByTitle('Green Flag');
+      expect(greenFlagOption).toBeDefined();
+      fireEvent.click(greenFlagOption);
+      
+      expect(props.onSave).toHaveBeenCalledWith(expect.objectContaining({
+        flagColor: 'green'
+      }));
+    });
+
+    it('supports grouping sidebar list by flag color', () => {
+      const customStocks = [
+        { ...mockStock, symbol: 'AAPL', flagColor: 'green' },
+        { ...mockStock, symbol: 'MSFT', flagColor: 'red' },
+        { ...mockStock, symbol: 'TSLA', flagColor: null }
+      ];
+      const customProps = {
+        ...props,
+        sortedStocks: customStocks
+      };
+      render(<EditStockModal {...customProps} isDeepView={true} />);
+
+      // Open Grouping Popover
+      const groupBtn = screen.getByTitle('Group & Categorize watchlist');
+      expect(groupBtn).toBeDefined();
+      fireEvent.click(groupBtn);
+
+      // Select "Flag Color"
+      const flagGroupOption = screen.getByText('Flag Color');
+      expect(flagGroupOption).toBeDefined();
+      fireEvent.click(flagGroupOption);
+
+      // Verify the group headers are displayed
+      expect(screen.getByText('GREEN Flag')).toBeDefined();
+      expect(screen.getByText('RED Flag')).toBeDefined();
+      expect(screen.getByText('No Flag')).toBeDefined();
+    });
   });
 });

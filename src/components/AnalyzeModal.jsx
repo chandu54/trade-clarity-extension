@@ -6,6 +6,11 @@ import { isParamRelevantForCountry } from "../utils/paramUtils";
 import { useToast } from "./ToastContext";
 import { CONFIG } from "../constants/config";
 
+const checkIsAiBlocked = (blockedUntil) => {
+  if (!blockedUntil) return false;
+  return blockedUntil > Date.now();
+};
+
 export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, country, selectedWatchlistId }) {
   const [isGenerating, setIsGenerating] = useState(false);
   const [selectedPromptId, setSelectedPromptId] = useState(data?.aiSettings?.promptLibrary?.defaults?.watchlist || "default");
@@ -30,6 +35,12 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
     : (data.watchlists?.find(w => w.id === selectedWatchlistId)?.name || "All Stocks");
 
   const handleGenerateAnalysis = async () => {
+    const isAiBlocked = data?.aiSettings?.aiState?.blockedUntil && data.aiSettings.aiState.blockedUntil > Date.now();
+    if (isAiBlocked) {
+      showToast("AI Request Limit Reached. Available again shortly.", "error");
+      return;
+    }
+
     setIsGenerating(true);
     try {
       const currentWeekData = data.weeks?.[country]?.[weekKey] || { stocks: {} };
@@ -155,14 +166,20 @@ export default function AnalyzeModal({ isOpen, onClose, data, setData, weekKey, 
                      View Prompt
                   </button>
                 </div>
-                <button
-                  type="button"
-                  onClick={handleGenerateAnalysis}
-                  disabled={isGenerating}
-                  className="btn-ai-gradient ai-run-btn"
-                >
-                  {isGenerating ? "Analyzing..." : (analysisToDisplay ? "Regenerate" : "Run Analysis")}
-                </button>
+                 {(() => {
+                   const isAiBlocked = checkIsAiBlocked(data?.aiSettings?.aiState?.blockedUntil);
+                  return (
+                    <button
+                      type="button"
+                      onClick={handleGenerateAnalysis}
+                      disabled={isGenerating || isAiBlocked}
+                      className="btn-ai-gradient ai-run-btn"
+                      title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : ""}
+                    >
+                      {isGenerating ? "Analyzing..." : (isAiBlocked ? "AI Blocked" : (analysisToDisplay ? "Regenerate" : "Run Analysis"))}
+                    </button>
+                  );
+                })()}
             </div>
           )}
 

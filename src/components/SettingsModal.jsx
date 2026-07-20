@@ -66,16 +66,23 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
   }
 
   const handleSave = () => {
-    setData((prev) => ({
-      ...prev,
-      isPro: isPro,
-      aiSettings: {
+    const apiKeyChanged = apiKey !== data?.aiSettings?.apiKey;
+    setData((prev) => {
+      const nextAiSettings = {
         ...prev.aiSettings,
         apiKey: apiKey,
         model: (model || "").trim(),
         promptLibrary: library,
-      },
-    }));
+      };
+      if (apiKeyChanged) {
+        nextAiSettings.aiState = { continuousFailures: 0, blockedUntil: 0 };
+      }
+      return {
+        ...prev,
+        isPro: isPro,
+        aiSettings: nextAiSettings,
+      };
+    });
     setSaveStatus("Saved!");
     setTimeout(() => setSaveStatus(""), 2000);
   };

@@ -366,5 +366,24 @@ describe('StockGrid', () => {
     expect(screen.getByText('AAPL')).toBeDefined();
     expect(screen.getByText('MSFT')).toBeDefined();
   });
+
+  it('allows selecting flag color directly from grid table cells', async () => {
+    renderWithContext(<StockGrid {...props} />);
+    
+    // Find flag trigger next to AAPL symbol
+    const flagBtns = screen.getAllByTitle('Flag Stock');
+    expect(flagBtns.length).toBeGreaterThan(0);
+    
+    // Click the first one (for AAPL)
+    fireEvent.click(flagBtns[0]);
+    
+    // Select "Green Flag" from popover
+    const greenFlagBtn = screen.getByTitle('Green Flag');
+    expect(greenFlagBtn).toBeDefined();
+    fireEvent.click(greenFlagBtn);
+    
+    // Verify mockSetData was called
+    expect(props.setData).toHaveBeenCalled();
+  });
 });
 

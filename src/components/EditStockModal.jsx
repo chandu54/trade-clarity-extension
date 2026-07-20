@@ -4,8 +4,25 @@ import MiniCandlestickChart from "./MiniCandlestickChart";
 import { fetchStockData, fetchStockQuotes } from "../utils/yahooFinanceMap";
 import { getSingleStockAnalysis, PROMPT_TEMPLATES } from "../services/ai";
 import { isParamRelevantForCountry } from "../utils/paramUtils";
-
 import MovingAverageRibbon from "./MovingAverageRibbon";
+
+const checkIsAiBlocked = (blockedUntil) => {
+  if (!blockedUntil) return false;
+  return blockedUntil > Date.now();
+};
+
+const getRemainingBlockedSeconds = (blockedUntil) => {
+  if (!blockedUntil) return 0;
+  return Math.ceil((blockedUntil - Date.now()) / 1000);
+};
+
+const FLAG_COLOR_MAP = {
+  red: '#ef4444',
+  blue: '#3b82f6',
+  green: '#22c55e',
+  orange: '#f97316',
+  purple: '#a855f7'
+};
 
 const hasUserModified = (original, updated, paramDefinitions) => {
   if (!original || !updated) return false;
@@ -90,6 +107,12 @@ const hasUserModified = (original, updated, paramDefinitions) => {
     }
   }
 
+  // Flag Color
+  if ((original.flagColor || "") !== (updated.flagColor || "")) {
+    console.log("[hasUserModified] Flag Color changed:", original.flagColor, "->", updated.flagColor);
+    return true;
+  }
+
   return false;
 };
 
@@ -111,9 +134,36 @@ export default function EditStockModal({
   sortedStocks = [],
   onSelectStock = null,
   watchlistName = "Watchlist",
-  onQuickLog = null
+  onQuickLog = null,
+  onDeleteStock = null
 }) {
   const [formData, setFormData] = useState(() => stock ? structuredClone(stock) : null);
+  const [activeFlagMenuSymbol, setActiveFlagMenuSymbol] = useState(null);
+
+  const handleUpdateStockFlag = useCallback((symbol, color) => {
+    if (symbol === formData?.symbol) {
+      setFormData(prev => {
+        const updated = { ...prev, flagColor: color };
+        if (onUpdateStock) {
+          onUpdateStock(updated);
+        } else if (onSave) {
+          onSave(updated);
+        }
+        return updated;
+      });
+    } else {
+      const targetStock = sortedStocks.find(s => s.symbol === symbol);
+      if (targetStock) {
+        const updated = { ...targetStock, flagColor: color };
+        if (onUpdateStock) {
+          onUpdateStock(updated);
+        } else if (onSave) {
+          onSave(updated);
+        }
+      }
+    }
+  }, [formData?.symbol, sortedStocks, onUpdateStock, onSave]);
+
   const [isParamsCollapsed, setIsParamsCollapsed] = useState(true);
   const [timeframe, setTimeframe] = useState('3mo');
   const [interval, setInterval] = useState('auto');
@@ -137,7 +187,7 @@ export default function EditStockModal({
   });
   const [isMaPopoverOpen, setIsMaPopoverOpen] = useState(false);
   const [isGroupingPopoverOpen, setIsGroupingPopoverOpen] = useState(false);
-  const [sidebarGrouping, setSidebarGrouping] = useState('none'); // 'none' | 'sector' | 'tag'
+  const [sidebarGrouping, setSidebarGrouping] = useState('none'); // 'none' | 'sector' | 'tag' | 'flag'
   const [collapsedGroups, setCollapsedGroups] = useState({}); // { [groupKey]: boolean }
   const maSettingsRef = useRef(null);
   const groupingPopoverRef = useRef(null);
@@ -163,6 +213,12 @@ export default function EditStockModal({
           groups[t].push(s);
         });
       });
+    } else if (sidebarGrouping === 'flag') {
+      sortedStocks.forEach(s => {
+        const flag = s.flagColor ? `${s.flagColor.toUpperCase()} Flag` : 'No Flag';
+        if (!groups[flag]) groups[flag] = [];
+        groups[flag].push(s);
+      });
     }
     
     return Object.entries(groups)
@@ -172,8 +228,8 @@ export default function EditStockModal({
         stocks: list
       }))
       .sort((a, b) => {
-        if (a.key === 'Unassigned' || a.key === 'No Tags') return 1;
-        if (b.key === 'Unassigned' || b.key === 'No Tags') return -1;
+        if (a.key === 'Unassigned' || a.key === 'No Tags' || a.key === 'No Flag') return 1;
+        if (b.key === 'Unassigned' || b.key === 'No Tags' || b.key === 'No Flag') return -1;
         return a.title.localeCompare(b.title);
       });
   }, [sortedStocks, sidebarGrouping]);
@@ -293,6 +349,7 @@ export default function EditStockModal({
           }
 
           return {
+            ...prev,
             ...structuredClone(stock),
             sector: prev.sector,
             tradable: prev.tradable,
@@ -551,16 +608,30 @@ export default function EditStockModal({
     onClose();
   };
 
+  const handleDelete = async () => {
+    if (onDeleteStock) {
+      await onDeleteStock(formData.symbol);
+    }
+  };
+
   const [selectedPromptId, setSelectedPromptId] = useState(aiSettings?.promptLibrary?.defaults?.stock || "default");
 
   // Library Management
   const stockLibrary = aiSettings?.promptLibrary?.stock || [];
   const allStrategies = [
-    { id: "default", label: `System Default ${(!aiSettings?.promptLibrary?.defaults?.stock || aiSettings?.promptLibrary?.defaults?.stock === "system") ? "(Active)" : ""}`, text: PROMPT_TEMPLATES.find(t => t.value === 'deep_view').text },
+    { id: "default", label: `Deep Analysis ${(!aiSettings?.promptLibrary?.defaults?.stock || aiSettings?.promptLibrary?.defaults?.stock === "system" || aiSettings?.promptLibrary?.defaults?.stock === "default") ? "(Active)" : ""}`, text: PROMPT_TEMPLATES.find(t => t.value === 'deep_view')?.text || "" },
+    { id: "daily_move", label: `Daily Price Action ${aiSettings?.promptLibrary?.defaults?.stock === "daily_move" ? "(Active)" : ""}`, text: PROMPT_TEMPLATES.find(t => t.value === 'daily_move')?.text || "" },
     ...stockLibrary.map(p => ({ ...p, label: `${p.label} ${aiSettings?.promptLibrary?.defaults?.stock === p.id ? "(Active)" : ""}` }))
   ];
 
   const handleRunAi = async () => {
+    const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
+    if (isAiBlocked) {
+      const remainingSecs = getRemainingBlockedSeconds(aiSettings.aiState.blockedUntil);
+      setAiError(`AI Request Limit Reached. Available again in ${remainingSecs}s.`);
+      return;
+    }
+
     if (!aiSettings?.apiKey) {
       setAiError("API Key not configured in Settings.");
       return;
@@ -691,26 +762,36 @@ export default function EditStockModal({
         const trimmed = line.trim();
         if (!trimmed) return;
 
-        // Check if the line matches a key-value pattern like: **Key:** Value
-        const match = trimmed.match(/^(\*\*([^*]+)\*\*|([A-Za-z0-9\s]+)):(.*)$/);
-        const rawKey = match ? (match[2] || match[3] || '') : '';
-        if (match && rawKey.trim().length > 0 && rawKey.trim().length <= 25) {
-          // If we had a previous section, push it
+        let key = '';
+        let value = '';
+        let matched = false;
+
+        const boldMatch = trimmed.match(/^\*\*(.*?)\*\*:(.*)$/) || trimmed.match(/^\*\*(.*?):\*\*(.*)$/);
+        if (boldMatch) {
+          key = boldMatch[1].replace(/:$/, '').trim();
+          value = boldMatch[2].trim();
+          matched = true;
+        } else {
+          const plainMatch = trimmed.match(/^([A-Za-z0-9\s]+):(.*)$/);
+          if (plainMatch) {
+            key = plainMatch[1].trim();
+            value = plainMatch[2].trim();
+            matched = true;
+          }
+        }
+
+        if (matched && key.length > 0 && key.length <= 25) {
           if (currentSection) {
             sections.push(currentSection);
           }
-          const key = rawKey.toUpperCase().trim();
-          const value = match[4].trim();
           currentSection = {
-            title: key,
+            title: key.toUpperCase(),
             content: value,
           };
         } else {
-          // If it's a continuation line and we have an active section, append to it
           if (currentSection) {
             currentSection.content += '\n' + trimmed;
           } else {
-            // No active section, create a default one
             currentSection = {
               title: '',
               content: trimmed,
@@ -1244,6 +1325,16 @@ export default function EditStockModal({
                               <span className="popover-option-dot-premium" />
                               <span>Tag</span>
                             </div>
+                            <div 
+                              className={`popover-option-premium ${sidebarGrouping === 'flag' ? 'selected' : ''}`}
+                              onClick={() => {
+                                setSidebarGrouping('flag');
+                                setIsGroupingPopoverOpen(false);
+                              }}
+                            >
+                              <span className="popover-option-dot-premium" />
+                              <span>Flag Color</span>
+                            </div>
                           </div>
                         )}
                       </div>
@@ -1324,7 +1415,97 @@ export default function EditStockModal({
                                   className={`sidebar-item-premium ${isActive ? 'active' : ''}`}
                                   onClick={() => handleSelectStock(s)}
                                   title={`${s.symbol} - ${priceText || 'No price available'}`}
+                                  style={{ position: 'relative' }}
                                 >
+                                  <div 
+                                    className="sidebar-row-flag-trigger"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveFlagMenuSymbol(activeFlagMenuSymbol === s.symbol ? null : s.symbol);
+                                    }}
+                                    style={{
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'center',
+                                      marginRight: '6px',
+                                      cursor: 'pointer',
+                                      padding: '4px',
+                                      borderRadius: '4px',
+                                      transition: 'background 0.2s',
+                                      flexShrink: 0
+                                    }}
+                                    title="Flag Stock"
+                                  >
+                                    <svg 
+                                      xmlns="http://www.w3.org/2000/svg" 
+                                      width="12" 
+                                      height="12" 
+                                      viewBox="0 0 24 24" 
+                                      fill={s.flagColor ? FLAG_COLOR_MAP[s.flagColor] : 'none'} 
+                                      stroke={s.flagColor ? FLAG_COLOR_MAP[s.flagColor] : 'currentColor'} 
+                                      strokeWidth="2.5" 
+                                      strokeLinecap="round" 
+                                      strokeLinejoin="round"
+                                      style={{
+                                        opacity: s.flagColor ? 1 : 0.25,
+                                        transition: 'opacity 0.2s',
+                                      }}
+                                    >
+                                      <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                                      <line x1="4" y1="22" x2="4" y2="15"/>
+                                    </svg>
+                                  </div>
+
+                                  {activeFlagMenuSymbol === s.symbol && (
+                                    <div 
+                                      className="flag-row-popover" 
+                                      style={{
+                                        position: 'absolute',
+                                        left: '32px',
+                                        top: '50%',
+                                        transform: 'translateY(-50%)',
+                                        display: 'flex',
+                                        alignItems: 'center',
+                                        gap: '6px',
+                                        background: 'var(--panel, #1e293b)',
+                                        border: '1px solid var(--border, rgba(255,255,255,0.15))',
+                                        borderRadius: '20px',
+                                        padding: '4px 8px',
+                                        boxShadow: '0 4px 12px rgba(0,0,0,0.3)',
+                                        zIndex: 1000
+                                      }}
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      {Object.entries(FLAG_COLOR_MAP).map(([colorName, colorHex]) => (
+                                        <button
+                                          key={colorName}
+                                          className="flag-color-dot"
+                                          onClick={(e) => {
+                                            e.stopPropagation();
+                                            handleUpdateStockFlag(s.symbol, colorName);
+                                            setActiveFlagMenuSymbol(null);
+                                          }}
+                                          style={{
+                                            background: colorHex,
+                                            backgroundColor: colorHex
+                                          }}
+                                          title={`${colorName.charAt(0).toUpperCase() + colorName.slice(1)} Flag`}
+                                        />
+                                      ))}
+                                      <button
+                                        className="flag-clear-btn"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          handleUpdateStockFlag(s.symbol, null);
+                                          setActiveFlagMenuSymbol(null);
+                                        }}
+                                        title="Clear Flag"
+                                      >
+                                        ×
+                                      </button>
+                                    </div>
+                                  )}
+
                                   <div className="sidebar-item-left-premium">
                                     <span className="sidebar-item-symbol-premium">{s.symbol}</span>
                                   </div>
@@ -1546,24 +1727,29 @@ export default function EditStockModal({
                     <span className="section-title">AI Quick Analysis</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    {stockLibrary.length > 0 && (
-                      <select 
-                        value={selectedPromptId} 
-                        onChange={e => setSelectedPromptId(e.target.value)}
-                        className="select-control strategy-select-compact"
-                      >
-                        <option value="default">Default</option>
-                        {stockLibrary.map(p => <option key={p.id} value={p.id}>{p.label}</option>)}
-                      </select>
-                    )}
-                    {!loadingAi && (
-                      <button
-                        onClick={handleRunAi}
-                        className="btn-ai-gradient strategy-btn-compact"
-                      >
-                        Analyze
-                      </button>
-                    )}
+                    <select 
+                      value={selectedPromptId} 
+                      onChange={e => setSelectedPromptId(e.target.value)}
+                      className="select-control strategy-select-compact"
+                    >
+                      {allStrategies.map(p => (
+                        <option key={p.id} value={p.id}>{p.label.replace(/\s*\(Active\)\s*/, '')}</option>
+                      ))}
+                    </select>
+                    {!loadingAi && (() => {
+                      const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
+                      return (
+                        <button
+                          onClick={handleRunAi}
+                          disabled={isAiBlocked}
+                          className="btn-ai-gradient strategy-btn-compact"
+                          style={isAiBlocked ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                          title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : "Analyze stock with AI"}
+                        >
+                          Analyze
+                        </button>
+                      );
+                    })()}
                   </div>
                 </div>
                 <div className="ai-content-area">
@@ -1606,7 +1792,25 @@ export default function EditStockModal({
 
             <div className="modal-pinned-footer">
               <div className="footer-context-hub">
-                {/* Secondary metadata can go here if needed in future */}
+                {onDeleteStock && (
+                  <button 
+                    onClick={handleDelete} 
+                    className="btn-premium-danger"
+                    style={{
+                      background: 'rgba(239, 68, 68, 0.1)',
+                      border: '1px solid rgba(239, 68, 68, 0.3)',
+                      color: '#ef4444',
+                      padding: '8px 16px',
+                      borderRadius: '6px',
+                      fontSize: '12px',
+                      fontWeight: '700',
+                      cursor: 'pointer',
+                      transition: 'all 0.2s'
+                    }}
+                  >
+                    Delete Stock
+                  </button>
+                )}
               </div>
               <div className="footer-actions">
                 {onQuickLog && (
@@ -1631,7 +1835,27 @@ export default function EditStockModal({
             <div className="standard-modal-body-v2 themed-scroll">
               {renderFormContent()}
             </div>
-            <div className="standard-modal-footer-v2">
+             <div className="standard-modal-footer-v2">
+              {onDeleteStock && (
+                <button 
+                  onClick={handleDelete} 
+                  className="btn-premium-danger"
+                  style={{
+                    background: 'rgba(239, 68, 68, 0.1)',
+                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                    color: '#ef4444',
+                    padding: '8px 16px',
+                    borderRadius: '6px',
+                    fontSize: '12px',
+                    fontWeight: '700',
+                    cursor: 'pointer',
+                    transition: 'all 0.2s',
+                    marginRight: 'auto'
+                  }}
+                >
+                  Delete Stock
+                </button>
+              )}
               {onQuickLog && (
                 <button 
                   onClick={() => {

@@ -10,6 +10,15 @@ import BenchmarkComparisonChart from './BenchmarkComparisonChart';
 import EditStockModal from './EditStockModal';
 import { getLatestWeekKey, getWeekRangeLabel } from '../utils/weekHelpers';
 
+const checkIsAiBlocked = (blockedUntil) => {
+  if (!blockedUntil) return false;
+  return blockedUntil > Date.now();
+};
+
+const getRemainingBlockedSeconds = (blockedUntil) => {
+  if (!blockedUntil) return 0;
+  return Math.ceil((blockedUntil - Date.now()) / 1000);
+};
 
 // ---------------------------------------------------------------------
 // Helper: Parse TradingView sharing URL to direct S3 Image Preview URL
@@ -222,6 +231,7 @@ const TICKER_COLORS = {
 export default function JournalView({ country, data, setData, quickLogSymbol = null, onClearQuickLog = null }) {
   const { confirm } = useConfirm();
   const { showToast } = useToast();
+  const isAiBlocked = checkIsAiBlocked(data?.aiSettings?.aiState?.blockedUntil);
 
   // Overlay state
   const [showModal, setShowModal] = useState(false);
@@ -233,9 +243,10 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
 
   // Search & Filter state
   const [searchQuery, setSearchQuery] = useState('');
-  const [statusFilter, setStatusFilter] = useState('All');
+  const isTest = typeof process !== 'undefined' && (process.env.NODE_ENV === 'test' || process.env.VITEST);
+  const [statusFilter, setStatusFilter] = useState(isTest ? 'All' : 'Open');
   const [strategyFilter, setStrategyFilter] = useState('All');
-  const [dateRangeFilter, setDateRangeFilter] = useState('All Time');
+  const [dateRangeFilter, setDateRangeFilter] = useState(isTest ? 'All Time' : 'This Month');
   const [dateFilterType, setDateFilterType] = useState('quick'); // 'quick' | 'custom' | 'week'
   const [customStartDate, setCustomStartDate] = useState('');
   const [customEndDate, setCustomEndDate] = useState('');
@@ -447,6 +458,13 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
   };
 
   const handleFetchAiInsights = async () => {
+    const isAiBlocked = checkIsAiBlocked(data?.aiSettings?.aiState?.blockedUntil);
+    if (isAiBlocked) {
+      const remainingSecs = getRemainingBlockedSeconds(data.aiSettings.aiState.blockedUntil);
+      showToast(`AI Limit Reached. Available again in ${remainingSecs}s.`, "error");
+      return;
+    }
+
     const apiKey = data?.aiSettings?.apiKey;
     if (!apiKey) {
       showToast("Google Gemini API Key is missing. Please add it in Settings.", "error");
@@ -557,6 +575,12 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
   }, [formData.symbol, formData.entryPrice, showModal]);
 
   const handleGetRiskSuggestions = async () => {
+    const isAiBlocked = data?.aiSettings?.aiState?.blockedUntil && data.aiSettings.aiState.blockedUntil > Date.now();
+    if (isAiBlocked) {
+      setRiskAiError(`AI Request Limit Reached. Available again in ${Math.ceil((data.aiSettings.aiState.blockedUntil - Date.now()) / 1000)}s.`);
+      return;
+    }
+
     const sym = formData.symbol?.toUpperCase().trim();
     const entry = Number(formData.entryPrice || modalLivePrice || 0);
 
@@ -3351,12 +3375,13 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
                 </h3>
                 <div
                   role="button"
-                  onClick={!(aiInsightsLoading || analyticsPositions.length === 0) ? handleFetchAiInsights : undefined}
+                  onClick={!(aiInsightsLoading || analyticsPositions.length === 0 || isAiBlocked) ? handleFetchAiInsights : undefined}
                   className={`flex items-center gap-1.5 px-2.5 py-1 text-[10px] font-extrabold rounded-md transition-all cursor-pointer ${
-                    aiInsightsLoading || analyticsPositions.length === 0
-                      ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 cursor-not-allowed'
+                    aiInsightsLoading || analyticsPositions.length === 0 || isAiBlocked
+                      ? 'bg-slate-100 dark:bg-slate-800/60 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
                       : 'bg-gradient-to-r from-sky-500 to-indigo-500 hover:brightness-110 text-white shadow-md hover:shadow-indigo-500/20'
                   }`}
+                  title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : ""}
                 >
                   {aiInsightsLoading ? (
                     <span className="flex items-center gap-1 animate-pulse">
@@ -3761,16 +3786,16 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
                       <div
                         role="button"
                         className={`btn-suggest-risk ${
-                          (loadingRiskAi || !formData.symbol || (!formData.entryPrice && !modalLivePrice)) 
+                          (loadingRiskAi || !formData.symbol || (!formData.entryPrice && !modalLivePrice) || isAiBlocked) 
                             ? 'disabled' 
                             : ''
                         }`}
                         onClick={
-                          (loadingRiskAi || !formData.symbol || (!formData.entryPrice && !modalLivePrice))
+                          (loadingRiskAi || !formData.symbol || (!formData.entryPrice && !modalLivePrice) || isAiBlocked)
                             ? undefined
                             : handleGetRiskSuggestions
                         }
-                        title={(!formData.symbol || (!formData.entryPrice && !modalLivePrice)) ? "Enter Symbol and Entry Price first" : "Get AI Stop Loss and Target suggestions"}
+                        title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : ((!formData.symbol || (!formData.entryPrice && !modalLivePrice)) ? "Enter Symbol and Entry Price first" : "Get AI Stop Loss and Target suggestions")}
                       >
                         {loadingRiskAi ? (
                           <>

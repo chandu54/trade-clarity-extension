@@ -3,6 +3,11 @@ import { fetchMarketPulseData, generateTechnicalThesis } from '../services/marke
 import MiniCandlestickChart from './MiniCandlestickChart';
 import { getSingleStockAnalysis, PROMPT_TEMPLATES } from '../services/ai';
 
+const checkIsAiBlocked = (blockedUntil) => {
+  if (!blockedUntil) return false;
+  return blockedUntil > Date.now();
+};
+
 const formatSymbolBadge = (symbol) => {
   if (!symbol) return '';
   if (symbol === "HEALTHIETF.NS") return "HEALTHCARE";
@@ -72,26 +77,36 @@ const renderAiAnalysis = (aiAnalysis) => {
       const trimmed = line.trim();
       if (!trimmed) return;
 
-      // Check if the line matches a key-value pattern like: **Key:** Value
-      const match = trimmed.match(/^(\*\*([^*]+)\*\*|([A-Za-z0-9\s]+)):(.*)$/);
-      const rawKey = match ? (match[2] || match[3] || '') : '';
-      if (match && rawKey.trim().length > 0 && rawKey.trim().length <= 25) {
-        // If we had a previous section, push it
+      let key = '';
+      let value = '';
+      let matched = false;
+
+      const boldMatch = trimmed.match(/^\*\*(.*?)\*\*:(.*)$/) || trimmed.match(/^\*\*(.*?):\*\*(.*)$/);
+      if (boldMatch) {
+        key = boldMatch[1].replace(/:$/, '').trim();
+        value = boldMatch[2].trim();
+        matched = true;
+      } else {
+        const plainMatch = trimmed.match(/^([A-Za-z0-9\s]+):(.*)$/);
+        if (plainMatch) {
+          key = plainMatch[1].trim();
+          value = plainMatch[2].trim();
+          matched = true;
+        }
+      }
+
+      if (matched && key.length > 0 && key.length <= 25) {
         if (currentSection) {
           sections.push(currentSection);
         }
-        const key = rawKey.toUpperCase().trim();
-        const value = match[4].trim();
         currentSection = {
-          title: key,
+          title: key.toUpperCase(),
           content: value,
         };
       } else {
-        // If it's a continuation line and we have an active section, append to it
         if (currentSection) {
           currentSection.content += '\n' + trimmed;
         } else {
-          // No active section, create a default one
           currentSection = {
             title: '',
             content: trimmed,
@@ -219,6 +234,14 @@ export default function MarketPulseView({ country, aiSettings }) {
   }, [fullScreenIndex, timeframe]);
 
   const handleRunAi = async () => {
+    const isAiBlocked = aiSettings?.aiState?.blockedUntil && aiSettings.aiState.blockedUntil > Date.now();
+    if (isAiBlocked) {
+      const remainingSecs = Math.ceil((aiSettings.aiState.blockedUntil - Date.now()) / 1000);
+      setAiError(`AI Request Limit Reached. Available again in ${remainingSecs}s.`);
+      setShowAiPane(true);
+      return;
+    }
+
     if (!aiSettings?.apiKey) {
       setAiError("API Key is missing. Please configure it in Settings.");
       setShowAiPane(true);
@@ -1004,30 +1027,35 @@ export default function MarketPulseView({ country, aiSettings }) {
                     Interval: {fullScreenIndex.candlesticks?.length || 0} bars
                     {loading && <span style={{ marginLeft: '12px', color: 'var(--primary)' }}>↻ Syncing...</span>}
                   </div>
-                  <button 
-                    className={`btn-ai-gradient fs-ai-btn-gradient ${showAiPane ? 'active' : ''}`}
-                    onClick={() => {
-                      if (aiAnalysis) {
-                        setShowAiPane(!showAiPane);
-                      } else {
-                        handleRunAi();
-                      }
-                    }}
-                    disabled={loadingAi}
-                    title="Run Gemini AI Technical Analysis on this chart"
-                  >
-                    {loadingAi ? (
-                      <>
-                        <span className="spinner-mini"></span>
-                        Analyzing...
-                      </>
-                    ) : (
-                      <>
-                        <span>✨</span>
-                        {aiAnalysis ? (showAiPane ? 'Hide AI' : 'Show AI') : 'Analyze with AI'}
-                      </>
-                    )}
-                  </button>
+                  {(() => {
+                    const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
+                    return (
+                      <button 
+                        className={`btn-ai-gradient fs-ai-btn-gradient ${showAiPane ? 'active' : ''}`}
+                        onClick={() => {
+                          if (aiAnalysis) {
+                            setShowAiPane(!showAiPane);
+                          } else {
+                            handleRunAi();
+                          }
+                        }}
+                        disabled={loadingAi || (isAiBlocked && !aiAnalysis)}
+                        title={isAiBlocked && !aiAnalysis ? "AI requests blocked due to rate limit/errors" : "Run Gemini AI Technical Analysis on this chart"}
+                      >
+                        {loadingAi ? (
+                          <>
+                            <span className="spinner-mini"></span>
+                            Analyzing...
+                          </>
+                        ) : (
+                          <>
+                            <span>✨</span>
+                            {aiAnalysis ? (showAiPane ? 'Hide AI' : 'Show AI') : 'Analyze with AI'}
+                          </>
+                        )}
+                      </button>
+                    );
+                  })()}
                 </div>
               </div>
 
@@ -1046,11 +1074,19 @@ export default function MarketPulseView({ country, aiSettings }) {
                   <div className="fs-ai-panel">
                     <div className="fs-ai-panel-header">
                       <h4>AI Technical Thesis</h4>
-                      {aiAnalysis && (
-                        <button className="fs-ai-refresh-btn" onClick={handleRunAi} disabled={loadingAi} title="Recalculate AI analysis">
-                          ↻
-                        </button>
-                      )}
+                       {aiAnalysis && (() => {
+                         const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
+                         return (
+                           <button 
+                             className="fs-ai-refresh-btn" 
+                             onClick={handleRunAi} 
+                             disabled={loadingAi || isAiBlocked} 
+                             title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : "Recalculate AI analysis"}
+                           >
+                             ↻
+                           </button>
+                         );
+                       })()}
                     </div>
                     <div className="fs-ai-panel-content themed-scroll">
                       {loadingAi ? (
@@ -1062,9 +1098,19 @@ export default function MarketPulseView({ country, aiSettings }) {
                         <div className="ai-error-state">
                           <div className="error-icon">⚠️</div>
                           <span className="error-text">{aiError}</span>
-                          <button className="fs-ai-retry-btn" onClick={handleRunAi} style={{ marginTop: '10px' }}>
-                            Retry
-                          </button>
+                           {(() => {
+                             const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
+                             return (
+                               <button 
+                                 className="fs-ai-retry-btn" 
+                                 onClick={handleRunAi} 
+                                 disabled={isAiBlocked} 
+                                 style={{ marginTop: '10px', opacity: isAiBlocked ? 0.5 : 1, cursor: isAiBlocked ? 'not-allowed' : 'pointer' }}
+                               >
+                                 Retry
+                               </button>
+                             );
+                           })()}
                         </div>
                       ) : (
                         renderAiAnalysis(aiAnalysis)

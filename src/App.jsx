@@ -30,6 +30,7 @@ import { isParamRelevantForCountry, scrubParamDefinitions } from "./utils/paramU
 
 import MarketPulseView from "./components/MarketPulseView";
 import JournalView from "./components/JournalView";
+import AiLimitBanner from "./components/AiLimitBanner";
 
 function AppContent() {
   /* =========================
@@ -300,6 +301,13 @@ function AppContent() {
   };
 
   const handleBulkAnalyze = () => {
+    const isBlocked = data?.aiSettings?.aiState?.blockedUntil && data.aiSettings.aiState.blockedUntil > Date.now();
+    if (isBlocked) {
+      const remainingSecs = Math.ceil((data.aiSettings.aiState.blockedUntil - Date.now()) / 1000);
+      showToast(`AI Limit Reached. Available again in ${remainingSecs}s.`, "error");
+      return;
+    }
+
     const currentWeekData = data.weeks?.[country]?.[weekKey] || { stocks: {} };
     let stocksToAnalyze = currentWeekData.stocks || {};
     
@@ -386,6 +394,11 @@ function AppContent() {
         setCountry={handleCountryChange}
         activeTab={activeTab}
         onTabChange={setActiveTab}
+      />
+
+      <AiLimitBanner
+        aiSettings={data?.aiSettings}
+        setData={setData}
       />
 
       {activeTab === 'watchlists' ? (

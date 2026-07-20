@@ -4,6 +4,11 @@ import { getLocalDateString, getSundayOfWeek, getWeekRangeLabel } from "../utils
 import { useConfirm } from "./ConfirmContext";
 import { useToast } from "./ToastContext";
 
+const checkIsAiBlocked = (blockedUntil) => {
+  if (!blockedUntil) return false;
+  return blockedUntil > Date.now();
+};
+
 export default function WeekSelector({
   data,
   setData,
@@ -175,26 +180,37 @@ export default function WeekSelector({
 
         <WeekSummary data={data} country={country} weekKey={weekKey} />
 
-        <button
-          className="nav-icon-btn-v2"
-          onClick={onAnalyze}
-          title="AI market insights (Alt + I)"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-            <path d="M5 3v4" /><path d="M3 5h4" /><path d="M21 17v4" /><path d="M19 19h4" />
-          </svg>
-        </button>
+        {(() => {
+          const isAiBlocked = checkIsAiBlocked(data?.aiSettings?.aiState?.blockedUntil);
+          return (
+            <>
+              <button
+                className={`nav-icon-btn-v2 ${isAiBlocked ? 'disabled' : ''}`}
+                onClick={isAiBlocked ? undefined : onAnalyze}
+                disabled={isAiBlocked}
+                title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : "AI market insights (Alt + I)"}
+                style={isAiBlocked ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                  <path d="M5 3v4" /><path d="M3 5h4" /><path d="M21 17v4" /><path d="M19 19h4" />
+                </svg>
+              </button>
 
-        <button
-          className="nav-icon-btn-v2"
-          onClick={onBulkAnalyze}
-          title="Background Bulk AI Analysis"
-        >
-          <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-            <path d="M2 12h4l2 8 4-16 2 8h4"/>
-          </svg>
-        </button>
+              <button
+                className={`nav-icon-btn-v2 ${isAiBlocked ? 'disabled' : ''}`}
+                onClick={isAiBlocked ? undefined : onBulkAnalyze}
+                disabled={isAiBlocked}
+                title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : "Background Bulk AI Analysis"}
+                style={isAiBlocked ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+              >
+                <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M2 12h4l2 8 4-16 2 8h4"/>
+                </svg>
+              </button>
+            </>
+          );
+        })()}
 
         <button
           onClick={onShowAnalytics}
