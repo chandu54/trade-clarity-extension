@@ -9822,20 +9822,32 @@ input[type="date"].input-with-clear {
 }
 
 .ma-label-full {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
   text-transform: none;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
-  color: var(--muted);
-  letter-spacing: 0.1em;
-  margin-right: 4px;
+  color: var(--text-muted, #94a3b8);
+  letter-spacing: 0.05em;
+  margin-right: 6px;
 }
 
 .ma-label-compact {
-  font-size: 8px;
-  font-weight: 900;
-  color: var(--muted);
-  opacity: 0.7;
-  margin-right: 2px;
+  display: inline-flex;
+  align-items: center;
+  font-size: 9px;
+  font-weight: 800;
+  font-family: 'JetBrains Mono', monospace, sans-serif;
+  color: var(--text-muted, #94a3b8);
+  margin-right: 4px;
+  user-select: none;
+}
+
+.ma-label-colon {
+  font-weight: 800;
+  opacity: 0.85;
+  margin-left: 1px;
 }
 
 
@@ -14510,19 +14522,48 @@ tr:hover .quick-log-trigger-btn {
   display: inline-flex !important;
   align-items: center !important;
   height: 26px !important;
-  gap: 4px !important;
+  padding: 0 4px 0 8px !important;
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 6px !important;
+  gap: 5px !important;
+  box-sizing: border-box !important;
 }
 
 .params-summary-metrics-inline .ma-badge-v2.compact-badge {
-  width: 24px !important;
-  height: 26px !important;
+  min-width: 20px !important;
+  width: auto !important;
+  padding: 0 3px !important;
+  height: 20px !important;
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
   font-size: 10px !important;
   font-weight: 800 !important;
-  border-radius: 5px !important;
+  border-radius: 4px !important;
   box-sizing: border-box !important;
+}
+
+.params-summary-metrics-inline .ma-label-compact {
+  font-size: 11px !important;
+  font-weight: 800 !important;
+  color: var(--muted) !important;
+  letter-spacing: 0.05em !important;
+  margin: 0 !important;
+  padding-right: 6px !important;
+  border-right: 1px solid var(--border) !important;
+  line-height: 14px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  user-select: none !important;
+}
+
+[data-theme="light"] .params-summary-metrics-inline .ma-label-compact {
+  color: #475569 !important;
+}
+
+[data-theme="dark"] .params-summary-metrics-inline .ma-label-compact {
+  color: #94a3b8 !important;
 }
 
 

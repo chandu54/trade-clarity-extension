@@ -32,6 +32,7 @@ export function MovingAverageRibbon({ value, variant = 'full', showLabel = false
       {showLabel && (
         <span className={variant === 'compact' ? 'ma-label-compact' : 'ma-label-full'}>
           {variant === 'compact' ? 'MA' : 'Moving Averages'}
+          <span className="ma-label-colon">:</span>
         </span>
       )}
       {mas.map((ma) => {

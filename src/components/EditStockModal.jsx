@@ -364,13 +364,13 @@ export default function EditStockModal({
     return (sortedStocks || []).map(s => s.symbol).join(",");
   }, [sortedStocks]);
 
-  const fetchSidebarQuotes = useCallback(async (signal) => {
+  const fetchSidebarQuotes = useCallback(async (signal = null, forceRefresh = false) => {
     if (!sortedSymbolsSerialized) return;
     const symbols = sortedSymbolsSerialized.split(",").filter(Boolean);
     if (symbols.length === 0) return;
     setLoadingQuotes(true);
     try {
-      const results = await fetchStockQuotes(symbols, country, signal);
+      const results = await fetchStockQuotes(symbols, country, signal, forceRefresh);
       if (results && results.length > 0) {
         const mapping = {};
         results.forEach(r => {
@@ -405,7 +405,7 @@ export default function EditStockModal({
 
   // Manual refresh callback
   const handleRefreshSidebarQuotes = useCallback(() => {
-    fetchSidebarQuotes();
+    fetchSidebarQuotes(null, true);
   }, [fetchSidebarQuotes]);
 
   const symbolToFetch = formData?.symbol;
@@ -1676,9 +1676,12 @@ export default function EditStockModal({
                   )}
 
                   {formData.params?.movingAverages && (
-                    <div className="self-center">
-                      <MovingAverageRibbon value={formData.params.movingAverages} variant="compact" />
-                    </div>
+                    <>
+                      <div className="params-summary-divider-line" />
+                      <div className="self-center">
+                        <MovingAverageRibbon value={formData.params.movingAverages} variant="compact" showLabel={true} />
+                      </div>
+                    </>
                   )}
                 </div>
               </div>
