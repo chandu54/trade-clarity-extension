@@ -497,7 +497,7 @@ export default function StockGrid({
   }, [allStocks, selectedWatchlistId, data.stockSectorCache, data.uiConfig?.sectors, country, aiSettings, showToast, applySectorMappings]);
 
 
-  const fetchQuotesForGrid = useCallback(async () => {
+  const fetchQuotesForGrid = useCallback(async (forceRefresh = false) => {
     const symbols = symbolsSerialized ? symbolsSerialized.split(",") : [];
     if (symbols.length === 0) {
       setQuotes({});
@@ -513,7 +513,7 @@ export default function StockGrid({
     setLoadingQuotes(true);
     try {
       const symbolsList = symbols;
-      const results = await fetchStockQuotes(symbolsList, country, controller.signal);
+      const results = await fetchStockQuotes(symbolsList, country, controller.signal, forceRefresh);
       if (controller.signal.aborted) return;
 
       if (results && results.length > 0) {
@@ -720,7 +720,7 @@ export default function StockGrid({
     }
 
     // Refresh quotes simultaneously
-    fetchQuotesForGrid();
+    fetchQuotesForGrid(force);
   }, [week, country, weekKey, data, setData, fetchQuotesForGrid]);
 
   // --- AUTOMATED DAILY REFRESH ---
