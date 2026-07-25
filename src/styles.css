@@ -7930,9 +7930,9 @@ input[type="date"].input-with-clear {
 
 /* 2. HEADER: Symbol Heroism */
 .modal-header.header-premium {
-  height: 64px !important;
-  min-height: 64px !important;
-  padding: 0 24px !important;
+  height: 40px !important;
+  min-height: 40px !important;
+  padding: 0 16px !important;
   background: var(--panel) !important;
   border-bottom: 1px solid var(--border) !important;
   display: flex !important;
@@ -7980,8 +7980,14 @@ input[type="date"].input-with-clear {
   display: flex !important;
   align-items: center !important;
   justify-content: flex-start !important;
-  gap: 12px !important;
+  gap: 10px !important;
   width: 100% !important;
+}
+
+.section-header-row .icon-btn-collapse {
+  width: 26px !important;
+  height: 26px !important;
+  border-radius: 6px !important;
 }
 
 /* 4. INDUSTRIAL VISIBILITY CONTROLS */
@@ -14352,6 +14358,171 @@ tr:hover .quick-log-trigger-btn {
   font-size: 11px !important;
   font-weight: 600 !important;
   line-height: 1 !important;
+}
+
+/* Header Metric Pills (ADR & Water Drop Liquidity) */
+.header-metric-pill-v2 {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  height: 22px;
+  padding: 0 8px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1;
+  font-family: inherit;
+  transition: all 0.2s ease;
+  user-select: none;
+  box-sizing: border-box;
+}
+
+.header-metric-pill-v2.adr {
+  background: rgba(168, 85, 247, 0.08);
+  color: #8b5cf6;
+  border: 1px solid rgba(168, 85, 247, 0.3);
+}
+
+.dark .header-metric-pill-v2.adr {
+  background: rgba(168, 85, 247, 0.15);
+  color: #c084fc;
+  border-color: rgba(192, 132, 252, 0.35);
+}
+
+.header-metric-pill-v2.liquidity {
+  background: rgba(14, 165, 233, 0.08);
+  color: #0284c7;
+  border: 1px solid rgba(14, 165, 233, 0.3);
+}
+
+.dark .header-metric-pill-v2.liquidity {
+  background: rgba(14, 165, 233, 0.15);
+  color: #38bdf8;
+  border-color: rgba(56, 189, 248, 0.35);
+}
+
+.header-metric-pill-v2 .metric-pill-icon {
+  flex-shrink: 0;
+}
+
+.header-metric-pill-v2 .metric-pill-icon.water-drop {
+  fill: currentColor;
+  stroke: none;
+}
+
+.header-metric-pill-v2 .metric-pill-label {
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  opacity: 0.9;
+}
+
+.header-metric-pill-v2 .metric-pill-value {
+  font-weight: 700;
+}
+
+.modal-header-company-name {
+  font-size: 13px !important;
+  font-weight: 600 !important;
+  color: #475569 !important;
+  margin-left: 8px !important;
+  max-width: 420px !important;
+  white-space: nowrap !important;
+  overflow: hidden !important;
+  text-overflow: ellipsis !important;
+}
+
+[data-theme="dark"] .modal-header-company-name {
+  color: #94a3b8 !important;
+}
+
+/* Inline Metrics Summary in Parameters Header */
+.params-summary-metrics-inline {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+  flex-wrap: wrap !important;
+}
+
+.params-summary-divider-line {
+  width: 1px !important;
+  height: 16px !important;
+  background: var(--border, rgba(255, 255, 255, 0.2)) !important;
+  margin: 0 4px !important;
+  border-radius: 1px !important;
+  flex-shrink: 0 !important;
+}
+
+.params-summary-metrics-inline .modal-header-price-tag {
+  height: 26px !important;
+  padding: 0 8px !important;
+  margin-left: 0 !important;
+  border-radius: 6px !important;
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  box-sizing: border-box !important;
+}
+
+.params-summary-metrics-inline .modal-header-price-tag .price-num {
+  font-size: 13px !important;
+  font-weight: 700 !important;
+}
+
+.params-summary-metrics-inline .modal-header-price-tag .price-change-pct {
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  padding: 2px 5px !important;
+  border-radius: 4px !important;
+  line-height: 1 !important;
+}
+
+.params-summary-metrics-inline .header-metric-pill-v2 {
+  height: 26px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 5px !important;
+  box-sizing: border-box !important;
+}
+
+.params-summary-metrics-inline .header-earnings-badge-v2 {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 26px !important;
+  padding: 0 8px !important;
+  border-radius: 6px !important;
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  box-sizing: border-box !important;
+  background: rgba(148, 163, 184, 0.1) !important;
+  color: var(--text-muted, #94a3b8) !important;
+  border: 1px solid rgba(148, 163, 184, 0.25) !important;
+}
+
+.params-summary-metrics-inline .ma-ribbon-v2 {
+  display: inline-flex !important;
+  align-items: center !important;
+  height: 26px !important;
+  gap: 4px !important;
+}
+
+.params-summary-metrics-inline .ma-badge-v2.compact-badge {
+  width: 24px !important;
+  height: 26px !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 10px !important;
+  font-weight: 800 !important;
+  border-radius: 5px !important;
+  box-sizing: border-box !important;
 }
 
 

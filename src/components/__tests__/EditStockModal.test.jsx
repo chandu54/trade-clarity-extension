@@ -603,5 +603,68 @@ describe('EditStockModal', () => {
       // Verify the group headers are displayed
       expect(screen.getByText('No Flag')).toBeDefined();
     });
+
+    it('navigates correctly within active tag group for stocks tagged with multiple tags', () => {
+      const multiTagStocks = [
+        { ...mockStock, symbol: 'TCS', tags: ['AI:SELL', 'LARGE BASE'] },
+        { ...mockStock, symbol: 'INFY', tags: ['LARGE BASE'] },
+        { ...mockStock, symbol: 'WIPRO', tags: ['AI:SELL'] }
+      ];
+      const onSelectStock = vi.fn();
+      const customProps = {
+        ...props,
+        stock: multiTagStocks[0],
+        sortedStocks: multiTagStocks,
+        onSelectStock
+      };
+      render(<EditStockModal {...customProps} isDeepView={true} />);
+
+      // Open Grouping Popover and select Tag
+      fireEvent.click(screen.getByTitle('Group & Categorize watchlist'));
+      fireEvent.click(screen.getByText('Tag'));
+
+      // Both AI:SELL and LARGE BASE headers should be rendered
+      expect(screen.getByText('AI:SELL')).toBeDefined();
+      expect(screen.getByText('LARGE BASE')).toBeDefined();
+
+      // Find TCS in LARGE BASE section by clicking the item inside LARGE BASE group
+      const tcsItems = screen.getAllByText('TCS');
+      expect(tcsItems.length).toBe(3); // 1 header title + 2 sidebar items
+
+      // Click the TCS under LARGE BASE group (the 3rd element with text 'TCS')
+      fireEvent.click(tcsItems[2]);
+      expect(onSelectStock).toHaveBeenCalledWith(multiTagStocks[0]);
+
+      // Navigate Next using ArrowDown keyboard navigation
+      fireEvent.keyDown(window, { key: 'ArrowDown', code: 'ArrowDown' });
+      // Should navigate to INFY (next stock in LARGE BASE group) rather than WIPRO (next stock in AI:SELL group)
+      expect(onSelectStock).toHaveBeenLastCalledWith(multiTagStocks[1]);
+    });
+
+    it('renders ADR and Liquidity water drop pills in the modal header when populated', () => {
+      const stockWithMetrics = {
+        ...mockStock,
+        params: {
+          'us.adr': '4.8%',
+          'us.liquidity': '$1.2B'
+        }
+      };
+      const customProps = {
+        ...props,
+        paramDefinitions: {
+          ...props.paramDefinitions,
+          'us.adr': { label: 'ADR', countries: ['US'] },
+          'us.liquidity': { label: 'Liquidity', countries: ['US'] }
+        },
+        stock: stockWithMetrics
+      };
+      render(<EditStockModal {...customProps} isDeepView={true} />);
+
+      // Verify header metric pills render
+      expect(screen.getByTitle('Average Daily Range (ADR): 4.8%')).toBeDefined();
+      expect(screen.getByTitle('Liquidity: $1.2B')).toBeDefined();
+      expect(screen.getByText('4.8%')).toBeDefined();
+      expect(screen.getByText('$1.2B')).toBeDefined();
+    });
   });
 });

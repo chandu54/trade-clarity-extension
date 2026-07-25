@@ -3,7 +3,7 @@ import Modal from "./Modal";
 import MiniCandlestickChart from "./MiniCandlestickChart";
 import { fetchStockData, fetchStockQuotes } from "../utils/yahooFinanceMap";
 import { getSingleStockAnalysis, PROMPT_TEMPLATES } from "../services/ai";
-import { isParamRelevantForCountry } from "../utils/paramUtils";
+import { isParamRelevantForCountry, getActualParamKeyAndDef } from "../utils/paramUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
 
 const checkIsAiBlocked = (blockedUntil) => {
@@ -124,7 +124,7 @@ export default function EditStockModal({
   paramDefinitions,
   sectors,
   availableTags,
-  weekInfo,
+  weekInfo: _weekInfo,
   country,
   showTags = true,
   aiSettings = {},
@@ -139,6 +139,26 @@ export default function EditStockModal({
 }) {
   const [formData, setFormData] = useState(() => stock ? structuredClone(stock) : null);
   const [activeFlagMenuSymbol, setActiveFlagMenuSymbol] = useState(null);
+
+  const adrInfo = useMemo(() => getActualParamKeyAndDef(paramDefinitions, 'adr', 'adr', country), [paramDefinitions, country]);
+  const liqInfo = useMemo(() => getActualParamKeyAndDef(paramDefinitions, 'liquidity', 'liquidity', country), [paramDefinitions, country]);
+  const adrKey = adrInfo?.key || 'adr';
+  const liqKey = liqInfo?.key || 'liquidity';
+
+  const adrValue = formData?.params?.[adrKey];
+  const liqValue = formData?.params?.[liqKey];
+
+  const formattedAdrValue = useMemo(() => {
+    if (adrValue === undefined || adrValue === null || adrValue === '') return null;
+    const str = String(adrValue).trim();
+    if (!str) return null;
+    return str.endsWith('%') ? str : `${str}%`;
+  }, [adrValue]);
+
+  const formattedLiqValue = useMemo(() => {
+    if (liqValue === undefined || liqValue === null || liqValue === '') return null;
+    return String(liqValue).trim();
+  }, [liqValue]);
 
   const handleUpdateStockFlag = useCallback((symbol, color) => {
     if (symbol === formData?.symbol) {
@@ -188,9 +208,15 @@ export default function EditStockModal({
   const [isMaPopoverOpen, setIsMaPopoverOpen] = useState(false);
   const [isGroupingPopoverOpen, setIsGroupingPopoverOpen] = useState(false);
   const [sidebarGrouping, setSidebarGrouping] = useState('none'); // 'none' | 'sector' | 'tag' | 'flag'
+  const [activeGroupKey, setActiveGroupKey] = useState(null);
   const [collapsedGroups, setCollapsedGroups] = useState({}); // { [groupKey]: boolean }
   const maSettingsRef = useRef(null);
   const groupingPopoverRef = useRef(null);
+  const handleSetSidebarGrouping = useCallback((mode) => {
+    setSidebarGrouping(mode);
+    setActiveGroupKey(null);
+    setIsGroupingPopoverOpen(false);
+  }, []);
 
   const groupedStocks = useMemo(() => {
     if (!sortedStocks) return [];
@@ -235,7 +261,8 @@ export default function EditStockModal({
     if (!formData?.symbol || sidebarGrouping === 'none') return;
     (groupedStocks || []).forEach(g => {
       const hasActive = g.stocks.some(s => s.symbol === formData.symbol);
-      if (hasActive) {
+      const isTargetGroup = activeGroupKey ? g.key === activeGroupKey : hasActive;
+      if (isTargetGroup) {
         setCollapsedGroups(prev => {
           if (prev[g.key] === false) return prev;
           return { ...prev, [g.key]: false };
@@ -243,7 +270,7 @@ export default function EditStockModal({
       }
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [formData?.symbol, sidebarGrouping]);
+  }, [formData?.symbol, sidebarGrouping, activeGroupKey]);
 
   const handleUpdateMaSetting = useCallback((ma, key, value) => {
     setMaSettings(prev => {
@@ -466,26 +493,34 @@ export default function EditStockModal({
     };
   }, [isResizingV, isResizingH]);
 
-  const effectiveNavigationList = useMemo(() => {
+  const effectiveNavigationItems = useMemo(() => {
     if (sidebarGrouping === 'none' || !groupedStocks || groupedStocks.length === 0) {
-      return sortedStocks || [];
+      return (sortedStocks || []).map(s => ({ stock: s, groupKey: null }));
     }
-    const list = [];
-    const seen = new Set();
+    const items = [];
     groupedStocks.forEach(group => {
       group.stocks.forEach(s => {
-        if (!seen.has(s.symbol)) {
-          seen.add(s.symbol);
-          list.push(s);
-        }
+        items.push({ stock: s, groupKey: group.key });
       });
     });
-    return list.length > 0 ? list : (sortedStocks || []);
+    return items.length > 0 ? items : (sortedStocks || []).map(s => ({ stock: s, groupKey: null }));
   }, [sortedStocks, groupedStocks, sidebarGrouping]);
 
-  const currentIndex = (effectiveNavigationList || []).findIndex(s => s.symbol === stock?.symbol);
+  const currentIndex = useMemo(() => {
+    if (!effectiveNavigationItems || effectiveNavigationItems.length === 0) return -1;
+    if (activeGroupKey) {
+      const exactIdx = effectiveNavigationItems.findIndex(
+        item => item.stock.symbol === stock?.symbol && item.groupKey === activeGroupKey
+      );
+      if (exactIdx !== -1) return exactIdx;
+    }
+    return effectiveNavigationItems.findIndex(item => item.stock.symbol === stock?.symbol);
+  }, [effectiveNavigationItems, stock?.symbol, activeGroupKey]);
 
-  const handleSelectStock = useCallback((targetStock) => {
+  const handleSelectStock = useCallback((targetStock, groupKey = null) => {
+    if (groupKey !== undefined) {
+      setActiveGroupKey(groupKey);
+    }
     if (formData) {
       const finalData = {
         ...formData,
@@ -506,7 +541,7 @@ export default function EditStockModal({
   }, [formData, aiAnalysis, aiAnalysisDate, stock, paramDefinitions, onUpdateStock, onSave, onSelectStock]);
 
   const handleNavigate = useCallback((direction) => {
-    if (!effectiveNavigationList || effectiveNavigationList.length <= 1 || currentIndex === -1) return;
+    if (!effectiveNavigationItems || effectiveNavigationItems.length <= 1 || currentIndex === -1) return;
     let nextIndex = currentIndex;
     if (direction === 'next') {
       nextIndex = currentIndex + 1;
@@ -514,10 +549,11 @@ export default function EditStockModal({
       nextIndex = currentIndex - 1;
     }
 
-    if (nextIndex >= 0 && nextIndex < effectiveNavigationList.length) {
-      handleSelectStock(effectiveNavigationList[nextIndex]);
+    if (nextIndex >= 0 && nextIndex < effectiveNavigationItems.length) {
+      const nextItem = effectiveNavigationItems[nextIndex];
+      handleSelectStock(nextItem.stock, nextItem.groupKey);
     }
-  }, [effectiveNavigationList, currentIndex, handleSelectStock]);
+  }, [effectiveNavigationItems, currentIndex, handleSelectStock]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -566,7 +602,7 @@ export default function EditStockModal({
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [currentIndex, effectiveNavigationList, formData, aiAnalysis, aiAnalysisDate, isOpen, handleNavigate]);
+  }, [currentIndex, effectiveNavigationItems, formData, aiAnalysis, aiAnalysisDate, isOpen, handleNavigate]);
 
   const filteredNavStocks = (sortedStocks || []).filter(s => {
     const q = navSearchQuery.toLowerCase().trim();
@@ -941,7 +977,7 @@ export default function EditStockModal({
           </label>
         </div>
 
-        {sortedParams.filter(([key]) => key !== 'movingAverages').map(([key, def]) => (
+        {sortedParams.filter(([key]) => key !== 'movingAverages' && key !== adrKey && key !== liqKey).map(([key, def]) => (
           <div key={key} className="property-row-item">
             <label>{def.label}</label>
             {def.type === "checkbox" ? (
@@ -1084,66 +1120,17 @@ export default function EditStockModal({
               <div className="modal-title-group-premium">
                 <div className="terminal-header-title-wrapper">
                   <h1 className="symbol-header-hero">{formData.symbol}</h1>
-                  
-                  {(() => {
-                    const price = (sidebarStockData[formData.symbol]?.currentPrice !== undefined)
-                      ? sidebarStockData[formData.symbol].currentPrice
-                      : (formData.currentPrice || 0);
-
-                    const changePct = (sidebarStockData[formData.symbol]?.dailyChangePct !== undefined)
-                      ? sidebarStockData[formData.symbol].dailyChangePct
-                      : (formData.dailyChangePct || 0);
-
-                    if (price > 0) {
-                      const currencySymbol = country === 'US' ? '$' : '₹';
-                      const formattedPrice = price.toLocaleString(country === 'US' ? 'en-US' : 'en-IN', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                      });
-                      const formattedChange = changePct.toFixed(2);
-                      const isUp = changePct >= 0;
-
-                      return (
-                        <div className="modal-header-price-tag">
-                          <span className="price-num">{currencySymbol}&nbsp;{formattedPrice}</span>
-                          <span className={`price-change-pct ${isUp ? 'up' : 'down'}`}>
-                            {isUp ? '+' : ''}{formattedChange}%
-                          </span>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-
-                  {typeof weekInfo === 'string' && weekInfo.trim() !== '' && (
-                    <span className="header-week-info-badge ml-3">{weekInfo}</span>
-                  )}
-                </div>
-                <div className="flex items-center gap-3 flex-wrap">
-                  <p className="modal-subtitle-hero">{formData.longName || formData.name || ''}</p>
-                  {formData.earningsDate && (
-                    <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-slate-100 dark:bg-slate-900 text-slate-500 dark:text-slate-400 border border-slate-200 dark:border-slate-800 font-mono" title="Next Earnings Date">
-                      Earnings: {(() => {
-                        try {
-                          const d = new Date(formData.earningsDate);
-                          return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-                        } catch (_e) {
-                          return formData.earningsDate;
-                        }
-                      })()}
+                  {(formData.longName || formData.name) && (
+                    <span className="modal-header-company-name">
+                      {formData.longName || formData.name}
                     </span>
-                  )}
-                  {formData.params?.movingAverages && (
-                    <div className="self-center">
-                      <MovingAverageRibbon value={formData.params.movingAverages} variant="compact" />
-                    </div>
                   )}
                 </div>
               </div>
 
               <div className="terminal-header-actions-wrapper">
                 {/* Previous / Next Navigation Arrows */}
-                {effectiveNavigationList && effectiveNavigationList.length > 1 && currentIndex !== -1 && (
+                {effectiveNavigationItems && effectiveNavigationItems.length > 1 && currentIndex !== -1 && (
                   <div className="nav-arrows-group-premium">
                     <button
                       type="button"
@@ -1157,14 +1144,14 @@ export default function EditStockModal({
                       </svg>
                     </button>
                     <span className="nav-counter-premium">
-                      {currentIndex + 1} / {effectiveNavigationList.length}
+                      {currentIndex + 1} / {effectiveNavigationItems.length}
                     </span>
                     <button
                       type="button"
                       className="nav-arrow-btn-premium"
                       onClick={() => handleNavigate('next')}
                       title="Next Stock (Right / Down Arrow)"
-                      disabled={currentIndex >= effectiveNavigationList.length - 1}
+                      disabled={currentIndex >= effectiveNavigationItems.length - 1}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="9 18 15 12 9 6" />
@@ -1326,40 +1313,28 @@ export default function EditStockModal({
                             <div className="popover-section-title-premium">Group by:</div>
                             <div 
                               className={`popover-option-premium ${sidebarGrouping === 'none' ? 'selected' : ''}`}
-                              onClick={() => {
-                                setSidebarGrouping('none');
-                                setIsGroupingPopoverOpen(false);
-                              }}
+                              onClick={() => handleSetSidebarGrouping('none')}
                             >
                               <span className="popover-option-dot-premium" />
                               <span>None (Flat List)</span>
                             </div>
                             <div 
                               className={`popover-option-premium ${sidebarGrouping === 'sector' ? 'selected' : ''}`}
-                              onClick={() => {
-                                setSidebarGrouping('sector');
-                                setIsGroupingPopoverOpen(false);
-                              }}
+                              onClick={() => handleSetSidebarGrouping('sector')}
                             >
                               <span className="popover-option-dot-premium" />
                               <span>Sector</span>
                             </div>
                             <div 
                               className={`popover-option-premium ${sidebarGrouping === 'tag' ? 'selected' : ''}`}
-                              onClick={() => {
-                                setSidebarGrouping('tag');
-                                setIsGroupingPopoverOpen(false);
-                              }}
+                              onClick={() => handleSetSidebarGrouping('tag')}
                             >
                               <span className="popover-option-dot-premium" />
                               <span>Tag</span>
                             </div>
                             <div 
                               className={`popover-option-premium ${sidebarGrouping === 'flag' ? 'selected' : ''}`}
-                              onClick={() => {
-                                setSidebarGrouping('flag');
-                                setIsGroupingPopoverOpen(false);
-                              }}
+                              onClick={() => handleSetSidebarGrouping('flag')}
                             >
                               <span className="popover-option-dot-premium" />
                               <span>Flag Color</span>
@@ -1463,7 +1438,7 @@ export default function EditStockModal({
                           
                           <div className={`sidebar-group-content-premium ${isCollapsed ? 'collapsed' : ''}`}>
                             {group.stocks.map((s) => {
-                              const isActive = s.symbol === formData.symbol;
+                              const isActive = s.symbol === formData.symbol && (sidebarGrouping === 'none' || !activeGroupKey || group.key === activeGroupKey);
                               const sidebarData = sidebarStockData[s.symbol] || {};
                               const hasChange = sidebarData.dailyChangePct !== undefined;
                               const changeVal = hasChange ? sidebarData.dailyChangePct : (s.dailyChangePct || 0);
@@ -1479,9 +1454,9 @@ export default function EditStockModal({
 
                               return (
                                 <div
-                                  key={s.symbol}
+                                  key={`${group.key}-${s.symbol}`}
                                   className={`sidebar-item-premium ${isActive ? 'active' : ''}`}
-                                  onClick={() => handleSelectStock(s)}
+                                  onClick={() => handleSelectStock(s, group.key)}
                                   title={`${s.symbol} - ${priceText || 'No price available'}`}
                                   style={{ position: 'relative' }}
                                 >
@@ -1626,6 +1601,86 @@ export default function EditStockModal({
                   )}
                 </button>
                 <span className="section-title">Parameters</span>
+
+                <div className="params-summary-metrics-inline">
+                  <div className="params-summary-divider-line" />
+
+                  {(() => {
+                    const price = (sidebarStockData[formData.symbol]?.currentPrice !== undefined)
+                      ? sidebarStockData[formData.symbol].currentPrice
+                      : (formData.currentPrice || 0);
+
+                    const changePct = (sidebarStockData[formData.symbol]?.dailyChangePct !== undefined)
+                      ? sidebarStockData[formData.symbol].dailyChangePct
+                      : (formData.dailyChangePct || 0);
+
+                    if (price > 0) {
+                      const currencySymbol = country === 'US' ? '$' : '₹';
+                      const formattedPrice = price.toLocaleString(country === 'US' ? 'en-US' : 'en-IN', {
+                        minimumFractionDigits: 2,
+                        maximumFractionDigits: 2
+                      });
+                      const formattedChange = changePct.toFixed(2);
+                      const isUp = changePct >= 0;
+
+                      return (
+                        <div className="modal-header-price-tag">
+                          <span className="price-num">{currencySymbol}&nbsp;{formattedPrice}</span>
+                          <span className={`price-change-pct ${isUp ? 'up' : 'down'}`}>
+                            {isUp ? '+' : ''}{formattedChange}%
+                          </span>
+                        </div>
+                      );
+                    }
+                    return null;
+                  })()}
+
+                  {formattedAdrValue && (
+                    <span
+                      className="header-metric-pill-v2 adr"
+                      title={`Average Daily Range (ADR): ${formattedAdrValue}`}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="metric-pill-icon">
+                        <path d="M12 3v18" />
+                        <path d="m8 7 4-4 4 4" />
+                        <path d="m8 17 4 4 4-4" />
+                      </svg>
+                      <span className="metric-pill-label">ADR</span>
+                      <span className="metric-pill-value">{formattedAdrValue}</span>
+                    </span>
+                  )}
+
+                  {formattedLiqValue && (
+                    <span
+                      className="header-metric-pill-v2 liquidity"
+                      title={`Liquidity: ${formattedLiqValue}`}
+                    >
+                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="metric-pill-icon water-drop">
+                        <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+                      </svg>
+                      <span className="metric-pill-value">{formattedLiqValue}</span>
+                    </span>
+                  )}
+
+                  {formData.earningsDate && (
+                    <span className="header-earnings-badge-v2 font-mono" title="Next Earnings Date">
+                      Earnings: {(() => {
+                        try {
+                          const d = new Date(formData.earningsDate);
+                          return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+                        } catch (_e) {
+                          return formData.earningsDate;
+                        }
+                      })()}
+                    </span>
+                  )}
+
+                  {formData.params?.movingAverages && (
+                    <div className="self-center">
+                      <MovingAverageRibbon value={formData.params.movingAverages} variant="compact" />
+                    </div>
+                  )}
+                </div>
               </div>
 
               {!isParamsCollapsed && (
