@@ -5124,8 +5124,14 @@ input[type=checkbox]:active {
 }
 
 .tag-option.selected {
-  color: var(--muted);
-  cursor: default;
+  color: var(--primary);
+  font-weight: 600;
+  cursor: pointer !important;
+}
+
+.tag-option.selected:hover {
+  background: rgba(239, 68, 68, 0.1) !important;
+  color: #ef4444 !important;
 }
 
 .tag-option.empty {
