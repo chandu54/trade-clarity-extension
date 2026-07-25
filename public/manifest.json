@@ -6,6 +6,7 @@
   "manifest_version": 3,
   "permissions": [
     "storage",
+    "unlimitedStorage",
     "activeTab"
   ],
   "host_permissions": [

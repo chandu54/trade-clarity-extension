@@ -112,26 +112,13 @@ function AppContent() {
           setData((currentData) => {
             if (!currentData) return newData;
 
-            const isWeeksEqual = JSON.stringify(currentData.weeks) === JSON.stringify(newData.weeks);
-            const isAiSettingsEqual = JSON.stringify(currentData.aiSettings) === JSON.stringify(newData.aiSettings);
-            const isUiConfigEqual = JSON.stringify(currentData.uiConfig) === JSON.stringify(newData.uiConfig);
-            const isOtherEqual =
-              currentData.theme === newData.theme &&
-              currentData.isPro === newData.isPro &&
-              JSON.stringify(currentData.watchlists) === JSON.stringify(newData.watchlists) &&
-              JSON.stringify(currentData.journals) === JSON.stringify(newData.journals) &&
-              JSON.stringify(currentData.analyticsLayout) === JSON.stringify(newData.analyticsLayout) &&
-              JSON.stringify(currentData.paramDefinitions) === JSON.stringify(newData.paramDefinitions);
-
-            if (isWeeksEqual && isAiSettingsEqual && isUiConfigEqual && isOtherEqual) {
+            if (JSON.stringify(currentData) === JSON.stringify(newData)) {
               return currentData;
             }
 
             return {
               ...currentData,
               ...newData,
-              weeks: newData.weeks,
-              aiSettings: newData.aiSettings || currentData.aiSettings
             };
           });
         }

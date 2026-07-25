@@ -3,8 +3,36 @@ import { CONFIG } from "../constants/config";
 export const PROMPT_TEMPLATES = [
   {
     value: "swing",
-    label: "Swing Trading (Default)",
+    label: "Swing Trading SEPA & CANSLIM (Default)",
     text: CONFIG.DEFAULT_SYSTEM_PROMPT,
+  },
+  {
+    value: "momentum",
+    label: "Watchlist Momentum & Breakout Engine",
+    text: `Act as an Institutional Quantitative Momentum Specialist.
+Conduct a high-velocity momentum scan across the watchlist to isolate top relative strength breakouts.
+
+Required Output Structure:
+1. **Velocity Leaders**: Identify 2-3 stocks displaying extreme relative strength, volume acceleration, and bullish trend alignment.
+2. **Breakout Catalyst & Trigger**: Specific breakout pivots and volume surge confirmation thresholds.
+3. **Risk Containment & Trailing Stops**: Invalidation price targets and strict risk management rules for rapid momentum trades.
+
+Start directly with the analysis.`,
+  },
+  {
+    value: "bulk_analysis",
+    label: "Background Bulk Stock Tagging Engine",
+    text: `Act as a Master Institutional Swing & Momentum Trader combining the proven methodologies of Mark Minervini (SEPA / VCP), Kristjan Qullamaggie (10/20 EMA Surfing / High Tight Flags / Extended Rule), and Stockbee / VVV (Relative Strength & Momentum Bursts).
+
+Your mission is to evaluate the list of stocks provided in JSON format ({stocksJson}) for timeframe ({timeframe}) and output a high-conviction verdict (STRONG BUY, BUY, WAIT, or SELL) and a sharp 1-sentence technical reasoning for each stock.
+
+Evaluation & Verdict Criteria (Strictly Applied):
+1. **STRONG BUY**: Meets Minervini Trend Template & Qullamaggie VCP / High Tight Flag. Surfing cleanly above 10/20/50 MAs in proper bullish order with strong relative strength.
+2. **BUY**: Clean orderly pullback to 10/20 EMA support within an established uptrend, or early-stage base breakout with positive momentum alignment.
+3. **WAIT**: Extended stock (>15% above 10/20 EMA), forming a base that needs time, or counter-trend bounce below 50/200 MAs.
+4. **SELL**: Lower highs, breakdown below 20/50 MAs, or heavy breakdown volume.
+
+Return ONLY a strict JSON object mapping each ticker symbol to its object containing "verdict" and "reasoning".`,
   },
   {
     value: "phenomena",
@@ -168,44 +196,87 @@ export async function getBulkStockVerdicts(
   if (!stocks || stocks.length === 0) return {};
 
   const stocksJson = JSON.stringify(
-    stocks.map(s => ({
-      symbol: s.symbol,
-      name: s.longName || s.shortName || "",
-      price: s.currentPrice || "N/A",
-      dailyChangePct: s.dailyChangePct || "0",
-      periodChangePct: s.periodChangePct || "0",
-      sector: s.sector || "Unknown",
-      tags: (s.tags || []).join(", "),
-      notes: s.notes || ""
-    }))
+    stocks.map(s => {
+      const priceVal = s.currentPrice != null && s.currentPrice !== "N/A"
+        ? (typeof s.currentPrice === "number" ? s.currentPrice.toFixed(2) : s.currentPrice)
+        : "N/A";
+      const dChange = s.dailyChangePct != null
+        ? `${Number(s.dailyChangePct) >= 0 ? "+" : ""}${Number(s.dailyChangePct).toFixed(2)}%`
+        : "0%";
+      const pChange = s.periodChangePct != null
+        ? `${Number(s.periodChangePct) >= 0 ? "+" : ""}${Number(s.periodChangePct).toFixed(2)}%`
+        : "0%";
+      const maVal = s.movingAverages || s.params?.movingAverages || "N/A";
+      const adrVal = s.adr || s.params?.adr || "N/A";
+      const liqVal = s.liquidity || s.params?.liquidity || "N/A";
+
+      return {
+        symbol: s.symbol,
+        name: s.longName || s.shortName || s.name || "",
+        price: priceVal,
+        dailyChangePct: dChange,
+        periodChangePct: pChange,
+        movingAverages: maVal,
+        adr: adrVal,
+        liquidity: liqVal,
+        sector: s.sector || "Unknown",
+        tags: (s.tags || []).join(", "),
+        notes: s.notes || ""
+      };
+    })
   );
 
   let prompt =
     customPromptText ||
     `
-    Act as a senior institutional technical analyst.
-    Analyze the following list of stocks provided in JSON format. The timeframe context is {timeframe}.
-    
-    Data:
+    Act as a Master Institutional Swing & Momentum Trader combining the proven methodologies of Mark Minervini (SEPA / VCP), Kristjan Qullamaggie (10/20 EMA Surfing / High Tight Flags / Extended Rule), and Stockbee / VVV (Relative Strength & Momentum Bursts).
+
+    Your mission is to evaluate the following list of stocks provided in JSON format and output a high-conviction verdict and a sharp 1-sentence technical reasoning for each stock.
+
+    Timeframe Context: {timeframe}
+
+    Stock Data Payload:
     {stocksJson}
-    
-    For each stock, provide a verdict and a brief one-sentence reasoning.
-    The verdict MUST be one of: "BUY", "WAIT", "SELL", or "STRONG BUY".
-    
+
+    Evaluation & Verdict Criteria (Strictly Applied):
+
+    1. STRONG BUY:
+       - Must meet Minervini Trend Template & Qullamaggie VCP / High Tight Flag setup.
+       - Price must be surfing cleanly above 10/20/50 MAs in proper bullish order (10 > 20 > 50 > 200).
+       - High Relative Strength (strong positive period change), low volatility contraction near key breakout level.
+
+    2. BUY:
+       - Clean orderly pullback to 10/20 EMA support within an established uptrend, or early-stage base breakout.
+       - Positive momentum alignment with strong relative strength vs broader market.
+
+    3. WAIT:
+       - Extended Rule (Qullamaggie): If a stock is extended >15-20% above its 10/20 EMA or recent base, assign WAIT ("Extended — wait for 10/20 EMA pullback or flag base").
+       - Base Consolidation: Forming a base, but needs volume dry-up or tighter price contraction before entry.
+       - Counter-Trend Bounce: Daily gain occurs beneath heavy overhead MA resistance or negative period trend ("Counter-trend bounce below 50/200 MA").
+
+    4. SELL:
+       - Trend Breakdown: Violation of key MAs (below 50/200 MA), breakdown below recent swing lows, or lagging relative strength.
+
+    Reasoning Output Requirements:
+    - The reasoning MUST be 1 concise, punchy sentence.
+    - Explicitly reference specific legendary setups or technical metrics (e.g., Minervini VCP, Qullamaggie 10/20 EMA Surfing, Extended Rule, MA alignment, Relative Strength %, ADR volatility).
+    - DO NOT output generic fluff like "Stock looks good" or "Price is going up".
+
+    Response Format:
     Respond ONLY with a valid JSON object where the keys are the stock symbols and the values are objects containing 'verdict' and 'reasoning'.
-    Example:
+    Example Output:
     {
       "RELIANCE": {
-        "verdict": "BUY",
-        "reasoning": "Breaking out of a multi-week consolidation with strong volume."
+        "verdict": "STRONG BUY",
+        "reasoning": "Minervini VCP Setup: Surfing above 10/20 MAs with +24.5% 3mo relative strength; tight price contraction near pivot."
       },
       "TCS": {
         "verdict": "WAIT",
-        "reasoning": "Approaching major resistance, wait for a clean breakout or pullback."
+        "reasoning": "Qullamaggie Extended Rule: Up +38% with price >16% above 20 EMA; wait for 10/20 EMA pullback or flag base."
       }
     }
-    
-    IMPORTANT: Do not wrap the response in markdown code blocks (\`\`\`json). Return ONLY the raw JSON string.
+
+    IMPORTANT: Return ONLY the raw JSON string. Do not wrap in markdown code blocks (\`\`\`json).
     `;
 
   prompt = prompt.replace(/\{stocksJson\}/g, stocksJson);

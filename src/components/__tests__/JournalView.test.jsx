@@ -203,7 +203,7 @@ describe('JournalView', () => {
     fireEvent.click(snapshotTab);
     
     // Check Snapshot tab contents
-    await screen.findByText(/constituent stocks/i);
+    expect(screen.getByText(/constituent stocks/i)).toBeDefined();
     expect(window.localStorage.getItem('trade_clarity_journal_tab_US')).toBe('snapshot');
   });
 

@@ -88,7 +88,7 @@ describe('Header', () => {
 
   it('switches country when region menu is used', () => {
     renderWithContext(<Header {...props} />);
-    const regionBtn = screen.getByTitle('Change Region');
+    const regionBtn = screen.getByTitle(/Market/i);
     fireEvent.click(regionBtn);
     
     const indiaBtn = screen.getByText('India');

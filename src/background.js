@@ -1,6 +1,7 @@
 import { mapAdrBucket, mapLiquidityBucket, mapMovingAverageBucket } from "./utils/metrics.js";
 import { getActualParamKeyAndDef } from "./utils/paramUtils.js";
 import { getBulkStockVerdicts } from "./services/ai.js";
+import { fetchStockData } from "./utils/yahooFinanceMap.js";
 import { CONFIG } from "./constants/config.js";
 import stockMetadata from "./constants/stockMetadata.json";
 
@@ -132,9 +133,53 @@ async function processAiQueue() {
   const total = stocks.length;
   const chunkSize = 7;
   const results = {};
+
+  // Pre-fetch 3mo market data (price, daily & period change pcts) so Gemini has full technical metrics
+  let enrichedStocks = stocks;
+  try {
+    console.log(`[BG] Pre-fetching 3mo market data for ${total} stocks for bulk AI analysis...`);
+    const marketData = await fetchStockData(stocks.map(s => s.symbol), country, "3mo");
+    if (marketData && marketData.length > 0) {
+      const marketDataMap = {};
+      marketData.forEach(d => {
+        marketDataMap[d.symbol] = d;
+      });
+      enrichedStocks = stocks.map(s => {
+        const m = marketDataMap[s.symbol];
+        if (m) {
+          return {
+            ...s,
+            currentPrice: m.currentPrice,
+            dailyChangePct: m.dailyChangePct,
+            periodChangePct: m.periodChangePct,
+            longName: m.longName || s.longName || s.shortName
+          };
+        }
+        return s;
+      });
+    }
+  } catch (mErr) {
+    console.warn("[BG] Pre-fetching market data for bulk AI failed, falling back to basic data:", mErr);
+  }
   
   const startTime = Date.now();
   const estimatedEndTime = startTime + (total * 60 * 1000);
+
+  // Resolve custom active bulk prompt from promptLibrary if configured
+  let activeBulkPrompt = payload.bulkPromptText || null;
+  if (!activeBulkPrompt) {
+    try {
+      const storageRes = await new Promise(r => chrome.storage.local.get(["trading_app_data"], r));
+      const dbObj = storageRes?.trading_app_data;
+      const defaultBulkId = dbObj?.aiSettings?.promptLibrary?.defaults?.bulk;
+      if (defaultBulkId && defaultBulkId !== "system" && defaultBulkId !== "default" && defaultBulkId !== "bulk_analysis") {
+        const customObj = dbObj?.aiSettings?.promptLibrary?.bulk?.find(p => p.id === defaultBulkId);
+        if (customObj) activeBulkPrompt = customObj.text;
+      }
+    } catch (err) {
+      console.warn("[BG] Could not resolve custom active bulk prompt:", err);
+    }
+  }
 
   try {
     for (let i = 0; i < total; i += chunkSize) {
@@ -143,7 +188,7 @@ async function processAiQueue() {
         payload: { completed: i, total, startTime, estimatedEndTime }
       }).catch(() => {});
 
-      const chunk = stocks.slice(i, i + chunkSize);
+      const chunk = enrichedStocks.slice(i, i + chunkSize);
 
       // Retry loop for this chunk — handles per-chunk 429s not caught inside ai.js
       let chunkResults = null;
@@ -151,7 +196,7 @@ async function processAiQueue() {
       const maxChunkRetries = 3;
       while (chunkAttempt < maxChunkRetries) {
         try {
-          chunkResults = await getBulkStockVerdicts(apiKey, model, chunk);
+          chunkResults = await getBulkStockVerdicts(apiKey, model, chunk, "3mo", activeBulkPrompt);
           break; // success
         } catch (chunkErr) {
           const errMsg = chunkErr.message || "";

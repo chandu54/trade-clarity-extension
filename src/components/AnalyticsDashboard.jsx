@@ -165,7 +165,7 @@ const SimplePieChart = ({ data, onSliceClick, isExpanded }) => {
           </div>
         </div>
       </div>
-      <div className="chart-legend">
+      <div className={`chart-legend ${isExpanded ? 'expanded-legend themed-scroll' : ''}`}>
         {data.map((item, index) => (
           <div
             key={item.name}
@@ -928,12 +928,12 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
           ×
         </button>
       </div>
-      <div className="expanded-content flex flex-1 overflow-hidden p-4 gap-4">
-        <div className="expanded-chart-section flex-1 min-w-0 bg-slate-50 dark:bg-slate-800/50 rounded-lg flex items-center justify-center border border-slate-200 dark:border-slate-700">
+      <div className="expanded-content flex flex-1 overflow-hidden gap-4">
+        <div className="expanded-chart-section flex-1 min-w-0 rounded-lg flex flex-col items-center justify-center">
           {renderChart()}
         </div>
-        <div className="expanded-details-section w-1/3 min-w-[250px] flex flex-col border-l border-slate-200 dark:border-slate-700 pl-4">
-          <h4 className="text-sm font-bold mb-2 text-slate-500 uppercase tracking-wider">
+        <div className="expanded-details-section flex flex-col pl-4">
+          <h4 className="expanded-details-title text-sm font-bold mb-2 uppercase tracking-wider">
             Details
           </h4>
           {renderDetailsList()}

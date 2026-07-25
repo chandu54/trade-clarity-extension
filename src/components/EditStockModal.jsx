@@ -202,34 +202,30 @@ export default function EditStockModal({
     if (sidebarGrouping === 'sector') {
       sortedStocks.forEach(s => {
         const sec = s.sector || 'Unassigned';
-        if (!groups[sec]) groups[sec] = [];
-        groups[sec].push(s);
+        if (!groups[sec]) groups[sec] = { key: sec, title: sec, stocks: [] };
+        groups[sec].stocks.push(s);
       });
     } else if (sidebarGrouping === 'tag') {
       sortedStocks.forEach(s => {
         const tags = s.tags && s.tags.length > 0 ? s.tags : ['No Tags'];
         tags.forEach(t => {
-          if (!groups[t]) groups[t] = [];
-          groups[t].push(s);
+          if (!groups[t]) groups[t] = { key: t, title: t, stocks: [] };
+          groups[t].stocks.push(s);
         });
       });
     } else if (sidebarGrouping === 'flag') {
       sortedStocks.forEach(s => {
-        const flag = s.flagColor ? `${s.flagColor.toUpperCase()} Flag` : 'No Flag';
-        if (!groups[flag]) groups[flag] = [];
-        groups[flag].push(s);
+        const flagKey = s.flagColor || 'none';
+        const flagTitle = s.flagColor ? `${s.flagColor.toUpperCase()} FLAG` : 'No Flag';
+        if (!groups[flagKey]) groups[flagKey] = { key: flagKey, title: flagTitle, flagColor: s.flagColor || null, stocks: [] };
+        groups[flagKey].stocks.push(s);
       });
     }
     
-    return Object.entries(groups)
-      .map(([key, list]) => ({
-        key,
-        title: key,
-        stocks: list
-      }))
+    return Object.values(groups)
       .sort((a, b) => {
-        if (a.key === 'Unassigned' || a.key === 'No Tags' || a.key === 'No Flag') return 1;
-        if (b.key === 'Unassigned' || b.key === 'No Tags' || b.key === 'No Flag') return -1;
+        if (a.key === 'Unassigned' || a.key === 'No Tags' || a.key === 'none' || a.key === 'No Flag') return 1;
+        if (b.key === 'Unassigned' || b.key === 'No Tags' || b.key === 'none' || b.key === 'No Flag') return -1;
         return a.title.localeCompare(b.title);
       });
   }, [sortedStocks, sidebarGrouping]);
@@ -237,19 +233,17 @@ export default function EditStockModal({
   // Auto-expand the active stock's parent group(s)
   useEffect(() => {
     if (!formData?.symbol || sidebarGrouping === 'none') return;
-    const groupsToExpand = {};
-    groupedStocks.forEach(g => {
+    (groupedStocks || []).forEach(g => {
       const hasActive = g.stocks.some(s => s.symbol === formData.symbol);
       if (hasActive) {
-        groupsToExpand[g.key] = false; // false = expanded (not collapsed)
+        setCollapsedGroups(prev => {
+          if (prev[g.key] === false) return prev;
+          return { ...prev, [g.key]: false };
+        });
       }
     });
-    if (Object.keys(groupsToExpand).length > 0) {
-      Promise.resolve().then(() => {
-        setCollapsedGroups(prev => ({ ...prev, ...groupsToExpand }));
-      });
-    }
-  }, [formData?.symbol, sidebarGrouping, groupedStocks]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [formData?.symbol, sidebarGrouping]);
 
   const handleUpdateMaSetting = useCallback((ma, key, value) => {
     setMaSettings(prev => {
@@ -325,57 +319,30 @@ export default function EditStockModal({
   }, [formData?.symbol, isOpen]);
 
   useEffect(() => {
-    if (stock) {
+    if (stock && stock.symbol) {
       if (prevSymbolRef.current !== stock.symbol) {
         setFormData(structuredClone(stock));
         setAiAnalysis(stock.aiAnalysis || null);
         setAiAnalysisDate(stock.aiAnalysisDate || null);
         setAiError(null);
         prevSymbolRef.current = stock.symbol;
-      } else {
-        // Same symbol, merge updates while preserving user modifications
-        setFormData(prev => {
-          if (!prev) return structuredClone(stock);
-          
-          // Merge params: start with the updated stock params from prop
-          const mergedParams = { ...(stock.params || {}) };
-          // For each checklist parameter key from definitions, preserve local changes
-          if (prev.params) {
-            Object.keys(paramDefinitions || {}).forEach(key => {
-              if (key in prev.params) {
-                mergedParams[key] = prev.params[key];
-              }
-            });
-          }
-
-          return {
-            ...prev,
-            ...structuredClone(stock),
-            sector: prev.sector,
-            tradable: prev.tradable,
-            notes: prev.notes,
-            params: mergedParams,
-            tags: prev.tags,
-            watchlists: prev.watchlists
-          };
-        });
-        setAiAnalysis(prev => prev || stock.aiAnalysis || null);
-        setAiAnalysisDate(prev => prev || stock.aiAnalysisDate || null);
       }
     } else {
       prevSymbolRef.current = null;
     }
-  }, [stock, paramDefinitions]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stock?.symbol]);
 
   const sortedSymbolsSerialized = useMemo(() => {
     return (sortedStocks || []).map(s => s.symbol).join(",");
   }, [sortedStocks]);
 
   const fetchSidebarQuotes = useCallback(async (signal) => {
-    if (!sortedStocks || sortedStocks.length === 0) return;
+    if (!sortedSymbolsSerialized) return;
+    const symbols = sortedSymbolsSerialized.split(",").filter(Boolean);
+    if (symbols.length === 0) return;
     setLoadingQuotes(true);
     try {
-      const symbols = sortedStocks.map(s => s.symbol);
       const results = await fetchStockQuotes(symbols, country, signal);
       if (results && results.length > 0) {
         const mapping = {};
@@ -396,7 +363,7 @@ export default function EditStockModal({
     } finally {
       setLoadingQuotes(false);
     }
-  }, [sortedStocks, country]);
+  }, [sortedSymbolsSerialized, country]);
 
   // Fetch 1d daily quotes in background on mount or symbols list changes (once sidebar is visible)
   useEffect(() => {
@@ -499,7 +466,24 @@ export default function EditStockModal({
     };
   }, [isResizingV, isResizingH]);
 
-  const currentIndex = (sortedStocks || []).findIndex(s => s.symbol === stock?.symbol);
+  const effectiveNavigationList = useMemo(() => {
+    if (sidebarGrouping === 'none' || !groupedStocks || groupedStocks.length === 0) {
+      return sortedStocks || [];
+    }
+    const list = [];
+    const seen = new Set();
+    groupedStocks.forEach(group => {
+      group.stocks.forEach(s => {
+        if (!seen.has(s.symbol)) {
+          seen.add(s.symbol);
+          list.push(s);
+        }
+      });
+    });
+    return list.length > 0 ? list : (sortedStocks || []);
+  }, [sortedStocks, groupedStocks, sidebarGrouping]);
+
+  const currentIndex = (effectiveNavigationList || []).findIndex(s => s.symbol === stock?.symbol);
 
   const handleSelectStock = useCallback((targetStock) => {
     if (formData) {
@@ -522,7 +506,7 @@ export default function EditStockModal({
   }, [formData, aiAnalysis, aiAnalysisDate, stock, paramDefinitions, onUpdateStock, onSave, onSelectStock]);
 
   const handleNavigate = useCallback((direction) => {
-    if (!sortedStocks || sortedStocks.length <= 1 || currentIndex === -1) return;
+    if (!effectiveNavigationList || effectiveNavigationList.length <= 1 || currentIndex === -1) return;
     let nextIndex = currentIndex;
     if (direction === 'next') {
       nextIndex = currentIndex + 1;
@@ -530,10 +514,10 @@ export default function EditStockModal({
       nextIndex = currentIndex - 1;
     }
 
-    if (nextIndex >= 0 && nextIndex < sortedStocks.length) {
-      handleSelectStock(sortedStocks[nextIndex]);
+    if (nextIndex >= 0 && nextIndex < effectiveNavigationList.length) {
+      handleSelectStock(effectiveNavigationList[nextIndex]);
     }
-  }, [sortedStocks, currentIndex, handleSelectStock]);
+  }, [effectiveNavigationList, currentIndex, handleSelectStock]);
 
   useEffect(() => {
     function handleClickOutside(event) {
@@ -550,11 +534,13 @@ export default function EditStockModal({
   useEffect(() => {
     const handleKeyDown = (e) => {
       // Focus on search input when Ctrl+K or Cmd+K is pressed
-      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === 'k') {
+      if ((e.ctrlKey || e.metaKey) && (e.key.toLowerCase() === 'k' || e.code === 'KeyK')) {
         if (isOpen && searchInputRef.current) {
           e.preventDefault();
+          e.stopPropagation();
           searchInputRef.current.focus();
           searchInputRef.current.select();
+          setIsNavDropdownOpen(true);
           return;
         }
       }
@@ -576,11 +562,11 @@ export default function EditStockModal({
       }
     };
 
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
     return () => {
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [currentIndex, sortedStocks, formData, aiAnalysis, aiAnalysisDate, isOpen, handleNavigate]);
+  }, [currentIndex, effectiveNavigationList, formData, aiAnalysis, aiAnalysisDate, isOpen, handleNavigate]);
 
   const filteredNavStocks = (sortedStocks || []).filter(s => {
     const q = navSearchQuery.toLowerCase().trim();
@@ -608,11 +594,54 @@ export default function EditStockModal({
     onClose();
   };
 
-  const handleDelete = async () => {
-    if (onDeleteStock) {
-      await onDeleteStock(formData.symbol);
+  const handleDeleteStockItem = useCallback(async (targetSymbol) => {
+    if (!onDeleteStock || !targetSymbol) return;
+    const isCurrentActive = targetSymbol === formData.symbol;
+    
+    // Find index of target stock before deletion
+    const list = sortedStocks || [];
+    const currentIndex = list.findIndex(s => s.symbol === targetSymbol);
+
+    await onDeleteStock(targetSymbol);
+
+    if (isCurrentActive) {
+      const remaining = list.filter(s => s.symbol !== targetSymbol);
+      if (remaining.length > 0) {
+        // Select stock below (same index in remaining), or stock above if last item
+        const nextIndex = (currentIndex >= 0 && currentIndex < remaining.length)
+          ? currentIndex 
+          : Math.max(0, remaining.length - 1);
+        handleSelectStock(remaining[nextIndex]);
+      } else {
+        onClose();
+      }
     }
-  };
+  }, [onDeleteStock, formData.symbol, sortedStocks, handleSelectStock, onClose]);
+
+  const handleDelete = useCallback(async () => {
+    if (formData.symbol) {
+      await handleDeleteStockItem(formData.symbol);
+    }
+  }, [formData.symbol, handleDeleteStockItem]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e) => {
+      if (e.key === "Delete" || e.key === "Del") {
+        const activeTag = document.activeElement?.tagName;
+        const isEditingInput = activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT";
+        
+        if (e.altKey || e.ctrlKey || !isEditingInput) {
+          e.preventDefault();
+          handleDelete();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, handleDelete]);
 
   const [selectedPromptId, setSelectedPromptId] = useState(aiSettings?.promptLibrary?.defaults?.stock || "default");
 
@@ -1114,13 +1143,13 @@ export default function EditStockModal({
 
               <div className="terminal-header-actions-wrapper">
                 {/* Previous / Next Navigation Arrows */}
-                {sortedStocks && sortedStocks.length > 1 && currentIndex !== -1 && (
+                {effectiveNavigationList && effectiveNavigationList.length > 1 && currentIndex !== -1 && (
                   <div className="nav-arrows-group-premium">
                     <button
                       type="button"
                       className="nav-arrow-btn-premium"
                       onClick={() => handleNavigate('prev')}
-                      title="Previous Stock (Left Arrow)"
+                      title="Previous Stock (Left / Up Arrow)"
                       disabled={currentIndex <= 0}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
@@ -1128,14 +1157,14 @@ export default function EditStockModal({
                       </svg>
                     </button>
                     <span className="nav-counter-premium">
-                      {currentIndex + 1} / {sortedStocks.length}
+                      {currentIndex + 1} / {effectiveNavigationList.length}
                     </span>
                     <button
                       type="button"
                       className="nav-arrow-btn-premium"
                       onClick={() => handleNavigate('next')}
-                      title="Next Stock (Right Arrow)"
-                      disabled={currentIndex >= sortedStocks.length - 1}
+                      title="Next Stock (Right / Down Arrow)"
+                      disabled={currentIndex >= effectiveNavigationList.length - 1}
                     >
                       <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
                         <polyline points="9 18 15 12 9 6" />
@@ -1372,7 +1401,46 @@ export default function EditStockModal({
                               }}
                             >
                               <span className="group-title-text-premium">
-                                {group.title}
+                                {sidebarGrouping === 'flag' ? (
+                                  group.flagColor ? (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px' }}>
+                                      <svg 
+                                        xmlns="http://www.w3.org/2000/svg" 
+                                        width="13" 
+                                        height="13" 
+                                        viewBox="0 0 24 24" 
+                                        fill={FLAG_COLOR_MAP[group.flagColor]} 
+                                        stroke={FLAG_COLOR_MAP[group.flagColor]} 
+                                        strokeWidth="2.5" 
+                                        strokeLinecap="round" 
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                                        <line x1="4" y1="22" x2="4" y2="15"/>
+                                      </svg>
+                                    </span>
+                                  ) : (
+                                    <span style={{ display: 'inline-flex', alignItems: 'center', gap: '6px', opacity: 0.65 }}>
+                                      <svg 
+                                        xmlns="http://www.w3.org/2000/svg" 
+                                        width="13" 
+                                        height="13" 
+                                        viewBox="0 0 24 24" 
+                                        fill="none" 
+                                        stroke="currentColor" 
+                                        strokeWidth="2" 
+                                        strokeLinecap="round" 
+                                        strokeLinejoin="round"
+                                      >
+                                        <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z"/>
+                                        <line x1="4" y1="22" x2="4" y2="15"/>
+                                      </svg>
+                                      <span>No Flag</span>
+                                    </span>
+                                  )
+                                ) : (
+                                  group.title
+                                )}
                               </span>
                               <span className="group-meta-info-premium">
                                 <span className="group-count-badge-premium">{group.stocks.length}</span>
@@ -1427,9 +1495,9 @@ export default function EditStockModal({
                                       display: 'flex',
                                       alignItems: 'center',
                                       justifyContent: 'center',
-                                      marginRight: '6px',
+                                      marginRight: '4px',
                                       cursor: 'pointer',
-                                      padding: '4px',
+                                      padding: '2px 3px',
                                       borderRadius: '4px',
                                       transition: 'background 0.2s',
                                       flexShrink: 0
@@ -1796,6 +1864,7 @@ export default function EditStockModal({
                   <button 
                     onClick={handleDelete} 
                     className="btn-premium-danger"
+                    title="Delete Stock (Shortcut: Alt + Del or Del)"
                     style={{
                       background: 'rgba(239, 68, 68, 0.1)',
                       border: '1px solid rgba(239, 68, 68, 0.3)',
@@ -1808,7 +1877,7 @@ export default function EditStockModal({
                       transition: 'all 0.2s'
                     }}
                   >
-                    Delete Stock
+                    Delete Stock <span style={{ opacity: 0.7, fontSize: '10px', marginLeft: '4px' }}>(Alt+Del)</span>
                   </button>
                 )}
               </div>
@@ -1840,6 +1909,7 @@ export default function EditStockModal({
                 <button 
                   onClick={handleDelete} 
                   className="btn-premium-danger"
+                  title="Delete Stock (Shortcut: Alt + Del or Del)"
                   style={{
                     background: 'rgba(239, 68, 68, 0.1)',
                     border: '1px solid rgba(239, 68, 68, 0.3)',
@@ -1853,7 +1923,7 @@ export default function EditStockModal({
                     marginRight: 'auto'
                   }}
                 >
-                  Delete Stock
+                  Delete Stock <span style={{ opacity: 0.7, fontSize: '10px', marginLeft: '4px' }}>(Alt+Del)</span>
                 </button>
               )}
               {onQuickLog && (

@@ -101,6 +101,7 @@ export async function loadData() {
        customPrompts: [],
        promptLibrary: {
          watchlist: [],
+         bulk: [],
          phenomena: [],
          stock: []
        }

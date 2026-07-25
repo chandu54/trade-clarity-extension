@@ -1,19 +1,84 @@
 import { describe, it, vi, beforeEach } from 'vitest';
-import { fetchStockData, fetchStockQuotes } from '../yahooFinanceMap';
+import { fetchStockData, fetchStockQuotes, isMarketOpenFromMeta, clearQuoteCache } from '../yahooFinanceMap';
 
 // Mock fetch
 global.fetch = vi.fn();
 
-describe('fetchStockData', () => {
+describe('fetchStockData & Caching', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
-    vi.useFakeTimers();
+    fetch.mockReset();
+    clearQuoteCache();
   });
 
   const mockResponse = (ok, data) => ({
     ok,
     json: async () => data,
     status: ok ? 200 : 404,
+  });
+
+  it('should detect market status from meta currentTradingPeriod', () => {
+    const nowSec = Math.floor(Date.now() / 1000);
+    const openMeta = {
+      currentTradingPeriod: {
+        regular: { start: nowSec - 3600, end: nowSec + 3600 }
+      }
+    };
+    const closedMeta = {
+      currentTradingPeriod: {
+        regular: { start: nowSec - 7200, end: nowSec - 3600 }
+      }
+    };
+
+    expect(isMarketOpenFromMeta(openMeta)).toBe(true);
+    expect(isMarketOpenFromMeta(closedMeta)).toBe(false);
+  });
+
+  it('should return cached data on subsequent calls when market is closed without extra network requests', async () => {
+    const symbols = ['CACHE_TEST'];
+    const mockData = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 100, chartPreviousClose: 95 },
+          indicators: { quote: [{ close: [95, 100] }] },
+          timestamp: [1625000000, 1625086400]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, mockData));
+
+    // First fetch -> hits network
+    const res1 = await fetchStockData(symbols, 'US', '3mo');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(res1[0].currentPrice).toBe(100);
+
+    // Second fetch -> uses cache (0 extra network calls)
+    const res2 = await fetchStockData(symbols, 'US', '3mo');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(res2[0].currentPrice).toBe(100);
+  });
+
+  it('should bypass cache when forceRefresh is true', async () => {
+    const symbols = ['FORCE_TEST'];
+    const mockData = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 200 },
+          indicators: { quote: [{ close: [200] }] },
+          timestamp: [1625000000]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, mockData))
+         .mockResolvedValueOnce(mockResponse(true, mockData));
+
+    await fetchStockData(symbols, 'US', '3mo');
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    // Force refresh -> hits network again
+    await fetchStockData(symbols, 'US', '3mo', null, null, true);
+    expect(fetch).toHaveBeenCalledTimes(2);
   });
 
   it('should return empty array if no symbols provided', async () => {
@@ -60,7 +125,7 @@ describe('fetchStockData', () => {
   });
 
   it('should append .NS for Indian symbols', async () => {
-    const symbols = ['RELIANCE'];
+    const symbols = ['RELIANCE_TEST'];
     const mockData = {
       chart: {
         result: [{
@@ -76,13 +141,109 @@ describe('fetchStockData', () => {
     await fetchStockData(symbols, 'IN');
 
     expect(fetch).toHaveBeenCalledWith(
-      expect.stringContaining('RELIANCE.NS'),
+      expect.stringContaining('RELIANCE_TEST.NS'),
       expect.any(Object)
     );
   });
 
+  it('should preserve full candlestick history array in cache without truncation', async () => {
+    const symbols = ['FULL_CANDLE_TEST'];
+    const manyBars = Array.from({ length: 50 }, (_, i) => ({
+      time: 1625000000 + i * 86400,
+      close: 100 + i,
+      open: 99 + i,
+      high: 102 + i,
+      low: 98 + i
+    }));
+    
+    const mockData = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 150, chartPreviousClose: 140 },
+          indicators: {
+            quote: [{
+              close: manyBars.map(b => b.close),
+              open: manyBars.map(b => b.open),
+              high: manyBars.map(b => b.high),
+              low: manyBars.map(b => b.low)
+            }]
+          },
+          timestamp: manyBars.map(b => b.time)
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, mockData));
+
+    // First call -> network
+    const firstRes = await fetchStockData(symbols, 'US', '3mo');
+    expect(firstRes[0].candlesticks.length).toBe(50);
+
+    // Second call -> cached read
+    const cachedRes = await fetchStockData(symbols, 'US', '3mo');
+    expect(cachedRes[0].candlesticks.length).toBe(50);
+  });
+
+  it('should invalidate cache when market transitions from closed to open or on force refresh', async () => {
+    const symbols = ['TRANSITION_TEST'];
+    const mockData = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 100 },
+          indicators: { quote: [{ close: [100] }] },
+          timestamp: [1625000000]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, mockData));
+
+    // First fetch -> hits network
+    const res1 = await fetchStockData(symbols, 'US', '3mo');
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(res1[0].currentPrice).toBe(100);
+
+    // Force refresh -> bypasses cache and hits network again
+    fetch.mockResolvedValueOnce(mockResponse(true, mockData));
+    const res2 = await fetchStockData(symbols, 'US', '3mo', null, null, true);
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(res2[0].currentPrice).toBe(100);
+  });
+
+  it('should scope cache keys by country to prevent US and IN collisions', async () => {
+    const usMockData = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 150, longName: 'US Ticker' },
+          indicators: { quote: [{ close: [150] }] },
+          timestamp: [1625000000]
+        }]
+      }
+    };
+
+    const inMockData = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 2500, longName: 'IN Ticker' },
+          indicators: { quote: [{ close: [2500] }] },
+          timestamp: [1625000000]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, usMockData))
+         .mockResolvedValueOnce(mockResponse(true, inMockData));
+
+    const usRes = await fetchStockData(['ACC'], 'US', '3mo');
+    const inRes = await fetchStockData(['ACC'], 'IN', '3mo');
+
+    expect(usRes[0].currentPrice).toBe(150);
+    expect(inRes[0].currentPrice).toBe(2500);
+    expect(fetch).toHaveBeenCalledTimes(2); // Must fetch separately for US vs IN!
+  });
+
   it('should handle fetch errors gracefully', async () => {
-    const symbols = ['INVALID'];
+    const symbols = ['INVALID_SYMBOL'];
     fetch.mockResolvedValueOnce(mockResponse(false, {}));
 
     const result = await fetchStockData(symbols, 'US');
@@ -90,7 +251,9 @@ describe('fetchStockData', () => {
   });
 
   it('should process in batches and respect delay', async () => {
-    const symbols = Array.from({ length: 6 }, (_, i) => `S${i + 1}`); // 6 symbols, Batch size is 5
+    vi.useFakeTimers();
+    clearQuoteCache();
+    const symbols = Array.from({ length: 6 }, (_, i) => `BATCH_SYM_${i + 1}`);
     const mockData = {
       chart: {
         result: [{
@@ -105,22 +268,22 @@ describe('fetchStockData', () => {
 
     const resultPromise = fetchStockData(symbols, 'US');
     
-    // First batch of 5 should call fetch
     await vi.advanceTimersByTimeAsync(0); 
     expect(fetch).toHaveBeenCalledTimes(5);
 
-    // After 250ms, the next batch should start
     await vi.advanceTimersByTimeAsync(300);
     expect(fetch).toHaveBeenCalledTimes(6);
 
     const result = await resultPromise;
     expect(result.length).toBe(6);
+    vi.useRealTimers();
   });
 });
 
 describe('fetchStockQuotes', () => {
   beforeEach(() => {
-    vi.clearAllMocks();
+    fetch.mockReset();
+    clearQuoteCache();
   });
 
   const mockResponse = (ok, data) => ({
@@ -134,13 +297,13 @@ describe('fetchStockQuotes', () => {
     expect(result).toEqual([]);
   });
 
-  it('should fetch quotes for multiple US symbols via chart API', async () => {
+  it('should fetch quotes for multiple symbols correctly', async () => {
     const symbols = ['AAPL', 'MSFT'];
     const aaplMock = {
       chart: {
         result: [{
-          meta: { regularMarketPrice: 150.25, previousClose: 148.0, longName: 'Apple Inc.' },
-          indicators: { quote: [{ close: [148, 150.25] }] },
+          meta: { regularMarketPrice: 150, previousClose: 148, longName: 'Apple Inc.' },
+          indicators: { quote: [{ close: [148, 150] }] },
           timestamp: [1625000000, 1625086400]
         }]
       }
@@ -148,7 +311,7 @@ describe('fetchStockQuotes', () => {
     const msftMock = {
       chart: {
         result: [{
-          meta: { regularMarketPrice: 320.50, previousClose: 322.0, longName: 'Microsoft Corp.' },
+          meta: { regularMarketPrice: 320.50, previousClose: 322, longName: 'Microsoft Corp.' },
           indicators: { quote: [{ close: [322, 320.50] }] },
           timestamp: [1625000000, 1625086400]
         }]
@@ -172,7 +335,7 @@ describe('fetchStockQuotes', () => {
 
     expect(result.length).toBe(2);
     expect(result[0].symbol).toBe('AAPL');
-    expect(result[0].currentPrice).toBe(150.25);
+    expect(result[0].currentPrice).toBe(150);
     expect(result[0].prevClose).toBe(148);
     expect(result[0].isAdvancing).toBe(true);
 

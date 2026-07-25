@@ -107,12 +107,24 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
   const handleUpdatePrompt = () => {
     if (!tempPrompt.label.trim() || !tempPrompt.text.trim()) return;
     
-    setLibrary(prev => ({
-      ...prev,
-      [libraryCategory]: (prev[libraryCategory] || []).map(p => 
-        p.id === editingPromptId ? { ...p, label: tempPrompt.label, text: tempPrompt.text } : p
-      )
-    }));
+    if (editingPromptId && String(editingPromptId).startsWith("system_")) {
+      const newPrompt = {
+        id: "p_" + Date.now(),
+        label: tempPrompt.label.trim(),
+        text: tempPrompt.text.trim()
+      };
+      setLibrary(prev => ({
+        ...prev,
+        [libraryCategory]: [...(prev[libraryCategory] || []), newPrompt]
+      }));
+    } else {
+      setLibrary(prev => ({
+        ...prev,
+        [libraryCategory]: (prev[libraryCategory] || []).map(p => 
+          p.id === editingPromptId ? { ...p, label: tempPrompt.label, text: tempPrompt.text } : p
+        )
+      }));
+    }
     setTempPrompt({ label: "", text: "" });
     setEditingPromptId(null);
   };
@@ -155,11 +167,14 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
     }
   };
 
-  const getSystemDefault = (cat) => {
-    if (cat === "watchlist") return PROMPT_TEMPLATES.find(t => t.value === "swing");
-    if (cat === "phenomena") return PROMPT_TEMPLATES.find(t => t.value === "phenomena");
-    if (cat === "stock") return PROMPT_TEMPLATES.find(t => t.value === "deep_view");
-    return null;
+  const getSystemDefaults = (cat) => {
+    if (cat === "watchlist") return PROMPT_TEMPLATES.filter(t => t.value === "swing" || t.value === "momentum");
+    if (cat === "bulk") return PROMPT_TEMPLATES.filter(t => t.value === "bulk_analysis");
+    if (cat === "phenomena") return [PROMPT_TEMPLATES.find(t => t.value === "phenomena")].filter(Boolean);
+    if (cat === "stock") {
+      return PROMPT_TEMPLATES.filter(t => t.value === "deep_view" || t.value === "daily_move");
+    }
+    return [];
   };
 
   const startEdit = (prompt) => {
@@ -324,7 +339,8 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
         {activeTab === "library" && (
           <div className="library-container">
             <div className="library-sidebar-tabs">
-              <button className={`lib-cat-btn ${libraryCategory === "watchlist" ? "active" : ""}`} onClick={() => { setLibraryCategory("watchlist"); setEditingPromptId(null); }}>Watchlist</button>
+              <button className={`lib-cat-btn ${libraryCategory === "watchlist" ? "active" : ""}`} onClick={() => { setLibraryCategory("watchlist"); setEditingPromptId(null); }}>Watchlist Summary</button>
+              <button className={`lib-cat-btn ${libraryCategory === "bulk" ? "active" : ""}`} onClick={() => { setLibraryCategory("bulk"); setEditingPromptId(null); }}>Background Bulk AI</button>
               <button className={`lib-cat-btn ${libraryCategory === "phenomena" ? "active" : ""}`} onClick={() => { setLibraryCategory("phenomena"); setEditingPromptId(null); }}>Phenomena</button>
               <button className={`lib-cat-btn ${libraryCategory === "stock" ? "active" : ""}`} onClick={() => { setLibraryCategory("stock"); setEditingPromptId(null); }}>Single Stock</button>
             </div>
@@ -365,7 +381,10 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
                     ))}
                   </div>
                   <button className="small" onClick={editingPromptId ? handleUpdatePrompt : handleAddToLibrary}>
-                    {editingPromptId ? "Update Prompt" : "+ Add to Library"}
+                    {editingPromptId 
+                       ? (String(editingPromptId).startsWith("system_") ? "+ Add to Library" : "Update Prompt") 
+                       : "+ Add to Library"
+                     }
                   </button>
                 </div>
               </div>
@@ -373,15 +392,17 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
               <div className="library-list mt-4">
                 <div className="flex justify-between items-end mb-2">
                    <h4 className="section-title-small no-margin">Strategy library</h4>
-                   <span className="text-xs text-muted">{(library[libraryCategory]?.length || 0) + 1} Available</span>
+                   <span className="text-xs text-muted">{(library[libraryCategory]?.length || 0) + getSystemDefaults(libraryCategory).length} Available</span>
                 </div>
 
-                {/* System Default Item */}
-                {(() => {
-                  const sys = getSystemDefault(libraryCategory);
-                  const isDefault = (library.defaults?.[libraryCategory] || "system") === "system";
-                  return sys && (
-                    <div className={`library-item-card system-default ${isDefault ? "is-active-default" : ""}`}>
+                {/* System Default Items */}
+                {getSystemDefaults(libraryCategory).map((sys) => {
+                  const currentDefault = library.defaults?.[libraryCategory] || "system";
+                  const isPrimaryDefault = sys.value === "deep_view" || sys.value === "swing" || sys.value === "bulk_analysis" || sys.value === "phenomena";
+                  const isDefault = (isPrimaryDefault && (currentDefault === "system" || currentDefault === "default" || currentDefault === sys.value)) || (currentDefault === sys.value);
+                  const defaultValueToSet = isPrimaryDefault ? "system" : sys.value;
+                  return (
+                    <div key={sys.value} className={`library-item-card system-default ${isDefault ? "is-active-default" : ""}`}>
                       <div className="lib-item-info">
                         <div className="flex items-center gap-2">
                           <strong>{sys.label}</strong>
@@ -392,12 +413,12 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
                       </div>
                       <div className="lib-item-actions">
                         {!isDefault && (
-                          <button className="outline btn-tiny" onClick={() => handleSetDefault("system")}>
+                          <button className="outline btn-tiny" onClick={() => handleSetDefault(defaultValueToSet)}>
                             Set as Default
                           </button>
                         )}
                         <button className="outline icon-btn" onClick={() => {
-                          setEditingPromptId("system");
+                          setEditingPromptId(`system_${sys.value}`);
                           setTempPrompt({ label: sys.label, text: sys.text });
                         }} title="View/Copy">
                            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -405,7 +426,7 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
                       </div>
                     </div>
                   );
-                })()}
+                })}
 
                 {/* Custom User Prompts */}
                 {(library[libraryCategory] || []).map(p => {

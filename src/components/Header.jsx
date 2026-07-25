@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect } from "react";
 import { useConfirm } from "./ConfirmContext";
+import { isMarketOpenForCountry } from "../utils/yahooFinanceMap";
 
 const MENU_ITEMS = [
   {
@@ -176,12 +177,17 @@ export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll
         <div className="header-group system-controls">
           <div className="region-selector-v2" ref={regionRef}>
             <button
-              className="region-trigger"
+              className={`region-trigger ${isMarketOpenForCountry(country) ? 'market-open' : 'market-closed'}`}
               onClick={() => setRegionOpen(!regionOpen)}
-              title="Change Region"
+              title={
+                isMarketOpenForCountry(country)
+                  ? `${country === 'IN' ? 'India (NSE/BSE)' : 'United States (NYSE/NASDAQ)'} - Market Open`
+                  : `${country === 'IN' ? 'India (NSE/BSE)' : 'United States (NYSE/NASDAQ)'} - Market Closed`
+              }
             >
               <CurrentFlag />
               <span className="region-label">{country}</span>
+              <span className={`market-status-dot-inline ${isMarketOpenForCountry(country) ? 'open' : 'closed'}`} />
               <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" className={`chevron-icon ${regionOpen ? "open" : ""}`}>
                 <polyline points="6 9 12 15 18 9" />
               </svg>
