@@ -306,10 +306,32 @@ export default function EditStockModal({
 
 
   // Resizability State
-  const [topHeight, setTopHeight] = useState(340); // px
-  const [leftWidth, setLeftWidth] = useState(65);   // %
+  const [topHeight, setTopHeight] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tradeclarity_modal_top_height');
+      return saved ? Number(saved) : 340;
+    } catch {
+      return 340;
+    }
+  });
+  const [leftWidth, setLeftWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tradeclarity_modal_left_width');
+      return saved ? Number(saved) : 65;
+    } catch {
+      return 65;
+    }
+  });
   const [isResizingV, setIsResizingV] = useState(false);
   const [isResizingH, setIsResizingH] = useState(false);
+
+  const topHeightRef = useRef(topHeight);
+  const leftWidthRef = useRef(leftWidth);
+
+  useEffect(() => {
+    topHeightRef.current = topHeight;
+    leftWidthRef.current = leftWidth;
+  }, [topHeight, leftWidth]);
 
   // AI State Restoration
   const [aiAnalysis, setAiAnalysis] = useState(null);
@@ -469,17 +491,27 @@ export default function EditStockModal({
     const handleMouseMove = (e) => {
       if (isResizingV) {
         // Calculate relative to modal top
-        setTopHeight(Math.max(80, Math.min(500, e.clientY - 120)));
+        const newTop = Math.max(80, Math.min(500, e.clientY - 120));
+        setTopHeight(newTop);
+        topHeightRef.current = newTop;
       }
       if (isResizingH) {
         // Calculate relative to window width
-        setLeftWidth(Math.max(30, Math.min(80, (e.clientX / window.innerWidth) * 100)));
+        const newLeft = Math.max(30, Math.min(80, (e.clientX / window.innerWidth) * 100));
+        setLeftWidth(newLeft);
+        leftWidthRef.current = newLeft;
       }
     };
     const handleMouseUp = () => {
       setIsResizingV(false);
       setIsResizingH(false);
       document.body.style.cursor = 'default';
+      try {
+        localStorage.setItem('tradeclarity_modal_top_height', String(topHeightRef.current));
+        localStorage.setItem('tradeclarity_modal_left_width', String(leftWidthRef.current));
+      } catch (err) {
+        console.warn("Failed to save modal split layout to localStorage:", err);
+      }
     };
 
     if (isResizingV || isResizingH) {

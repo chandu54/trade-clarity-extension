@@ -4989,9 +4989,12 @@ input[type=checkbox]:active {
 
 .stock-tags-inline {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  align-items: center;
   gap: 4px;
   width: 100%;
+  max-height: 22px;
+  overflow: hidden;
 }
 
 .tag-pill {
@@ -5005,6 +5008,24 @@ input[type=checkbox]:active {
   font-size: 10px;
   font-weight: 600;
   border: 1px solid rgba(37, 99, 235, 0.2);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.tag-overflow-pill {
+  background: rgba(148, 163, 184, 0.15) !important;
+  color: var(--text-muted, #94a3b8) !important;
+  border: 1px solid rgba(148, 163, 184, 0.3) !important;
+  cursor: help !important;
+  font-weight: 700 !important;
+  user-select: none !important;
+  flex-shrink: 0 !important;
+  transition: all 0.2s ease !important;
+}
+
+.tag-overflow-pill:hover {
+  background: rgba(148, 163, 184, 0.3) !important;
+  color: var(--text, #f8fafc) !important;
 }
 
 .tag-remove {

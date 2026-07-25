@@ -1261,7 +1261,14 @@ export default function StockGrid({
     });
   }, [filters]);
 
-  const [colWidths, setColWidths] = useState({});
+  const [colWidths, setColWidths] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tradeclarity_stockgrid_col_widths');
+      return saved ? JSON.parse(saved) : {};
+    } catch {
+      return {};
+    }
+  });
 
   const handleMouseDown = (e, colKey) => {
     e.preventDefault();
@@ -1269,16 +1276,27 @@ export default function StockGrid({
     const th = e.target.closest("th");
     const startX = e.clientX;
     const startWidth = th.getBoundingClientRect().width;
+    let latestWidth = startWidth;
 
     const handleMouseMove = (moveEvent) => {
-      const newWidth = Math.max(60, startWidth + (moveEvent.clientX - startX));
-      setColWidths((prev) => ({ ...prev, [colKey]: newWidth }));
+      latestWidth = Math.max(60, startWidth + (moveEvent.clientX - startX));
+      setColWidths((prev) => ({ ...prev, [colKey]: latestWidth }));
     };
 
     const handleMouseUp = () => {
       document.removeEventListener("mousemove", handleMouseMove);
       document.removeEventListener("mouseup", handleMouseUp);
       document.body.classList.remove("resizing");
+
+      setColWidths((prev) => {
+        const next = { ...prev, [colKey]: latestWidth };
+        try {
+          localStorage.setItem('tradeclarity_stockgrid_col_widths', JSON.stringify(next));
+        } catch (err) {
+          console.warn("Failed to save column widths to localStorage:", err);
+        }
+        return next;
+      });
     };
 
     document.addEventListener("mousemove", handleMouseMove);
@@ -1291,6 +1309,11 @@ export default function StockGrid({
     setColWidths((prev) => {
       const newWidths = { ...prev };
       delete newWidths[colKey];
+      try {
+        localStorage.setItem('tradeclarity_stockgrid_col_widths', JSON.stringify(newWidths));
+      } catch (err) {
+        console.warn("Failed to save column widths to localStorage:", err);
+      }
       return newWidths;
     });
   };
@@ -2839,9 +2862,14 @@ export default function StockGrid({
                                     <div
                                       key={t}
                                       className={`tag-option ${isSelected ? "selected" : ""}`}
-                                      onClick={() =>
-                                        !isSelected && addTag(stock, t)
-                                      }
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (isSelected) {
+                                          removeTag(stock, t);
+                                        } else {
+                                          addTag(stock, t);
+                                        }
+                                      }}
                                     >
                                       {t}
                                       {isSelected && <span>✓</span>}
@@ -2854,20 +2882,42 @@ export default function StockGrid({
                         </div>
                       )}
                     </div>
-                    {showTags && (
+                    {showTags && stock.tags && stock.tags.length > 0 && (
                       <div className="stock-tags-inline">
-                        {stock.tags?.map((tag) => (
-                          <span key={tag} className="tag-pill">
-                            {tag}
-                            <button
-                              className="tag-remove"
-                              onClick={() => removeTag(stock, tag)}
-                              disabled={isReadOnly}
-                            >
-                              ×
-                            </button>
-                          </span>
-                        ))}
+                        {(() => {
+                          const MAX_VISIBLE_TAGS = 1;
+                          const visibleTags = stock.tags.slice(0, MAX_VISIBLE_TAGS);
+                          const overflowCount = stock.tags.length - MAX_VISIBLE_TAGS;
+                          const remainingTagsList = stock.tags.slice(MAX_VISIBLE_TAGS).join(', ');
+
+                          return (
+                            <>
+                              {visibleTags.map((tag) => (
+                                <span key={tag} className="tag-pill">
+                                  {tag}
+                                  <button
+                                    className="tag-remove"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      removeTag(stock, tag);
+                                    }}
+                                    disabled={isReadOnly}
+                                  >
+                                    ×
+                                  </button>
+                                </span>
+                              ))}
+                              {overflowCount > 0 && (
+                                <span
+                                  className="tag-pill tag-overflow-pill"
+                                  title={`+${overflowCount} more tag${overflowCount > 1 ? 's' : ''}: ${remainingTagsList}`}
+                                >
+                                  +{overflowCount}
+                                </span>
+                              )}
+                            </>
+                          );
+                        })()}
                       </div>
                     )}
                   </div>
