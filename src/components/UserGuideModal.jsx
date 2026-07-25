@@ -625,7 +625,7 @@ export default function UserGuideModal({
                 </p>
                 <ul className="guide-list">
                   <li>
-                    <strong>Watchlist Grouping:</strong> Click the <em>Layers Icon (Group & Categorize)</em> in the sidebar toolbar to group stocks by <strong>Sector</strong>, <strong>Tag</strong>, or keep them flat.
+                    <strong>Watchlist Grouping:</strong> Click the <em>Layers Icon (Group & Categorize)</em> in the sidebar toolbar to group stocks by <strong>Sector</strong>, <strong>Tag</strong>, <strong>Flag Color</strong>, or keep them flat.
                   </li>
                   <li>
                     <strong>Collapsible Groups:</strong> Sidebar sections collapse and expand dynamically. Stocks with no assigned category are placed under "Unassigned" at the bottom.
