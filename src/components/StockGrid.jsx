@@ -724,6 +724,10 @@ export default function StockGrid({
   }, [week, country, weekKey, data, setData, fetchQuotesForGrid]);
 
   // --- AUTOMATED DAILY REFRESH ---
+  const autoSyncTriggeredRef = useRef(false);
+  const currentWeekSyncDate = data?.weeks?.[country]?.[weekKey]?.lastSyncDate;
+  const autoRefreshMetrics = data?.uiConfig?.autoRefreshMetrics;
+
   useEffect(() => {
     if (!data || !weekKey || !data.weeks?.[country]?.[weekKey]) return;
 
@@ -731,25 +735,35 @@ export default function StockGrid({
     const weekData = data.weeks[country][weekKey];
     
     // Check setting and date
-    const autoRefreshEnabled = data.uiConfig?.autoRefreshMetrics !== false;
+    const autoRefreshEnabled = autoRefreshMetrics !== false;
     const isSyncedToday = weekData.lastSyncDate === todayStr;
 
-    if (autoRefreshEnabled && !isSyncedToday && !isReadOnly) {
+    if (autoRefreshEnabled && !isSyncedToday && !isReadOnly && !autoSyncTriggeredRef.current) {
+      autoSyncTriggeredRef.current = true;
       console.log(`[AutoSync] New day detected (${todayStr}). Triggering refresh for ${country} watchlist...`);
-      setTimeout(() => {
-        triggerFullSync();
+      triggerFullSync();
+      
+      setData(prev => {
+        const prevWeek = prev.weeks?.[country]?.[weekKey];
+        if (!prevWeek || prevWeek.lastSyncDate === todayStr) return prev;
         
-        // Update week-level lastSyncDate
-        setData(prev => {
-          const newData = structuredClone(prev);
-          if (newData.weeks?.[country]?.[weekKey]) {
-            newData.weeks[country][weekKey].lastSyncDate = todayStr;
+        return {
+          ...prev,
+          weeks: {
+            ...prev.weeks,
+            [country]: {
+              ...prev.weeks[country],
+              [weekKey]: {
+                ...prevWeek,
+                lastSyncDate: todayStr
+              }
+            }
           }
-          return newData;
-        });
-      }, 0);
+        };
+      });
     }
-  }, [weekKey, country, data, setData, triggerFullSync, isReadOnly]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [weekKey, country, currentWeekSyncDate, autoRefreshMetrics, isReadOnly, triggerFullSync, setData]);
 
   const searchInputRef = useRef(null);
 
@@ -1341,7 +1355,7 @@ export default function StockGrid({
     // Trigger background API hydration immediately if enabled
     if (
       newSymbolsAdded.length > 0 &&
-      data?.uiConfig?.enableApiHydration === true
+      data?.uiConfig?.enableApiHydration !== false
     ) {
       if (chrome?.runtime?.sendMessage) {
         chrome.runtime.sendMessage({
@@ -1758,7 +1772,7 @@ export default function StockGrid({
     // Trigger background API hydration immediately if enabled
     if (
       newSymbolsAdded.length > 0 &&
-      data?.uiConfig?.enableApiHydration === true
+      data?.uiConfig?.enableApiHydration !== false
     ) {
       if (chrome?.runtime?.sendMessage) {
         chrome.runtime.sendMessage({

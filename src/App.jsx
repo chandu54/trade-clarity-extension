@@ -48,6 +48,7 @@ function AppContent() {
   });
   const modals = useModalState();
   const hasLoaded = useRef(false);
+  const isSyncingFromStorageRef = useRef(false);
   const { confirm } = useConfirm();
   const { showToast } = useToast();
 
@@ -99,6 +100,10 @@ function AppContent() {
 
   useEffect(() => {
     if (!hasLoaded.current || !data) return;
+    if (isSyncingFromStorageRef.current) {
+      isSyncingFromStorageRef.current = false;
+      return;
+    }
     saveData(data);
   }, [data]);
 
@@ -110,15 +115,54 @@ function AppContent() {
         const newData = changes["trading_app_data"].newValue;
         if (newData && hasLoaded.current) {
           setData((currentData) => {
-            if (!currentData) return newData;
+            if (!currentData) {
+              isSyncingFromStorageRef.current = true;
+              return newData;
+            }
 
             if (JSON.stringify(currentData) === JSON.stringify(newData)) {
               return currentData;
             }
 
+            isSyncingFromStorageRef.current = true;
+
+            const mergedWeeks = { ...currentData.weeks };
+            if (newData.weeks) {
+              Object.keys(newData.weeks).forEach((cKey) => {
+                mergedWeeks[cKey] = { ...(mergedWeeks[cKey] || {}) };
+                Object.keys(newData.weeks[cKey]).forEach((wKey) => {
+                  const currWeek = mergedWeeks[cKey][wKey] || { stocks: {} };
+                  const newWeek = newData.weeks[cKey][wKey] || { stocks: {} };
+                  const mergedStocks = { ...(currWeek.stocks || {}) };
+
+                  if (newWeek.stocks) {
+                    Object.keys(newWeek.stocks).forEach((sKey) => {
+                      const currStock = mergedStocks[sKey] || {};
+                      const newStock = newWeek.stocks[sKey] || {};
+                      mergedStocks[sKey] = {
+                        ...currStock,
+                        ...newStock,
+                        params: {
+                          ...(currStock.params || {}),
+                          ...(newStock.params || {}),
+                        },
+                      };
+                    });
+                  }
+
+                  mergedWeeks[cKey][wKey] = {
+                    ...currWeek,
+                    ...newWeek,
+                    stocks: mergedStocks,
+                  };
+                });
+              });
+            }
+
             return {
               ...currentData,
               ...newData,
+              weeks: mergedWeeks,
             };
           });
         }
