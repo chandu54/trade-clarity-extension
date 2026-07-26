@@ -3022,9 +3022,15 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
               accountCapital={accountCapital}
               onTileClick={(stock) => {
                 const originalTrade = journalEntries.find(t => t.symbol === stock.symbol);
-                if (originalTrade) {
-                  handleEditClick(originalTrade, { stopPropagation: () => {} });
-                }
+                const stockObj = {
+                  symbol: stock.symbol,
+                  name: stock.name || stock.longName || stock.symbol,
+                  longName: stock.longName || stock.name || stock.symbol,
+                  price: stock.price || stock.close || 0,
+                  livePrice: stock.price || stock.close || 0,
+                  position: originalTrade || null
+                };
+                setSelectedStockForEdit(stockObj);
               }}
             />
           )}
@@ -4475,6 +4481,8 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
           isOpen={!!selectedStockForEdit}
           onClose={() => setSelectedStockForEdit(null)}
           stock={selectedStockForEdit}
+          position={selectedStockForEdit?.position || journalEntries.find(t => t.symbol === selectedStockForEdit?.symbol) || null}
+          initialActiveRightTab='position'
           onSave={handleUpdateStock}
           paramDefinitions={data.paramDefinitions}
           sectors={filteredSectors}

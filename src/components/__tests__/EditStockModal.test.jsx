@@ -2,6 +2,7 @@ import { describe, it, vi, beforeEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import EditStockModal from '../EditStockModal';
 import * as yahooFinanceMap from '../../utils/yahooFinanceMap';
+import * as stockAnalysisApi from '../../utils/stockAnalysisApi';
 
 vi.mock('../../utils/yahooFinanceMap', () => ({
   fetchStockData: vi.fn().mockResolvedValue([]),
@@ -666,5 +667,64 @@ describe('EditStockModal', () => {
       expect(screen.getByText('4.8%')).toBeDefined();
       expect(screen.getByText('$1.2B')).toBeDefined();
     });
+
+    it('renders Modular Right Panel Dock tabs and allows tab switching', async () => {
+      vi.spyOn(stockAnalysisApi, 'fetchStockSummary').mockResolvedValue({
+        symbol: 'AAPL',
+        country: 'US',
+        fundamentals: {
+          marketCap: '$5.00B',
+          peRatio: '25.40',
+          forwardPE: '18.20'
+        },
+        catalysts: {
+          earningsDate: 'Jul 31, 2026',
+          newsFeed: []
+        },
+        health: {
+          score: 8.5,
+          verdict: 'STRONG GROWTH SETUP',
+          pros: ['Strong Profit Surge'],
+          cons: []
+        }
+      });
+
+      const mockPosition = {
+        id: 'trade-1',
+        symbol: 'AAPL',
+        transactions: [
+          { id: 'tx-1', type: 'Buy', price: 150, qty: 10, date: '2026-07-01' }
+        ],
+        currentStopLoss: 140
+      };
+
+      const customProps = {
+        ...props,
+        position: mockPosition,
+        initialActiveRightTab: 'position'
+      };
+
+      render(<EditStockModal {...customProps} isDeepView={true} />);
+
+      // Verify dock tab buttons
+      expect(screen.getByText('Position')).toBeDefined();
+      expect(screen.getByText('AI Analysis')).toBeDefined();
+
+      // Verify Position tab content
+      expect(screen.getByText('Transaction Ledger (1)')).toBeDefined();
+      expect(screen.getByText('10 shares @ $150.00')).toBeDefined();
+
+      // Verify Fundamentals section below chart
+      await vi.waitFor(() => {
+        expect(screen.getByText('Market Cap')).toBeDefined();
+        expect(screen.getByText('Trailing P/E')).toBeDefined();
+      });
+
+      // Switch to AI Analysis tab
+      fireEvent.click(screen.getByText('AI Analysis'));
+      expect(screen.getByRole('button', { name: 'Analyze' })).toBeDefined();
+    });
   });
 });
+
+

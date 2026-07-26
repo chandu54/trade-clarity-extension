@@ -5,6 +5,40 @@ import { fetchStockData, fetchStockQuotes } from "../utils/yahooFinanceMap";
 import { getSingleStockAnalysis, PROMPT_TEMPLATES } from "../services/ai";
 import { isParamRelevantForCountry, getActualParamKeyAndDef } from "../utils/paramUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
+import { fetchStockSummary, globalFundamentalsCache } from "../utils/stockAnalysisApi";
+
+const getSidebarEarningsDays = (s, sidebarData, formData, summaryData, country) => {
+  if (!s) return null;
+  if (s.symbol === formData?.symbol && summaryData?.catalysts) {
+    if (typeof summaryData.catalysts.earningsDaysAway === 'number') {
+      return summaryData.catalysts.earningsDaysAway;
+    }
+  }
+
+  const tickerKey = (country === 'IN' || s.symbol?.endsWith('.NS') || s.symbol?.endsWith('.BO')) && !s.symbol?.endsWith('.NS') && !s.symbol?.endsWith('.BO') ? `${s.symbol}.NS_${country}` : `${s.symbol}_${country}`;
+  const cachedItem = globalFundamentalsCache.get(tickerKey) || globalFundamentalsCache.get(`${s.symbol}_${country}`);
+  if (cachedItem?.data?.catalysts) {
+    if (typeof cachedItem.data.catalysts.earningsDaysAway === 'number') {
+      return cachedItem.data.catalysts.earningsDaysAway;
+    }
+  }
+
+  if (typeof sidebarData?.earningsDaysAway === 'number') return sidebarData.earningsDaysAway;
+  if (typeof s?.earningsDaysAway === 'number') return s.earningsDaysAway;
+
+  const rawDate = sidebarData?.earningsDate || s?.earningsDate || s?.params?.earningsDate || cachedItem?.data?.catalysts?.earningsDate;
+  if (rawDate) {
+    try {
+      const d = new Date(rawDate);
+      if (!isNaN(d.getTime())) {
+        return Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+      }
+    } catch (_e) {
+      /* ignore date parse error */
+    }
+  }
+  return null;
+};
 
 const checkIsAiBlocked = (blockedUntil) => {
   if (!blockedUntil) return false;
@@ -135,7 +169,9 @@ export default function EditStockModal({
   onSelectStock = null,
   watchlistName = "Watchlist",
   onQuickLog = null,
-  onDeleteStock = null
+  onDeleteStock = null,
+  position = null,
+  initialActiveRightTab = 'position'
 }) {
   const [formData, setFormData] = useState(() => stock ? structuredClone(stock) : null);
   const [activeFlagMenuSymbol, setActiveFlagMenuSymbol] = useState(null);
@@ -333,11 +369,115 @@ export default function EditStockModal({
     leftWidthRef.current = leftWidth;
   }, [topHeight, leftWidth]);
 
-  // AI State Restoration
+  // AI & Position Dock State Restoration
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiAnalysisDate, setAiAnalysisDate] = useState(null);
   const [loadingAi, setLoadingAi] = useState(false);
   const [aiError, setAiError] = useState(null);
+  const [activeRightTab, setActiveRightTab] = useState(initialActiveRightTab || 'position');
+  const [prevTabProp, setPrevTabProp] = useState(initialActiveRightTab);
+  const [prevSymbolProp, setPrevSymbolProp] = useState(formData?.symbol);
+  const [summaryData, setSummaryData] = useState(null);
+
+  if (initialActiveRightTab !== prevTabProp || formData?.symbol !== prevSymbolProp) {
+    setPrevTabProp(initialActiveRightTab);
+    setPrevSymbolProp(formData?.symbol);
+    setActiveRightTab(initialActiveRightTab || 'position');
+  }
+
+  useEffect(() => {
+    if (!isOpen || !formData?.symbol) return;
+    let isMounted = true;
+    fetchStockSummary(formData.symbol, country).then((res) => {
+      if (isMounted && res) {
+        setSummaryData(res);
+      }
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, [isOpen, formData?.symbol, country]);
+
+  const positionMetrics = useMemo(() => {
+    if (!position || !position.transactions || position.transactions.length === 0) return null;
+    let totalQty = 0;
+    let totalCost = 0;
+    position.transactions.forEach((tx) => {
+      if (tx.type === 'Buy' || tx.type === 'buy') {
+        totalQty += (Number(tx.qty) || 0);
+        totalCost += (Number(tx.price) || 0) * (Number(tx.qty) || 0);
+      } else if (tx.type === 'Sell' || tx.type === 'sell') {
+        totalQty -= (Number(tx.qty) || 0);
+      }
+    });
+    if (totalQty <= 0) return null;
+    const avgPrice = totalCost / totalQty;
+    const currentPrice = Number(formData?.close || formData?.price || stock?.close || stock?.price || avgPrice);
+    const currentVal = totalQty * currentPrice;
+    const unrealizedPnL = currentVal - totalCost;
+    const unrealizedPnLPercent = totalCost > 0 ? (unrealizedPnL / totalCost) * 100 : 0;
+    return {
+      totalQty,
+      avgPrice,
+      currentVal,
+      unrealizedPnL,
+      unrealizedPnLPercent
+    };
+  }, [position, formData, stock]);
+
+  const renderPositionTabContent = () => {
+    return (
+      <div className="position-tab-container themed-scroll">
+        {position ? (
+          <div className="position-ledger-card">
+            <h4 className="position-section-header">
+              Transaction Ledger ({position.transactions?.length || 0})
+            </h4>
+            <div className="transaction-list">
+              {position.transactions?.map((tx, idx) => (
+                <div key={tx.id || idx} className="transaction-item">
+                  <span className="transaction-subtext">
+                    {tx.qty} shares @ ${Number(tx.price).toFixed(2)}
+                  </span>
+                  <span className={tx.type === 'Buy' ? 'transaction-type-buy' : 'transaction-type-sell'}>
+                    {tx.type}
+                  </span>
+                </div>
+              ))}
+            </div>
+            {positionMetrics && (
+              <div className="position-summary-grid">
+                <div>
+                  <span style={{ opacity: 0.7 }}>Avg Cost: </span>
+                  <strong>${positionMetrics.avgPrice.toFixed(2)}</strong>
+                </div>
+                <div>
+                  <span style={{ opacity: 0.7 }}>Unrealized P&L: </span>
+                  <strong className={positionMetrics.unrealizedPnL >= 0 ? 'transaction-type-buy' : 'transaction-type-sell'}>
+                    {positionMetrics.unrealizedPnL >= 0 ? '+' : ''}${positionMetrics.unrealizedPnL.toFixed(2)} ({positionMetrics.unrealizedPnLPercent.toFixed(1)}%)
+                  </strong>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="no-position-placeholder">
+            <p className="no-pos-txt">No active position logged for {formData?.symbol}.</p>
+            {onQuickLog && (
+              <button
+                type="button"
+                className="btn-premium-primary position-log-action-btn"
+                onClick={() => {
+                  onClose();
+                  onQuickLog(formData.symbol);
+                }}
+              >
+                + Log Position
+              </button>
+            )}
+          </div>
+        )}
+      </div>
+    );
+  };
 
   // Watchlist Navigation & Workspace State
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
@@ -1582,7 +1722,23 @@ export default function EditStockModal({
                                   )}
 
                                   <div className="sidebar-item-left-premium">
-                                    <span className="sidebar-item-symbol-premium">{s.symbol}</span>
+                                    <div className="sidebar-item-symbol-row">
+                                      <span className="sidebar-item-symbol-premium">{s.symbol}</span>
+                                      {(() => {
+                                        const days = getSidebarEarningsDays(s, sidebarData, formData, summaryData, country);
+                                        if (typeof days === 'number' && days >= 0 && days <= 5) {
+                                          return (
+                                            <span
+                                              className="imminent-earnings-sidebar-badge"
+                                              title={`Earnings in ${days} day(s)`}
+                                            >
+                                              {days}d
+                                            </span>
+                                          );
+                                        }
+                                        return null;
+                                      })()}
+                                    </div>
                                   </div>
                                   
                                   <div className="sidebar-item-right-premium flex flex-col items-end">
@@ -1694,18 +1850,47 @@ export default function EditStockModal({
                     </span>
                   )}
 
-                  {formData.earningsDate && (
-                    <span className="header-earnings-badge-v2 font-mono" title="Next Earnings Date">
-                      Earnings: {(() => {
-                        try {
-                          const d = new Date(formData.earningsDate);
-                          return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-                        } catch (_e) {
-                          return formData.earningsDate;
-                        }
-                      })()}
-                    </span>
-                  )}
+                  {(() => {
+                    const earningsDateVal = summaryData?.catalysts?.earningsDate || formData.earningsDate || stock?.earningsDate;
+                    if (!earningsDateVal) return null;
+                    const daysAway = summaryData?.catalysts?.earningsDaysAway !== undefined && summaryData?.catalysts?.earningsDaysAway !== null
+                      ? summaryData.catalysts.earningsDaysAway
+                      : (() => {
+                          try {
+                            const d = new Date(earningsDateVal);
+                            if (!isNaN(d.getTime())) {
+                              return Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
+                            }
+                          } catch (_e) {
+                            /* ignore date parse failure */
+                          }
+                          return null;
+                        })();
+
+                    const isImminent = typeof daysAway === 'number' && daysAway >= 0 && daysAway <= 7;
+                    const isPast = typeof daysAway === 'number' && daysAway < 0;
+
+                    return (
+                      <span
+                        className={`header-metric-pill-v2 earnings ${isImminent ? 'imminent' : (isPast ? 'past' : '')}`}
+                        title={`Next Earnings Date: ${earningsDateVal}`}
+                      >
+                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="metric-pill-icon">
+                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
+                          <line x1="16" y1="2" x2="16" y2="6"/>
+                          <line x1="8" y1="2" x2="8" y2="6"/>
+                          <line x1="3" y1="10" x2="21" y2="10"/>
+                        </svg>
+                        <span className="metric-pill-label">EARNINGS:</span>
+                        <span className="metric-pill-value">{earningsDateVal}</span>
+                        {typeof daysAway === 'number' && (
+                          <span className="earnings-days-sub">
+                            ({daysAway >= 0 ? `in ${daysAway}d` : `${Math.abs(daysAway)}d ago`})
+                          </span>
+                        )}
+                      </span>
+                    );
+                  })()}
 
                   {formData.params?.movingAverages && (
                     <>
@@ -1868,6 +2053,186 @@ export default function EditStockModal({
                     timeframe={timeframe}
                   />
                 </div>
+
+                {/* Fundamentals Info & Quarterly Performance Section below chart */}
+                <div className="fundamentals-below-chart-section">
+                  <div className="fundamentals-wide-below-chart">
+                    <div className="wide-metrics-grid-4col">
+                      <div className="property-row-item fundamental-card-enterprise">
+                        <div className="fundamental-card-label">Market Cap</div>
+                        <div className="fundamental-card-val">{summaryData?.fundamentals?.marketCap || 'N/A'}</div>
+                      </div>
+
+                      <div className="property-row-item fundamental-card-enterprise">
+                        <div className="fundamental-card-label">Trailing P/E</div>
+                        <div className="fundamental-card-val">{summaryData?.fundamentals?.peRatio || 'N/A'}</div>
+                      </div>
+
+                      <div className="property-row-item fundamental-card-enterprise">
+                        <div className="fundamental-card-label">Forward P/E</div>
+                        <div className="fundamental-card-val">{summaryData?.fundamentals?.forwardPE || 'N/A'}</div>
+                      </div>
+
+                      <div className="property-row-item fundamental-card-enterprise">
+                        <div className="fundamental-card-label">Price to Book</div>
+                        <div className="fundamental-card-val">{summaryData?.fundamentals?.priceToBook || 'N/A'}</div>
+                      </div>
+
+                      <div className="property-row-item fundamental-card-enterprise">
+                        <div className="fundamental-card-label">Revenue Growth (YoY)</div>
+                        <div className="fundamental-card-val">{summaryData?.fundamentals?.revenueGrowth || 'N/A'}</div>
+                      </div>
+
+                      <div className="property-row-item fundamental-card-enterprise">
+                        <div className="fundamental-card-label">Earnings Growth (YoY)</div>
+                        <div className="fundamental-card-val">{summaryData?.fundamentals?.earningsGrowth || 'N/A'}</div>
+                      </div>
+
+                      <div className="property-row-item fundamental-card-enterprise">
+                        <div className="fundamental-card-label">Profit Margins</div>
+                        <div className="fundamental-card-val">{summaryData?.fundamentals?.profitMargins || 'N/A'}</div>
+                      </div>
+
+                      <div className="property-row-item fundamental-card-enterprise">
+                        <div className="fundamental-card-label">Return on Equity (ROE)</div>
+                        <div className="fundamental-card-val">{summaryData?.fundamentals?.returnOnEquity || 'N/A'}</div>
+                      </div>
+
+                      <div className="property-row-item fundamental-card-enterprise">
+                        <div className="fundamental-card-label">Total Debt</div>
+                        <div className="fundamental-card-val">{summaryData?.fundamentals?.totalDebt || 'N/A'}</div>
+                      </div>
+
+                      <div className="property-row-item fundamental-card-enterprise">
+                        <div className="fundamental-card-label">Debt to Equity</div>
+                        <div className="fundamental-card-val">{summaryData?.fundamentals?.debtToEquity || 'N/A'}</div>
+                      </div>
+                    </div>
+
+                    {/* Last 4 Quarters Financial Performance Table */}
+                    {summaryData?.fundamentals?.quarterlyHistory && summaryData.fundamentals.quarterlyHistory.length > 0 && (
+                      <div className="quarterly-performance-card wide">
+                        <div className="quarterly-card-header">
+                          <span className="quarterly-card-title">Last 4 Quarters Financial Performance</span>
+                        </div>
+                        <div className="quarterly-table-wrapper">
+                          <table className="quarterly-data-table wide transposed">
+                            <thead>
+                              <tr>
+                                <th className="q-metric-label">Parameter / Metric</th>
+                                {summaryData.fundamentals.quarterlyHistory.slice(-4).map((q, idx, arr) => {
+                                  const isLatest = idx === arr.length - 1;
+                                  return (
+                                    <th key={q.quarter || idx} className={isLatest ? 'q-latest-col' : ''}>
+                                      {q.quarter}
+                                      {isLatest && <span className="q-latest-badge">LATEST</span>}
+                                    </th>
+                                  );
+                                })}
+                              </tr>
+                            </thead>
+                            <tbody>
+                              <tr>
+                                <td className="q-metric-label">Actual EPS</td>
+                                {summaryData.fundamentals.quarterlyHistory.slice(-4).map((q, idx, arr) => (
+                                  <td key={q.quarter || idx} className={idx === arr.length - 1 ? 'q-latest-col' : ''}>
+                                    {q.epsActual || 'N/A'}
+                                  </td>
+                                ))}
+                              </tr>
+                              <tr>
+                                <td className="q-metric-label">Estimate EPS</td>
+                                {summaryData.fundamentals.quarterlyHistory.slice(-4).map((q, idx, arr) => (
+                                  <td key={q.quarter || idx} className={idx === arr.length - 1 ? 'q-latest-col' : ''}>
+                                    {q.epsEstimate || 'N/A'}
+                                  </td>
+                                ))}
+                              </tr>
+                              <tr>
+                                <td className="q-metric-label">Beat / Miss (%)</td>
+                                {summaryData.fundamentals.quarterlyHistory.slice(-4).map((q, idx, arr) => {
+                                  const isLatest = idx === arr.length - 1;
+                                  const surp = q.surprisePercent;
+                                  if (!surp || surp === 'N/A') {
+                                    return <td key={q.quarter || idx} className={isLatest ? 'q-latest-col' : ''}>N/A</td>;
+                                  }
+                                  const isBeat = !String(surp).startsWith('-');
+                                  return (
+                                    <td key={q.quarter || idx} className={isLatest ? 'q-latest-col' : ''}>
+                                      <span className={`q-surprise-pill ${isBeat ? 'beat' : 'miss'}`}>
+                                        {isBeat ? '▲ ' : '▼ '}{surp}
+                                      </span>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                              <tr>
+                                <td className="q-metric-label">Net Profit</td>
+                                {summaryData.fundamentals.quarterlyHistory.slice(-4).map((q, idx, arr) => (
+                                  <td key={q.quarter || idx} className={idx === arr.length - 1 ? 'q-latest-col' : ''}>
+                                    {q.netProfit || 'N/A'}
+                                  </td>
+                                ))}
+                              </tr>
+                              <tr>
+                                <td className="q-metric-label">QoQ Profit Growth</td>
+                                {summaryData.fundamentals.quarterlyHistory.slice(-4).map((q, idx, arr) => {
+                                  const isLatest = idx === arr.length - 1;
+                                  const val = q.qoqProfitGrowth;
+                                  if (!val || val === 'N/A') {
+                                    return <td key={q.quarter || idx} className={isLatest ? 'q-latest-col' : ''}>N/A</td>;
+                                  }
+                                  const isUp = !String(val).startsWith('-');
+                                  return (
+                                    <td key={q.quarter || idx} className={isLatest ? 'q-latest-col' : ''}>
+                                      <span style={{ color: isUp ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
+                                        {isUp ? '▲ ' : '▼ '}{val}
+                                      </span>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                              <tr>
+                                <td className="q-metric-label">Operating Margin (OPM)</td>
+                                {summaryData.fundamentals.quarterlyHistory.slice(-4).map((q, idx, arr) => (
+                                  <td key={q.quarter || idx} className={idx === arr.length - 1 ? 'q-latest-col' : ''}>
+                                    {q.opm || 'N/A'}
+                                  </td>
+                                ))}
+                              </tr>
+                              <tr>
+                                <td className="q-metric-label">Revenue</td>
+                                {summaryData.fundamentals.quarterlyHistory.slice(-4).map((q, idx, arr) => (
+                                  <td key={q.quarter || idx} className={idx === arr.length - 1 ? 'q-latest-col' : ''}>
+                                    {q.revenue || 'N/A'}
+                                  </td>
+                                ))}
+                              </tr>
+                              <tr>
+                                <td className="q-metric-label">QoQ Revenue Growth</td>
+                                {summaryData.fundamentals.quarterlyHistory.slice(-4).map((q, idx, arr) => {
+                                  const isLatest = idx === arr.length - 1;
+                                  const val = q.qoqRevenueGrowth;
+                                  if (!val || val === 'N/A') {
+                                    return <td key={q.quarter || idx} className={isLatest ? 'q-latest-col' : ''}>N/A</td>;
+                                  }
+                                  const isUp = !String(val).startsWith('-');
+                                  return (
+                                    <td key={q.quarter || idx} className={isLatest ? 'q-latest-col' : ''}>
+                                      <span style={{ color: isUp ? '#22c55e' : '#ef4444', fontWeight: 700 }}>
+                                        {isUp ? '▲ ' : '▼ '}{val}
+                                      </span>
+                                    </td>
+                                  );
+                                })}
+                              </tr>
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </div>
               </div>
 
               <div
@@ -1878,22 +2243,44 @@ export default function EditStockModal({
 
               <div className="deep-view-right-panel themed-scroll">
                 <div className="panel-header">
-                  <div className="terminal-header-title-wrapper">
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="ai-sparkle-icon">
-                      <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-                    </svg>
-                    <span className="section-title">AI Quick Analysis</span>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <select 
-                      value={selectedPromptId} 
-                      onChange={e => setSelectedPromptId(e.target.value)}
-                      className="select-control strategy-select-compact"
+                  <div className="dock-header-tab-bar">
+                    <button
+                      type="button"
+                      className={`dock-tab-btn ${activeRightTab === 'position' ? 'active' : ''}`}
+                      onClick={() => setActiveRightTab('position')}
+                      title="View position details and P&L"
                     >
-                      {allStrategies.map(p => (
-                        <option key={p.id} value={p.id}>{p.label.replace(/\s*\(Active\)\s*/, '')}</option>
-                      ))}
-                    </select>
+                      <span>Position</span>
+                      {positionMetrics && (
+                        <span className={`dock-tab-badge ${positionMetrics.unrealizedPnLPercent >= 0 ? 'badge-green' : 'badge-red'}`}>
+                          {positionMetrics.unrealizedPnLPercent >= 0 ? '+' : ''}{positionMetrics.unrealizedPnLPercent.toFixed(1)}%
+                        </span>
+                      )}
+                    </button>
+                    <button
+                      type="button"
+                      className={`dock-tab-btn ${activeRightTab === 'ai' ? 'active' : ''}`}
+                      onClick={() => setActiveRightTab('ai')}
+                      title="Run AI analysis on this stock"
+                    >
+                      <span>AI Analysis</span>
+                    </button>
+                  </div>
+                </div>
+
+                {activeRightTab === 'ai' && (
+                  <div className="ai-strategy-toolbar">
+                    <div className="strategy-select-wrapper" title="Select AI Strategy Prompt">
+                      <select 
+                        value={selectedPromptId} 
+                        onChange={e => setSelectedPromptId(e.target.value)}
+                        className="strategy-select-compact"
+                      >
+                        {allStrategies.map(p => (
+                          <option key={p.id} value={p.id}>{p.label.replace(/\s*\(Active\)\s*/, '')}</option>
+                        ))}
+                      </select>
+                    </div>
                     {!loadingAi && (() => {
                       const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
                       return (
@@ -1909,8 +2296,12 @@ export default function EditStockModal({
                       );
                     })()}
                   </div>
-                </div>
+                )}
+
                 <div className="ai-content-area">
+                  {activeRightTab === 'position' && renderPositionTabContent()}
+                  {activeRightTab === 'ai' && (
+                    <>
                   {loadingAi && (
                     <div className="ai-loading-shimmer-v2">
                       <div className="shimmer-bone-title" />
@@ -1942,6 +2333,8 @@ export default function EditStockModal({
                       <p className="placeholder-secondary">Select <strong>'Analyze'</strong> above to begin deep search.</p>
                     </div>
                   )}
+                    </>
+                  )}
                 </div>
               </div>
               </div>
@@ -1955,19 +2348,8 @@ export default function EditStockModal({
                     onClick={handleDelete} 
                     className="btn-premium-danger"
                     title="Delete Stock (Shortcut: Alt + Del or Del)"
-                    style={{
-                      background: 'rgba(239, 68, 68, 0.1)',
-                      border: '1px solid rgba(239, 68, 68, 0.3)',
-                      color: '#ef4444',
-                      padding: '8px 16px',
-                      borderRadius: '6px',
-                      fontSize: '12px',
-                      fontWeight: '700',
-                      cursor: 'pointer',
-                      transition: 'all 0.2s'
-                    }}
                   >
-                    Delete Stock <span style={{ opacity: 0.7, fontSize: '10px', marginLeft: '4px' }}>(Alt+Del)</span>
+                    Delete Stock <span className="btn-shortcut-hint">(Alt+Del)</span>
                   </button>
                 )}
               </div>
@@ -1998,22 +2380,10 @@ export default function EditStockModal({
               {onDeleteStock && (
                 <button 
                   onClick={handleDelete} 
-                  className="btn-premium-danger"
+                  className="btn-premium-danger flex-mr-auto"
                   title="Delete Stock (Shortcut: Alt + Del or Del)"
-                  style={{
-                    background: 'rgba(239, 68, 68, 0.1)',
-                    border: '1px solid rgba(239, 68, 68, 0.3)',
-                    color: '#ef4444',
-                    padding: '8px 16px',
-                    borderRadius: '6px',
-                    fontSize: '12px',
-                    fontWeight: '700',
-                    cursor: 'pointer',
-                    transition: 'all 0.2s',
-                    marginRight: 'auto'
-                  }}
                 >
-                  Delete Stock <span style={{ opacity: 0.7, fontSize: '10px', marginLeft: '4px' }}>(Alt+Del)</span>
+                  Delete Stock <span className="btn-shortcut-hint">(Alt+Del)</span>
                 </button>
               )}
               {onQuickLog && (
