@@ -28,7 +28,7 @@ class LRUFundamentalsCache {
     this.saveToStorage();
   }
 
-  isValid(key, ttlMs = 24 * 60 * 60 * 1000) {
+  isValid(key, ttlMs = 8 * 60 * 60 * 1000) {
     const item = this.get(key);
     if (!item || !item.data) return false;
     // Don't treat cached failed attempts (all N/A) as valid
@@ -44,17 +44,12 @@ class LRUFundamentalsCache {
     return (Date.now() - item.fetchedAt) < ttlMs;
   }
 
-  clear() {
-    this.cache.clear();
-    this.saveToStorage();
-  }
-
   async saveToStorage() {
     try {
       const serialized = {};
       const now = Date.now();
       for (const [key, item] of this.cache.entries()) {
-        if (item && item.data && item.data.hasRawData !== false && (now - item.fetchedAt < 24 * 60 * 60 * 1000)) {
+        if (item && item.data && item.data.hasRawData !== false && (now - item.fetchedAt < 8 * 60 * 60 * 1000)) {
           serialized[key] = item;
         }
       }
@@ -83,7 +78,7 @@ class LRUFundamentalsCache {
       if (stored) {
         const now = Date.now();
         Object.entries(stored).forEach(([key, item]) => {
-          if (item && item.data && item.data.hasRawData !== false && (now - item.fetchedAt < 24 * 60 * 60 * 1000)) {
+          if (item && item.data && item.data.hasRawData !== false && (now - item.fetchedAt < 8 * 60 * 60 * 1000)) {
             const qHist = item.data.fundamentals?.quarterlyHistory;
             if (Array.isArray(qHist) && qHist.some(q => q.netProfit && q.netProfit !== 'N/A')) {
               this.cache.set(key, item);
@@ -93,6 +88,17 @@ class LRUFundamentalsCache {
       }
     } catch (e) {
       console.warn("Failed to load fundamentals cache from storage:", e);
+    }
+  }
+
+  async clear() {
+    this.cache.clear();
+    const storageKey = 'trade_clarity_fundamentals_v5_cache';
+    if (typeof chrome !== 'undefined' && typeof chrome.storage?.local?.remove === 'function') {
+      await chrome.storage.local.remove(storageKey);
+    }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.removeItem(storageKey);
     }
   }
 }

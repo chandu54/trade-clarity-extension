@@ -118,6 +118,9 @@ export default function UserGuideModal({
                     <strong>Theme (🌗):</strong> Toggle the Sun/Moon icon or press <strong>Alt + T</strong> to switch
                     between Light and Dark modes.
                   </li>
+                  <li>
+                    <strong>Full Screen Mode (⛶):</strong> Click the Expand/Compress icon or press <strong>Alt + F</strong> to expand TradeClarity to 100% full screen mode without UI distractions.
+                  </li>
                 </ul>
               </Section>
 
@@ -464,6 +467,12 @@ export default function UserGuideModal({
                   <li>
                     <strong>Auto-Fetch Metrics:</strong> If enabled in Rules, adding new stocks will automatically fetch and calculate their ADR and Liquidity in the background.
                   </li>
+                  <li>
+                    <strong>Imminent Earnings Countdown (&lt;= 5d):</strong> When opening the Edit Stock modal for any stock, the sidebar list automatically highlights all eligible stocks that have earnings within 5 days (e.g. <code>AAPL &lt;3d&gt;</code>) next to their prices.
+                  </li>
+                  <li>
+                    <strong>8-Hour Cache & Dynamic Countdown:</strong> Earnings & Fundamentals data is cached with an 8-hour TTL policy and dynamically calculates exact days remaining from your current local clock, ensuring date countdowns stay 100% accurate.
+                  </li>
                 </ul>
               </Section>
 
@@ -560,6 +569,12 @@ export default function UserGuideModal({
                   <li>
                     <strong>Custom AI Strategies:</strong> Go to <em>Settings {"→"} AI Settings</em> to create your own instructions. You can define specific ways the AI should evaluate your watchlist (e.g. 'Conservative Evaluation', 'Aggressive Growth Focus'). Learn more details in the <strong>AI & Strategy Library</strong> tab of this guide!
                   </li>
+                  <li>
+                    <strong>Circuit Breakers & Rate Limits:</strong> On HTTP 429 API quota limit errors, the app triggers an automatic 15-minute circuit breaker to protect your API quota and displays a countdown notice banner.
+                  </li>
+                  <li>
+                    <strong>Manual AI Cancellation (⏹ Stop AI):</strong> Click the red <strong>⏹ Stop AI</strong> mini button rendered inside the toolbar progress badge anytime to abort active bulk AI analysis or sector detection manually.
+                  </li>
                 </ul>
               </Section>
 
@@ -647,6 +662,7 @@ export default function UserGuideModal({
                   <li><strong>Alt + A:</strong> Open Analytics Dashboard</li>
                   <li><strong>Alt + I:</strong> Generate AI Insights</li>
                   <li><strong>Alt + T:</strong> Toggle Light/Dark Theme</li>
+                  <li><strong>Alt + F:</strong> Toggle Full Screen Mode</li>
                   <li><strong>Escape:</strong> Close active modal</li>
                 </ul>
               </Section>

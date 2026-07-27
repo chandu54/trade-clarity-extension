@@ -24,6 +24,7 @@ import "./styles.css";
 import { loadData, saveData } from "./services/storage";
 import { useModalState } from "./hooks/useModalState";
 import { useTheme } from "./hooks/useTheme";
+import { useFullscreen } from "./hooks/useFullscreen";
 import { EMPTY_DATA } from "./constants/app";
 import { getLatestWeekKey, isWeekReadOnly, getLocalDateString, getSundayOfWeek } from "./utils/weekHelpers";
 import { isParamRelevantForCountry, scrubParamDefinitions } from "./utils/paramUtils";
@@ -46,6 +47,7 @@ function AppContent() {
   const { theme, toggleTheme } = useTheme(data?.theme, (newTheme) => {
     setData(prev => ({ ...prev, theme: newTheme }));
   });
+  const { isFullscreen, toggleFullscreen } = useFullscreen();
   const modals = useModalState();
   const hasLoaded = useRef(false);
   const isSyncingFromStorageRef = useRef(false);
@@ -196,11 +198,15 @@ function AppContent() {
         e.preventDefault();
         toggleTheme();
       }
+      if (e.altKey && e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        toggleFullscreen();
+      }
     };
 
     window.addEventListener("keydown", handleGlobalKeyDown);
     return () => window.removeEventListener("keydown", handleGlobalKeyDown);
-  }, [modals, toggleTheme]);
+  }, [modals, toggleTheme, toggleFullscreen]);
 
   /* =========================
      HANDLERS
@@ -421,6 +427,8 @@ function AppContent() {
         onManageWatchlists={() => modals.setShowManageWatchlists(true)}
         theme={theme}
         onToggleTheme={toggleTheme}
+        isFullscreen={isFullscreen}
+        onToggleFullscreen={toggleFullscreen}
         country={country}
         setCountry={handleCountryChange}
         activeTab={activeTab}

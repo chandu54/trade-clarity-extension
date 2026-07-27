@@ -424,26 +424,33 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3)
       clearTimeout(timeoutId);
 
       if (!response.ok) {
-        const err = await response.json().catch(() => ({}));
+        let err = {};
+        try {
+          if (typeof response.json === 'function') {
+            err = (await response.json()) || {};
+          }
+        } catch (_e) {
+          err = {};
+        }
         const errMessage =
           err.error?.message ||
-          `Gemini API Error: ${response.status} ${response.statusText} (${cleanModel})`;
+          `Gemini API Error: ${response.status} ${response.statusText || ''} (${cleanModel})`.trim();
 
-        // Handle rate-limit (429) with smart retry
-        if (response.status === 429 && attempt < retries) {
-          const waitMs = Math.min(parseRetryAfterMs(errMessage), 120000); // cap at 2 minutes
-          const waitSeconds = Math.round(waitMs / 1000);
-          console.warn(
-            `[AI] Rate limit hit (attempt ${attempt}/${retries}). Waiting ${waitSeconds}s before retry...`
-          );
-          for (let s = waitSeconds; s > 0; s--) {
+        // Quota / Credit Exhaustion Circuit Breaker
+        if (
+          response.status === 429 ||
+          errMessage.includes("RESOURCE_EXHAUSTED") ||
+          errMessage.includes("QuotaExceeded")
+        ) {
+          const blockedUntil = Date.now() + 15 * 60 * 1000; // 15 minute circuit breaker
+          await updateAiState(3, blockedUntil);
+          if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
             chrome.runtime.sendMessage({
-              action: "BULK_AI_RATE_LIMIT_WAIT",
-              payload: { waitSeconds: s }
+              action: "AI_LIMIT_REACHED",
+              payload: { blockedUntil }
             }).catch(() => {});
-            await new Promise(r => setTimeout(r, 1000));
           }
-          continue; // retry
+          throw new Error(`AI Request Limit Reached. Available again in 900s.`);
         }
 
         throw new Error(errMessage);
@@ -762,10 +769,14 @@ export async function classifySectorsInBulk(
   model,
   stocks,
   country,
-  availableSectors = []
+  availableSectors = [],
+  signal = null
 ) {
   if (!apiKey || !stocks || stocks.length === 0) {
     return {};
+  }
+  if (signal?.aborted) {
+    throw new Error("Bulk AI sector classification aborted.");
   }
   
   const sectorsList = availableSectors.map(s => s.name || s).join(", ");
@@ -802,6 +813,9 @@ export async function classifySectorsInBulk(
     return res || {};
   } catch (error) {
     console.error("[AI Bulk Sector Classification Failed]:", error);
+    if (error?.message && error.message.includes("AI Request Limit Reached")) {
+      throw error;
+    }
     return {};
   }
 }

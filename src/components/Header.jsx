@@ -99,6 +99,24 @@ const MoonIcon = () => (
   </svg>
 );
 
+const FullscreenExpandIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="header-icon">
+    <polyline points="15 3 21 3 21 9" />
+    <polyline points="9 21 3 21 3 15" />
+    <line x1="21" y1="3" x2="14" y2="10" />
+    <line x1="3" y1="21" x2="10" y2="14" />
+  </svg>
+);
+
+const FullscreenCompressIcon = () => (
+  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="header-icon">
+    <polyline points="4 14 10 14 10 20" />
+    <polyline points="20 10 14 10 14 4" />
+    <line x1="14" y1="10" x2="21" y2="3" />
+    <line x1="10" y1="14" x2="3" y2="21" />
+  </svg>
+);
+
 const BookIcon = () => (
   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="header-icon">
     <path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20" />
@@ -106,7 +124,7 @@ const BookIcon = () => (
   </svg>
 );
 
-export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll, onManageTags, onManageWatchlists, theme, onToggleTheme, onShowSettings, onShowUserGuide, country, setCountry }) {
+export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll, onManageTags, onManageWatchlists, theme, onToggleTheme, isFullscreen, onToggleFullscreen, onShowSettings, onShowUserGuide, country, setCountry }) {
   const [open, setOpen] = useState(false);
   const [regionOpen, setRegionOpen] = useState(false);
   const menuRef = useRef(null);
@@ -144,7 +162,7 @@ export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll
     }
   };
 
-  const CurrentFlag = FLAGS[country];
+  const CurrentFlag = FLAGS[country] || USFlag;
 
   return (
     <div className="header">
@@ -158,6 +176,7 @@ export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll
           <span className="app-tagline-v2">Your disciplined path to smarter trades</span>
         </div>
       </div>
+
       <div className="header-tabs">
         {[
           { id: 'watchlists', label: 'Watchlists' },
@@ -173,6 +192,7 @@ export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll
           </button>
         ))}
       </div>
+
       <div className="header-actions">
         <div className="header-group system-controls">
           <div className="region-selector-v2" ref={regionRef}>
@@ -212,6 +232,14 @@ export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll
             title={theme === "dark" ? "Switch to Light Theme (Alt + T)" : "Switch to Dark Theme (Alt + T)"}
           >
             {theme === "dark" ? <SunIcon /> : <MoonIcon />}
+          </div>
+
+          <div
+            className="theme-toggle fullscreen-toggle"
+            onClick={onToggleFullscreen}
+            title={isFullscreen ? "Exit Full Screen (Alt + F)" : "Full Screen Mode (Alt + F)"}
+          >
+            {isFullscreen ? <FullscreenCompressIcon /> : <FullscreenExpandIcon />}
           </div>
         </div>
 

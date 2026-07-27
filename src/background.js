@@ -80,6 +80,16 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     }
     sendResponse({ status: "started" });
   }
+
+  if (message.action === "STOP_BULK_AI") {
+    bulkAiQueue = [];
+    isAiProcessing = false;
+    chrome.runtime.sendMessage({
+      action: "BULK_AI_PROGRESS",
+      payload: { total: 0, completed: 0 }
+    }).catch(() => {});
+    sendResponse({ status: "stopped" });
+  }
   return true;
 });
 

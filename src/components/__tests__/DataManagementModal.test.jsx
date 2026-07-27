@@ -1,5 +1,5 @@
 import React from "react";
-import { render, screen, fireEvent } from "@testing-library/react";
+import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import DataManagementModal from "../DataManagementModal";
 
@@ -132,5 +132,27 @@ describe("DataManagementModal Components", () => {
     // Execute Delete
     fireEvent.click(permanentDeleteBtn);
     expect(mockSetData).toHaveBeenCalled();
+  });
+
+  it("clears quote and fundamentals cache when Clear Quote Cache button is clicked", async () => {
+    render(
+      <DataManagementModal
+        isOpen={true}
+        onClose={mockOnClose}
+        data={mockData}
+        setData={mockSetData}
+        country="US"
+        weekKey="2024-04-07"
+        setWeekKey={mockSetWeekKey}
+      />
+    );
+
+    const clearBtn = screen.getByRole("button", { name: /Clear Cache/i });
+    expect(clearBtn).toBeInTheDocument();
+
+    fireEvent.click(clearBtn);
+    await waitFor(() => {
+      expect(screen.getByText(/Quote & stock price cache cleared/i)).toBeInTheDocument();
+    });
   });
 });

@@ -21,6 +21,7 @@ export default defineConfig({
   build: {
     outDir: "../extension",
     emptyOutDir: true, // Clear the extension folder before building
+    chunkSizeWarningLimit: 1000,
     rollupOptions: {
       input: {
         dashboard: resolve(__dirname, "dashboard.html"),

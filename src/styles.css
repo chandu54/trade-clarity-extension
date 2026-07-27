@@ -15210,6 +15210,60 @@ tr:hover .quick-log-trigger-btn {
   border: 1px solid rgba(239, 68, 68, 0.3) !important;
 }
 
+.btn-stop-ai-mini {
+  margin-left: 8px !important;
+  padding: 3px 10px !important;
+  font-family: var(--font-mono, monospace) !important;
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  line-height: 1.2 !important;
+  border-radius: 9999px !important;
+  cursor: pointer !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 4px !important;
+  letter-spacing: 0.02em !important;
+  user-select: none !important;
+  
+  /* Light Mode styling */
+  color: #dc2626 !important;
+  background: rgba(239, 68, 68, 0.12) !important;
+  border: 1px solid rgba(239, 68, 68, 0.4) !important;
+  box-shadow: 0 1px 3px rgba(239, 68, 68, 0.15) !important;
+}
+
+.btn-stop-ai-mini:hover {
+  color: #ffffff !important;
+  background: #ef4444 !important;
+  border-color: #ef4444 !important;
+  box-shadow: 0 0 10px rgba(239, 68, 68, 0.45) !important;
+  transform: translateY(-1px) scale(1.02) !important;
+}
+
+.btn-stop-ai-mini:active {
+  transform: translateY(0) scale(0.97) !important;
+}
+
+/* Dark Mode Fine-Tuning */
+body.dark .btn-stop-ai-mini,
+.dark-theme .btn-stop-ai-mini,
+[data-theme="dark"] .btn-stop-ai-mini {
+  color: #fca5a5 !important;
+  background: rgba(239, 68, 68, 0.22) !important;
+  border: 1px solid rgba(248, 113, 113, 0.45) !important;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.2) !important;
+}
+
+body.dark .btn-stop-ai-mini:hover,
+.dark-theme .btn-stop-ai-mini:hover,
+[data-theme="dark"] .btn-stop-ai-mini:hover {
+  color: #ffffff !important;
+  background: #ef4444 !important;
+  border-color: #f87171 !important;
+  box-shadow: 0 0 14px rgba(239, 68, 68, 0.6) !important;
+}
+
 .imminent-earnings-sidebar-badge {
   background: rgba(245, 158, 11, 0.18) !important;
   color: #f59e0b !important;

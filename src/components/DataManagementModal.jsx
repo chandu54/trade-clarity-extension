@@ -1,8 +1,12 @@
 import React, { useState } from "react";
 import Modal from "./Modal";
 import { getActualCurrentSunday, getLatestWeekKey, getLocalDateString, getSundayOfWeek, getWeekRangeLabel } from "../utils/weekHelpers";
+import { globalQuoteCache } from "../utils/yahooFinanceMap";
+import { globalFundamentalsCache } from "../utils/stockAnalysisApi";
+import { useToast } from "./ToastContext";
 
 const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey, setWeekKey }) => {
+  const { showToast } = useToast();
   const [selectedWeeks, setSelectedWeeks] = useState([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -21,6 +25,22 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
       setSaveStatus("");
     }
   }
+
+  const handleClearStockCaches = async () => {
+    try {
+      globalQuoteCache.clear();
+      await globalFundamentalsCache.clear();
+      const msg = "Quote & stock price cache cleared! (Sector cache preserved)";
+      showToast?.(msg, "success");
+      setSaveStatus(msg);
+      setTimeout(() => {
+        setSaveStatus("");
+      }, 3500);
+    } catch (err) {
+      console.error("Failed to clear stock quote cache:", err);
+      showToast?.("Failed to clear quote cache.", "error");
+    }
+  };
 
   const actualCurrentSunday = getActualCurrentSunday();
   const storedWeeksKeys = Object.keys(data?.weeks?.[country] || {}).sort().reverse();
@@ -69,7 +89,7 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
     setSelectedWeeks([]);
     setConfirmText("");
     setShowConfirm(false);
-
+  
     setTimeout(() => {
       setSaveStatus("");
     }, 3000);
@@ -95,56 +115,82 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
 
         {!showConfirm ? (
           // --- VIEW 1: SELECTION LIST ---
-          <div className="settings-card">
-            <label className="settings-label-v2 settings-label-mb">
-              Select Weeks to Delete
-              <span className="info-icon" title="Check weeks you want to purge permanently" />
-            </label>
+          <>
+            <div className="settings-card">
+              <label className="settings-label-v2 settings-label-mb">
+                Select Weeks to Delete
+                <span className="info-icon" title="Check weeks you want to purge permanently" />
+              </label>
 
-            <div className="data-management-list">
-              {storedWeeksKeys.length === 0 && (
-                <div className="dm-empty-state">No weeks found.</div>
-              )}
-              {storedWeeksKeys.map((wk) => {
-                const isCurrent = wk === actualCurrentSunday;
-                const isSelected = selectedWeeks.includes(wk);
+              <div className="data-management-list">
+                {storedWeeksKeys.length === 0 && (
+                  <div className="dm-empty-state">No weeks found.</div>
+                )}
+                {storedWeeksKeys.map((wk) => {
+                  const isCurrent = wk === actualCurrentSunday;
+                  const isSelected = selectedWeeks.includes(wk);
 
-                return (
-                  <div 
-                    key={wk} 
-                    className={`data-week-row ${isCurrent ? 'locked' : ''} ${isSelected ? 'selected' : ''}`}
-                    onClick={() => !isCurrent && toggleWeekSelection(wk)}
-                  >
-                    <div className="data-week-row-left">
-                      <div className={`multi-select-checkbox ${isSelected ? "checked" : ""}`}>
-                        {isSelected && (
-                          <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
-                            <polyline points="20 6 9 17 4 12" />
-                          </svg>
-                        )}
+                  return (
+                    <div 
+                      key={wk} 
+                      className={`data-week-row ${isCurrent ? 'locked' : ''} ${isSelected ? 'selected' : ''}`}
+                      onClick={() => !isCurrent && toggleWeekSelection(wk)}
+                    >
+                      <div className="data-week-row-left">
+                        <div className={`multi-select-checkbox ${isSelected ? "checked" : ""}`}>
+                          {isSelected && (
+                            <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="4" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="20 6 9 17 4 12" />
+                            </svg>
+                          )}
+                        </div>
+                        <div className="data-week-labels">
+                          <span className="data-week-label">Week: {getWeekRangeLabel(wk)}</span>
+                          <span className="data-week-sync-info">
+                            Last Synced: {data.weeks?.[country]?.[wk]?.lastSyncDate || "Never"}
+                          </span>
+                        </div>
                       </div>
-                      <div className="data-week-labels">
-                        <span className="data-week-label">Week: {getWeekRangeLabel(wk)}</span>
-                        <span className="data-week-sync-info">
-                          Last Synced: {data.weeks?.[country]?.[wk]?.lastSyncDate || "Never"}
+
+                      {isCurrent && (
+                        <span className="locked-badge">
+                          Current Active (Locked)
                         </span>
-                      </div>
+                      )}
                     </div>
+                  );
+                })}
+              </div>
+              
+              <div className="settings-footer-note dm-footer-note">
+                You cannot delete the active current calendar week.
+              </div>
+            </div>
 
-                    {isCurrent && (
-                      <span className="locked-badge">
-                        Current Active (Locked)
-                      </span>
-                    )}
+            <div className="settings-card" style={{ marginTop: "16px" }}>
+              <label className="settings-label-v2 settings-label-mb flex justify-between items-center">
+                <span>Quote & Stock Cache Management</span>
+                <span className="info-icon" title="Purge local price & fundamental quote cache while preserving sector classifications" />
+              </label>
+              <div className="flex justify-between items-center py-2">
+                <div className="pr-4">
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    Clear Quote & Stock Cache
                   </div>
-                );
-              })}
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Purges temporary market prices and fundamentals cache. Sector Cache (<code>stockSectorCache</code>) remains completely intact.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="settings-btn-v2 dm-btn-outline-danger shrink-0"
+                  onClick={handleClearStockCaches}
+                >
+                  Clear Cache
+                </button>
+              </div>
             </div>
-            
-            <div className="settings-footer-note dm-footer-note">
-              You cannot delete the active current calendar week.
-            </div>
-          </div>
+          </>
         ) : (
           // --- VIEW 2: CONFIRMATION DANGER ZONE ---
           <div className="settings-card danger-zone-card">

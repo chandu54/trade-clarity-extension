@@ -417,6 +417,13 @@ export default function StockGrid({
   }, [country, weekKey, setData]);
 
   const handleDetectSectors = useCallback(async () => {
+    const isAiBlocked = aiSettings?.aiState?.blockedUntil && aiSettings.aiState.blockedUntil > Date.now();
+    if (isAiBlocked) {
+      const remainingSecs = Math.ceil((aiSettings.aiState.blockedUntil - Date.now()) / 1000);
+      showToast(`AI Credit Limit Reached. Available again in ${remainingSecs}s.`, "error");
+      return;
+    }
+
     const watchlistStocks = allStocks.filter(
       (s) => selectedWatchlistId === "all" || s.watchlists?.includes(selectedWatchlistId)
     );
@@ -429,6 +436,11 @@ export default function StockGrid({
     }
 
     setDetectingSectors(true);
+    if (aiAbortControllerRef.current) {
+      aiAbortControllerRef.current.abort();
+    }
+    aiAbortControllerRef.current = new AbortController();
+
     try {
       const resolvedMappings = {};
       const remainingForAi = [];
@@ -472,7 +484,8 @@ export default function StockGrid({
           model,
           remainingForAi.map((s) => ({ symbol: s.symbol, companyName: s.name || "" })),
           country,
-          availableSectors
+          availableSectors,
+          aiAbortControllerRef.current.signal
         );
 
         Object.entries(aiMappings).forEach(([sym, valObj]) => {
@@ -489,8 +502,14 @@ export default function StockGrid({
         showToast("No sectors could be resolved for the stocks.", "warning");
       }
     } catch (err) {
-      console.error("Manual sector detection failed:", err);
-      showToast(`Sector detection failed: ${err.message || err}`, "error");
+      if (err.name === 'AbortError' || err.message?.includes('aborted')) {
+        console.log("Sector detection aborted by user.");
+      } else if (err.message?.includes('AI Request Limit Reached')) {
+        showToast("AI Credit Limit Reached. Available again shortly.", "error");
+      } else {
+        console.error("Manual sector detection failed:", err);
+        showToast(`Sector detection failed: ${err.message || err}`, "error");
+      }
     } finally {
       setDetectingSectors(false);
     }
@@ -581,6 +600,21 @@ export default function StockGrid({
     completed: 0,
   });
   const [rateLimitWait, setRateLimitWait] = useState(null); // { waitSeconds, completed, total }
+  const aiAbortControllerRef = useRef(null);
+
+  const handleStopBulkAi = useCallback(() => {
+    if (aiAbortControllerRef.current) {
+      aiAbortControllerRef.current.abort();
+    }
+    if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({ action: "STOP_BULK_AI" }).catch(() => {});
+    }
+    setDetectingSectors(false);
+    setAiProgress({ total: 0, completed: 0 });
+    setRateLimitWait(null);
+    showToast("Bulk AI Analysis stopped.", "info");
+  }, [showToast]);
+
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef(null);
 
@@ -1336,12 +1370,30 @@ export default function StockGrid({
     setData((prev) => {
       const prevWeek = prev.weeks[country][weekKey];
       const newStocks = { ...prevWeek.stocks };
+      const newCache = { ...(prev.stockSectorCache || {}) };
+      const newSectorsList = [...(prev.uiConfig?.sectors || prev.sectors || [])];
 
       symbols.forEach((symbol) => {
+        const symUpper = symbol.toUpperCase();
+        const cachedSector =
+          newCache[symUpper] || stockMetadata[country]?.[symUpper]?.sector || "";
+
+        if (cachedSector) {
+          if (!newCache[symUpper]) {
+            newCache[symUpper] = cachedSector;
+          }
+          const exists = newSectorsList.some(
+            (sec) => (sec.name || "").toLowerCase() === cachedSector.toLowerCase()
+          );
+          if (!exists) {
+            newSectorsList.push({ name: cachedSector, countries: [country] });
+          }
+        }
+
         if (!newStocks[symbol]) {
           newStocks[symbol] = {
             symbol,
-            sector: "",
+            sector: cachedSector,
             tradable: false,
             notes: "",
             tags: [],
@@ -1355,6 +1407,7 @@ export default function StockGrid({
           );
           newStocks[symbol] = {
             ...existing,
+            sector: existing.sector || cachedSector,
             watchlists: mergedWls,
           };
         }
@@ -1362,6 +1415,11 @@ export default function StockGrid({
 
       return {
         ...prev,
+        stockSectorCache: newCache,
+        uiConfig: {
+          ...(prev.uiConfig || {}),
+          sectors: newSectorsList,
+        },
         weeks: {
           ...prev.weeks,
           [country]: {
@@ -1743,14 +1801,35 @@ export default function StockGrid({
     setData((prev) => {
       const prevWeekData = prev.weeks[country]?.[weekKey] || { stocks: {} };
       const newStocks = { ...prevWeekData.stocks };
+      const newCache = { ...(prev.stockSectorCache || {}) };
+      const newSectorsList = [...(prev.uiConfig?.sectors || prev.sectors || [])];
 
       stocksArray.forEach((s) => {
         if (s.symbol) {
+          const symUpper = s.symbol.toUpperCase();
           const existing = newStocks[s.symbol];
+          const resolvedSector =
+            s.sector ||
+            existing?.sector ||
+            newCache[symUpper] ||
+            stockMetadata[country]?.[symUpper]?.sector ||
+            "";
+
+          if (resolvedSector) {
+            if (!newCache[symUpper]) {
+              newCache[symUpper] = resolvedSector;
+            }
+            const exists = newSectorsList.some(
+              (sec) => (sec.name || "").toLowerCase() === resolvedSector.toLowerCase()
+            );
+            if (!exists) {
+              newSectorsList.push({ name: resolvedSector, countries: [country] });
+            }
+          }
 
           const base = {
             symbol: s.symbol,
-            sector: "",
+            sector: resolvedSector,
             tradable: false,
             notes: "",
             tags: [],
@@ -1762,7 +1841,7 @@ export default function StockGrid({
             ...existing,
             ...s,
             // Preserve existing populated fields — don't let empty import data wipe them
-            sector: s.sector || existing?.sector || "",
+            sector: resolvedSector,
             notes: s.notes || existing?.notes || "",
             tradable: (s.tradable !== undefined && s.tradable !== false) ? s.tradable : (existing?.tradable || false),
             params: { ...(existing?.params || {}), ...(s.params || {}) },
@@ -1779,6 +1858,11 @@ export default function StockGrid({
 
       return {
         ...prev,
+        stockSectorCache: newCache,
+        uiConfig: {
+          ...(prev.uiConfig || {}),
+          sectors: newSectorsList,
+        },
         weeks: {
           ...prev.weeks,
           [country]: {
@@ -2331,6 +2415,14 @@ export default function StockGrid({
                 <span className="percent">
                   {Math.round((aiProgress.completed / aiProgress.total) * 100)}%
                 </span>
+                <button
+                  type="button"
+                  className="btn-stop-ai-mini"
+                  onClick={handleStopBulkAi}
+                  title="Cancel running AI analysis"
+                >
+                  ⏹ Stop AI
+                </button>
               </div>
             )}
           </div>

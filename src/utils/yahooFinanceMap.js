@@ -63,6 +63,13 @@ export class LRUQuoteCache {
   clear() {
     this.cache.clear();
     saveQuoteCacheToStorage();
+    if (typeof chrome !== 'undefined' && typeof chrome.storage?.local?.remove === 'function') {
+      chrome.storage.local.remove('trading_app_data.quoteCache');
+    }
+    if (typeof window !== 'undefined' && window.localStorage) {
+      localStorage.removeItem('trading_app_data.quoteCache');
+      localStorage.removeItem('trading_app_data.stockQuotes');
+    }
   }
 }
 

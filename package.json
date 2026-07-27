@@ -14,6 +14,7 @@
     "test:journal": "vitest run --config vite.config.js Journal",
     "test:settings": "vitest run --config vite.config.js Settings",
     "test:utils": "vitest run --config vite.config.js utils",
+    "test:e2e": "vitest run --config vite.config.js e2e",
     "update-metadata-db": "node scripts/generateMetadataDb.js"
   },
   "dependencies": {

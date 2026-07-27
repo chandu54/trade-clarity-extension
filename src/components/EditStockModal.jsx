@@ -9,24 +9,17 @@ import { fetchStockSummary, globalFundamentalsCache } from "../utils/stockAnalys
 
 const getSidebarEarningsDays = (s, sidebarData, formData, summaryData, country) => {
   if (!s) return null;
-  if (s.symbol === formData?.symbol && summaryData?.catalysts) {
-    if (typeof summaryData.catalysts.earningsDaysAway === 'number') {
-      return summaryData.catalysts.earningsDaysAway;
-    }
-  }
 
   const tickerKey = (country === 'IN' || s.symbol?.endsWith('.NS') || s.symbol?.endsWith('.BO')) && !s.symbol?.endsWith('.NS') && !s.symbol?.endsWith('.BO') ? `${s.symbol}.NS_${country}` : `${s.symbol}_${country}`;
   const cachedItem = globalFundamentalsCache.get(tickerKey) || globalFundamentalsCache.get(`${s.symbol}_${country}`);
-  if (cachedItem?.data?.catalysts) {
-    if (typeof cachedItem.data.catalysts.earningsDaysAway === 'number') {
-      return cachedItem.data.catalysts.earningsDaysAway;
-    }
-  }
 
-  if (typeof sidebarData?.earningsDaysAway === 'number') return sidebarData.earningsDaysAway;
-  if (typeof s?.earningsDaysAway === 'number') return s.earningsDaysAway;
+  // Dynamic Date calculation from raw earnings date string (always accurate against current Date.now())
+  const rawDate = (s.symbol === formData?.symbol ? summaryData?.catalysts?.earningsDate : null) ||
+                  sidebarData?.earningsDate ||
+                  s?.earningsDate ||
+                  s?.params?.earningsDate ||
+                  cachedItem?.data?.catalysts?.earningsDate;
 
-  const rawDate = sidebarData?.earningsDate || s?.earningsDate || s?.params?.earningsDate || cachedItem?.data?.catalysts?.earningsDate;
   if (rawDate) {
     try {
       const d = new Date(rawDate);
@@ -37,6 +30,23 @@ const getSidebarEarningsDays = (s, sidebarData, formData, summaryData, country) 
       /* ignore date parse error */
     }
   }
+
+  // Fallback to static days away fields if rawDate is unavailable
+  if (s.symbol === formData?.symbol && summaryData?.catalysts) {
+    if (typeof summaryData.catalysts.earningsDaysAway === 'number') {
+      return summaryData.catalysts.earningsDaysAway;
+    }
+  }
+
+  if (cachedItem?.data?.catalysts) {
+    if (typeof cachedItem.data.catalysts.earningsDaysAway === 'number') {
+      return cachedItem.data.catalysts.earningsDaysAway;
+    }
+  }
+
+  if (typeof sidebarData?.earningsDaysAway === 'number') return sidebarData.earningsDaysAway;
+  if (typeof s?.earningsDaysAway === 'number') return s.earningsDaysAway;
+
   return null;
 };
 
@@ -540,7 +550,8 @@ export default function EditStockModal({
             dailyChangePct: r.dailyChangePct,
             isAdvancing: r.isAdvancing,
             currentPrice: r.currentPrice,
-            earningsDate: r.earningsDate
+            earningsDate: r.earningsDate,
+            earningsDaysAway: r.earningsDaysAway
           };
         });
         setSidebarStockData(mapping);
@@ -554,21 +565,66 @@ export default function EditStockModal({
     }
   }, [sortedSymbolsSerialized, country]);
 
-  // Fetch 1d daily quotes in background on mount or symbols list changes (once sidebar is visible)
+  // Background fetch earnings / catalyst days for sidebar items
+  const fetchSidebarEarnings = useCallback(async (signal = null) => {
+    if (!sortedSymbolsSerialized) return;
+    const symbols = sortedSymbolsSerialized.split(",").filter(Boolean);
+    if (symbols.length === 0) return;
+
+    const toFetch = symbols.filter(sym => {
+      const tickerKey = (country === 'IN' || sym.endsWith('.NS') || sym.endsWith('.BO')) && !sym.endsWith('.NS') && !sym.endsWith('.BO') ? `${sym}.NS_${country}` : `${sym}_${country}`;
+      const cached = globalFundamentalsCache.get(tickerKey) || globalFundamentalsCache.get(`${sym}_${country}`);
+      return !cached?.data?.catalysts;
+    });
+
+    if (toFetch.length === 0) return;
+
+    const CHUNK_SIZE = 4;
+    for (let i = 0; i < toFetch.length; i += CHUNK_SIZE) {
+      if (signal?.aborted) break;
+      const chunk = toFetch.slice(i, i + CHUNK_SIZE);
+      await Promise.all(
+        chunk.map(async (sym) => {
+          try {
+            const summary = await fetchStockSummary(sym, country);
+            if (summary?.catalysts && (typeof summary.catalysts.earningsDaysAway === 'number' || summary.catalysts.earningsDate)) {
+              setSidebarStockData(prev => ({
+                ...prev,
+                [sym]: {
+                  ...(prev?.[sym] || {}),
+                  earningsDate: summary.catalysts.earningsDate,
+                  earningsDaysAway: summary.catalysts.earningsDaysAway
+                }
+              }));
+            }
+          } catch (_err) {
+            /* ignore individual fetch error */
+          }
+        })
+      );
+      if (i + CHUNK_SIZE < toFetch.length) {
+        await new Promise(r => setTimeout(r, 150));
+      }
+    }
+  }, [sortedSymbolsSerialized, country]);
+
+  // Fetch 1d daily quotes & earnings in background on mount or symbols list changes
   useEffect(() => {
     if (!isOpen || !sortedSymbolsSerialized) return;
     const controller = new AbortController();
     // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSidebarQuotes(controller.signal);
+    fetchSidebarEarnings(controller.signal);
     return () => {
       controller.abort();
     };
-  }, [isOpen, sortedSymbolsSerialized, fetchSidebarQuotes]);
+  }, [isOpen, sortedSymbolsSerialized, fetchSidebarQuotes, fetchSidebarEarnings]);
 
   // Manual refresh callback
   const handleRefreshSidebarQuotes = useCallback(() => {
     fetchSidebarQuotes(null, true);
-  }, [fetchSidebarQuotes]);
+    fetchSidebarEarnings(null);
+  }, [fetchSidebarQuotes, fetchSidebarEarnings]);
 
   const symbolToFetch = formData?.symbol;
 
