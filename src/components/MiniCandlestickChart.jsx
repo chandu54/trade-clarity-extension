@@ -1,5 +1,6 @@
 import React, { useEffect, useRef } from 'react';
 import { createChart, CrosshairMode, CandlestickSeries, LineSeries } from 'lightweight-charts';
+import { calculateNormalizedPctSeries, calculateRsRatioSeries } from '../utils/benchmarkUtils';
 
 export default function MiniCandlestickChart({ 
   data, 
@@ -11,7 +12,13 @@ export default function MiniCandlestickChart({
   height = '150px',
   accountCapital,
   maSettings = {},
-  timeframe = '3mo'
+  timeframe = '3mo',
+  selectedBenchmark = 'none',
+  benchmarkMode = 'pct',
+  benchmarkCandles = [],
+  stockLineColor = '#3b82f6',
+  benchmarkLineColor = '#f97316',
+  rsLineColor = '#a855f7'
 }) {
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -100,20 +107,105 @@ export default function MiniCandlestickChart({
       },
     });
 
-    const series = chart.addSeries(CandlestickSeries, {
-      upColor: '#10b981',
-      downColor: '#ef4444',
-      borderVisible: false,
-      wickUpColor: '#10b981',
-      wickDownColor: '#ef4444',
-    });
+    const isBenchmarkActive = selectedBenchmark !== 'none' && benchmarkCandles && benchmarkCandles.length > 0 && benchmarkMode !== 'normal';
+    const isPctMode = isBenchmarkActive && benchmarkMode === 'pct';
+
+    let series = null;
 
     if (candlesticks && candlesticks.length > 0) {
       const visibleCandlesticks = getVisibleCandlesticks(candlesticks, timeframe);
-      series.setData(visibleCandlesticks);
 
-      // Add moving average lines if maSettings is provided
-      if (maSettings) {
+      if (isPctMode) {
+        // Percentage Overlay mode: Render normalized Stock line + Benchmark line starting at 0%
+        const { stockSeries, benchmarkSeries } = calculateNormalizedPctSeries(visibleCandlesticks, benchmarkCandles);
+
+        series = chart.addSeries(LineSeries, {
+          color: stockLineColor || '#3b82f6', // Stock line primary accent
+          lineWidth: 2,
+          priceFormat: {
+            type: 'custom',
+            formatter: (val) => `${val >= 0 ? '+' : ''}${val.toFixed(1)}%`,
+          },
+          priceLineVisible: false,
+        });
+        series.setData(stockSeries);
+
+        const benchSeries = chart.addSeries(LineSeries, {
+          color: benchmarkLineColor || '#f97316', // Benchmark line secondary accent
+          lineWidth: 2,
+          lineStyle: 2, // Dashed
+          priceFormat: {
+            type: 'custom',
+            formatter: (val) => `${val >= 0 ? '+' : ''}${val.toFixed(1)}%`,
+          },
+          priceLineVisible: false,
+        });
+        benchSeries.setData(benchmarkSeries);
+
+        series.createPriceLine({
+          price: 0,
+          color: 'rgba(148, 163, 184, 0.5)',
+          lineWidth: 1,
+          lineStyle: 2,
+          title: '0%',
+        });
+      } else {
+        // Standard Candlestick series
+        series = chart.addSeries(CandlestickSeries, {
+          upColor: '#10b981',
+          downColor: '#ef4444',
+          borderVisible: false,
+          wickUpColor: '#10b981',
+          wickDownColor: '#ef4444',
+        });
+        series.setData(visibleCandlesticks);
+
+        // If RS Ratio mode active: Add Mansfield RS line in separate bottom pane
+        if (isBenchmarkActive && benchmarkMode === 'rs') {
+          const { rsSeries } = calculateRsRatioSeries(visibleCandlesticks, benchmarkCandles);
+          if (rsSeries.length > 0) {
+            // Keep Candlesticks in top 70% of chart
+            chart.priceScale('right').applyOptions({
+              scaleMargins: {
+                top: 0.05,
+                bottom: 0.32,
+              },
+            });
+
+            // Put RS line in bottom 25% pane on separate scale
+            const rsLineSeries = chart.addSeries(LineSeries, {
+              color: rsLineColor || '#a855f7', // RS Line accent
+              lineWidth: 2,
+              priceScaleId: 'rs-scale',
+              priceFormat: {
+                type: 'custom',
+                formatter: (val) => `RS ${val >= 0 ? '+' : ''}${val.toFixed(1)}%`,
+              },
+              priceLineVisible: false,
+            });
+
+            chart.priceScale('rs-scale').applyOptions({
+              scaleMargins: {
+                top: 0.72,
+                bottom: 0.05,
+              },
+              entireTextOnly: true,
+            });
+
+            rsLineSeries.setData(rsSeries);
+            rsLineSeries.createPriceLine({
+              price: 0,
+              color: 'rgba(168, 85, 247, 0.6)',
+              lineWidth: 1,
+              lineStyle: 2,
+              title: 'RS 0%',
+            });
+          }
+        }
+      }
+
+      // Add moving average lines if maSettings is provided (when not in Pct mode)
+      if (maSettings && !isPctMode) {
         const maColors = {
           '5': '#10b981', // green
           '10': '#06b6d4', // cyan
@@ -286,7 +378,7 @@ export default function MiniCandlestickChart({
       themeObserver.disconnect();
       chart.remove();
     };
-  }, [data, interactive, disableZoom, maSettings, timeframe]);
+  }, [data, interactive, disableZoom, maSettings, timeframe, selectedBenchmark, benchmarkMode, benchmarkCandles, stockLineColor, benchmarkLineColor, rsLineColor]);
 
   if (!data) return null;
 

@@ -24,7 +24,7 @@ export const CONFIG = {
   // Timing & Thresholds
   FETCH_TIMEOUT_MS: 15000, // 15 seconds for network calls
   BATCH_SIZE: 5,
-  BATCH_DELAY_MS: 2000,
+  BATCH_DELAY_MS: 1000,
 
   // Storage Keys
   STORAGE_KEY: "trading_app_data",

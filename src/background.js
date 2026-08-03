@@ -1,5 +1,6 @@
 import { mapAdrBucket, mapLiquidityBucket, mapMovingAverageBucket } from "./utils/metrics.js";
 import { getActualParamKeyAndDef } from "./utils/paramUtils.js";
+import { calculateStockRsCategory } from "./utils/benchmarkUtils.js";
 import { getBulkStockVerdicts } from "./services/ai.js";
 import { fetchStockData } from "./utils/yahooFinanceMap.js";
 import { CONFIG } from "./constants/config.js";
@@ -334,6 +335,9 @@ async function processQueue() {
   const batch = processingQueue.splice(0, CONFIG.BATCH_SIZE);
   console.log(`[Sync] Processing batch of ${batch.length} symbols. Remaining in queue: ${processingQueue.length}`);
 
+  const dbData = await _getStorageData();
+  const uiConfig = dbData.uiConfig || {};
+
   const results = await Promise.allSettled(
     batch.map((item) =>
       fetchWithRetryAndTimeout(
@@ -342,6 +346,7 @@ async function processQueue() {
         item.paramDefs,
         item.adrDays,
         item.liquidityDays,
+        uiConfig,
       ),
     ),
   );
@@ -378,22 +383,26 @@ async function processQueue() {
     setTimeout(processQueue, CONFIG.BATCH_DELAY_MS);
   } else {
     isProcessing = false;
+    chrome.runtime.sendMessage({
+      action: "FETCH_METRICS_COMPLETE",
+      payload: { total: totalJobs, completed: completedJobs }
+    }).catch(() => {});
     // reset trackers so next batch starts clean
     totalJobs = 0;
     completedJobs = 0;
   }
 }
 
-async function fetchWithRetryAndTimeout(symbol, country, paramDefs, adrDays, liquidityDays, retries = 2) {
+async function fetchWithRetryAndTimeout(symbol, country, paramDefs, adrDays, liquidityDays, uiConfig = {}, retries = 1) {
   for (let i = 0; i <= retries; i++) {
     try {
-      return await fetchAndCalculateMetrics(symbol, country, paramDefs, adrDays, liquidityDays);
+      return await fetchAndCalculateMetrics(symbol, country, paramDefs, adrDays, liquidityDays, uiConfig);
     } catch (err) {
-      if (i === retries) throw err;
+      if (i === retries || err.message?.includes("404")) throw err;
       const errMsg = err.message || "";
       const isRateLimit = errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("quota");
       
-      const waitTime = isRateLimit ? 5000 * (i + 1) : 1000 * (i + 1);
+      const waitTime = isRateLimit ? 1000 * (i + 1) : 500 * (i + 1);
       console.warn(`[Sync] Fetch failed for ${symbol} (attempt ${i + 1}/${retries + 1}). Retrying in ${waitTime}ms... error:`, err);
       await new Promise(r => setTimeout(r, waitTime));
     }
@@ -408,12 +417,32 @@ function _getStorageData() {
   });
 }
 
+let benchmarkReturnCache = {};
+
+async function getCachedBenchmarkReturn(country, timeframe = "3mo") {
+  const benchSymbol = country === "IN" ? "^NSEI" : "^GSPC";
+  const cacheKey = `${benchSymbol}_${timeframe}`;
+  const now = Date.now();
+  if (benchmarkReturnCache[cacheKey] && benchmarkReturnCache[cacheKey].pct !== 0 && (now - benchmarkReturnCache[cacheKey].fetchedAt < 1800000)) {
+    return benchmarkReturnCache[cacheKey].pct;
+  }
+  try {
+    const res = await fetchStockData([benchSymbol], country, timeframe, null, null, false);
+    const pct = res?.[0]?.periodChangePct || 0;
+    benchmarkReturnCache[cacheKey] = { pct, fetchedAt: now };
+    return pct;
+  } catch (_err) {
+    return 0;
+  }
+}
+
 async function fetchAndCalculateMetrics(
   symbol,
   country,
   paramDefs = null,
   adrDays = 20,
   liquidityDays = 20,
+  uiConfig = {},
 ) {
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), CONFIG.FETCH_TIMEOUT_MS);
@@ -560,17 +589,37 @@ async function fetchAndCalculateMetrics(
     const maMatch = getActualParamKeyAndDef(paramDefs, "movingAverages", "Moving Averages", country);
     const maBucket = mapMovingAverageBucket(validDays.map(d => d.close), lastClosePrice);
 
-    console.log(`[Sync] Computed for ${symbol}: ADR=${formattedAdr}, Liquidity=${formattedLiquidity}, MAs=${maBucket}`);
+    // --- RELATIVE STRENGTH (RS) MAPPING ---
+    const rsMatch = getActualParamKeyAndDef(paramDefs, "rs", "rs", country);
+    let rsCategory = "Neutral";
+    if (validDays.length > 0) {
+      const timeframe = uiConfig?.rsTimeframe || "3mo";
+      // Map RS timeframe to approximate trading days
+      const rsTradingDays = { '1mo': 21, '3mo': 63, '6mo': 126, '1y': 252 };
+      const rsWindow = rsTradingDays[timeframe] || 63;
+      // Slice only the RS timeframe window from the end of validDays
+      const rsDays = validDays.slice(-Math.min(rsWindow, validDays.length));
+      const firstClose = rsDays[0].close;
+      const lastClose = rsDays[rsDays.length - 1].close;
+      const stockPct = firstClose > 0 ? ((lastClose - firstClose) / firstClose) * 100 : 0;
+      const benchPct = await getCachedBenchmarkReturn(country, timeframe);
+      const { category } = calculateStockRsCategory(stockPct, benchPct, uiConfig || {});
+      rsCategory = category;
+    }
+
+    console.log(`[Sync] Computed for ${symbol}: ADR=${formattedAdr}, Liquidity=${formattedLiquidity}, MAs=${maBucket}, RS=${rsCategory}`);
 
     return {
       adr: formattedAdr,
       liquidity: formattedLiquidity,
       movingAverages: maBucket,
+      rs: rsCategory,
       name: companyName,
       isInvalid: false,
       adrKey: adrMatch.key,
       liquidityKey: liqMatch.key,
       movingAveragesKey: maMatch.key,
+      rsKey: rsMatch.key,
     };
   } catch (error) {
     clearTimeout(timeoutId);
@@ -598,18 +647,21 @@ async function updateStorageWithMetrics(updates) {
           const adrKey = metrics.adrKey || "adr";
           const liqKey = metrics.liquidityKey || "liquidity";
           const maKey = metrics.movingAveragesKey || "movingAverages";
+          const rsKey = metrics.rsKey || "rs";
 
           // Only update if changed
           if (
             stock.params[adrKey] !== metrics.adr ||
             stock.params[liqKey] !== metrics.liquidity ||
             stock.params[maKey] !== metrics.movingAverages ||
+            stock.params[rsKey] !== metrics.rs ||
             stock.name !== metrics.name ||
             stock.isInvalid !== metrics.isInvalid
           ) {
             stock.params[adrKey] = metrics.adr;
             stock.params[liqKey] = metrics.liquidity;
             stock.params[maKey] = metrics.movingAverages;
+            stock.params[rsKey] = metrics.rs;
             stock.name = metrics.name;
             stock.isInvalid = metrics.isInvalid;
             dataChanged = true;

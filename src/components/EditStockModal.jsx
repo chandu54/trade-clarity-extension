@@ -2,10 +2,11 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Modal from "./Modal";
 import MiniCandlestickChart from "./MiniCandlestickChart";
 import { fetchStockData, fetchStockQuotes } from "../utils/yahooFinanceMap";
+import { getBenchmarkOptions, fetchBenchmarkCandles, calculateStockRsForCandles } from "../utils/benchmarkUtils";
 import { getSingleStockAnalysis, PROMPT_TEMPLATES } from "../services/ai";
 import { isParamRelevantForCountry, getActualParamKeyAndDef } from "../utils/paramUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
-import { fetchStockSummary, globalFundamentalsCache } from "../utils/stockAnalysisApi";
+import { fetchStockSummary, globalFundamentalsCache, fetchNseEarningsDate, calculateDaysAway } from "../utils/stockAnalysisApi";
 
 const getSidebarEarningsDays = (s, sidebarData, formData, summaryData, country) => {
   if (!s) return null;
@@ -21,14 +22,8 @@ const getSidebarEarningsDays = (s, sidebarData, formData, summaryData, country) 
                   cachedItem?.data?.catalysts?.earningsDate;
 
   if (rawDate) {
-    try {
-      const d = new Date(rawDate);
-      if (!isNaN(d.getTime())) {
-        return Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-      }
-    } catch (_e) {
-      /* ignore date parse error */
-    }
+    const computedDays = calculateDaysAway(rawDate);
+    if (computedDays !== null) return computedDays;
   }
 
   // Fallback to static days away fields if rawDate is unavailable
@@ -91,6 +86,12 @@ const hasUserModified = (original, updated, paramDefinitions) => {
   // Notes
   if ((original.notes || "") !== (updated.notes || "")) {
     console.log("[hasUserModified] Notes changed:", original.notes, "->", updated.notes);
+    return true;
+  }
+
+  // Earnings Date (manual override)
+  if ((original.earningsDate || "") !== (updated.earningsDate || "")) {
+    console.log("[hasUserModified] Earnings Date changed:", original.earningsDate, "->", updated.earningsDate);
     return true;
   }
 
@@ -233,7 +234,30 @@ export default function EditStockModal({
   const [isParamsCollapsed, setIsParamsCollapsed] = useState(true);
   const [timeframe, setTimeframe] = useState('3mo');
   const [interval, setInterval] = useState('auto');
+  const [selectedBenchmark, setSelectedBenchmark] = useState('main');
+  const [benchmarkMode, setBenchmarkMode] = useState('pct');
+  const [benchmarkCandles, setBenchmarkCandles] = useState([]);
   const [loadingChart, setLoadingChart] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (selectedBenchmark === 'none') {
+      Promise.resolve().then(() => {
+        if (isMounted) setBenchmarkCandles([]);
+      });
+      return () => { isMounted = false; };
+    }
+
+    fetchBenchmarkCandles(country, selectedBenchmark, timeframe).then(candles => {
+      if (isMounted) {
+        setBenchmarkCandles(candles);
+      }
+    }).catch(err => {
+      console.warn("Failed to fetch benchmark data:", err);
+    });
+
+    return () => { isMounted = false; };
+  }, [selectedBenchmark, country, timeframe]);
   const [maSettings, setMaSettings] = useState(() => {
     try {
       const saved = localStorage.getItem('trade_clarity_ma_settings');
@@ -519,18 +543,23 @@ export default function EditStockModal({
 
   useEffect(() => {
     if (stock && stock.symbol) {
-      if (prevSymbolRef.current !== stock.symbol) {
-        setFormData(structuredClone(stock));
+      const stockRs = stock?.params?.rs || stock?.parameters?.rs;
+      const prevRs = prevSymbolRef.current?.rs;
+      if (prevSymbolRef.current?.symbol !== stock.symbol || prevRs !== stockRs) {
+        const cloned = structuredClone(stock);
+        // Delete top-level stale rs property if present so params.rs is authoritative
+        delete cloned.rs;
+        setFormData(cloned);
         setAiAnalysis(stock.aiAnalysis || null);
         setAiAnalysisDate(stock.aiAnalysisDate || null);
         setAiError(null);
-        prevSymbolRef.current = stock.symbol;
+        prevSymbolRef.current = { symbol: stock.symbol, rs: stockRs };
       }
     } else {
       prevSymbolRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stock?.symbol]);
+  }, [stock?.symbol, stock?.params?.rs, stock?.parameters?.rs]);
 
   const sortedSymbolsSerialized = useMemo(() => {
     return (sortedStocks || []).map(s => s.symbol).join(",");
@@ -579,10 +608,56 @@ export default function EditStockModal({
 
     if (toFetch.length === 0) return;
 
+    // ── Indian stocks: fast-path via NSE event calendar ──────────────────────
+    // Fetch the full NSE calendar ONCE (all ~550 stocks, ~177ms), then do
+    // instant in-memory lookups for all symbols. Only fall back to the heavy
+    // fetchStockSummary call for symbols not found in the NSE calendar.
+    let stillNeedFullFetch = toFetch;
+
+    if (country === 'IN') {
+      try {
+        // Pre-warm the NSE calendar (no-op if already cached for <4h)
+        // Build a batch of NSE lookups for all symbols at once
+        const nseResults = await Promise.all(
+          toFetch.map(async sym => {
+            try {
+              return { sym, result: await fetchNseEarningsDate(sym) };
+            } catch (_e) {
+              return { sym, result: null };
+            }
+          })
+        );
+
+        // Apply NSE results immediately; collect symbols that still need Yahoo
+        const notFoundInNse = [];
+        nseResults.forEach(({ sym, result }) => {
+          if (result) {
+            setSidebarStockData(prev => ({
+              ...prev,
+              [sym]: {
+                ...(prev?.[sym] || {}),
+                earningsDate: result.dateStr,
+                earningsDaysAway: result.daysAway
+              }
+            }));
+          } else {
+            notFoundInNse.push(sym);
+          }
+        });
+
+        stillNeedFullFetch = notFoundInNse;
+      } catch (_nseErr) {
+        // NSE fetch failed - fall through to regular fetchStockSummary for all
+      }
+    }
+
+    // ── Remaining stocks: full Yahoo quoteSummary fetch ──────────────────────
+    if (stillNeedFullFetch.length === 0) return;
+
     const CHUNK_SIZE = 4;
-    for (let i = 0; i < toFetch.length; i += CHUNK_SIZE) {
+    for (let i = 0; i < stillNeedFullFetch.length; i += CHUNK_SIZE) {
       if (signal?.aborted) break;
-      const chunk = toFetch.slice(i, i + CHUNK_SIZE);
+      const chunk = stillNeedFullFetch.slice(i, i + CHUNK_SIZE);
       await Promise.all(
         chunk.map(async (sym) => {
           try {
@@ -602,11 +677,12 @@ export default function EditStockModal({
           }
         })
       );
-      if (i + CHUNK_SIZE < toFetch.length) {
+      if (i + CHUNK_SIZE < stillNeedFullFetch.length) {
         await new Promise(r => setTimeout(r, 150));
       }
     }
   }, [sortedSymbolsSerialized, country]);
+
 
   // Fetch 1d daily quotes & earnings in background on mount or symbols list changes
   useEffect(() => {
@@ -673,14 +749,6 @@ export default function EditStockModal({
       isCurrent = false;
     };
   }, [isOpen, symbolToFetch, country, timeframe, interval, stock.symbol]);
-
-  // Reset interval to 'auto' when timeframe changes to ensure compatible range/interval defaults
-  useEffect(() => {
-    const resetTimeout = setTimeout(() => {
-      setInterval('auto');
-    }, 0);
-    return () => clearTimeout(resetTimeout);
-  }, [timeframe]);
 
   // Resizer Event Handlers
   useEffect(() => {
@@ -1203,6 +1271,17 @@ export default function EditStockModal({
               onChange={(e) => handleChange("tradable", e.target.checked)}
             />
           </label>
+        </div>
+
+        <div className="property-row-item">
+          <label title="Manual earnings date override (e.g. Aug 4, 2026). Used when Yahoo Finance doesn't provide earnings data.">Earnings Date</label>
+          <input
+            type="text"
+            value={formData.earningsDate || ""}
+            onChange={(e) => handleChange("earningsDate", e.target.value || null)}
+            placeholder="e.g. Aug 4, 2026"
+            title="Enter earnings date manually (e.g. Aug 4, 2026). Overrides auto-fetched date."
+          />
         </div>
 
         {sortedParams.filter(([key]) => key !== 'movingAverages' && key !== adrKey && key !== liqKey).map(([key, def]) => (
@@ -1907,21 +1986,56 @@ export default function EditStockModal({
                   )}
 
                   {(() => {
+                    let liveRsCat = null;
+                    let liveDiffStr = '';
+                    const stockCandles = formData?.candlesticks || sidebarStockData?.[formData?.symbol]?.candlesticks;
+                    if (stockCandles && stockCandles.length > 0 && benchmarkCandles && benchmarkCandles.length > 0) {
+                      const res = calculateStockRsForCandles(stockCandles, benchmarkCandles);
+                      liveRsCat = res?.category;
+                      if (typeof res?.outperformancePct === 'number') {
+                        liveDiffStr = ` (${res.outperformancePct > 0 ? '+' : ''}${res.outperformancePct}% vs Benchmark)`;
+                      }
+                    }
+
+                    // Watchlist stock parameter value is the primary source of truth (falling back to liveRsCat if missing)
+                    const rsVal = formData?.params?.rs || formData?.parameters?.rs || stock?.params?.rs || stock?.parameters?.rs || liveRsCat;
+                    if (!rsVal) return null;
+
+                    const getRsEmoji = (cat) => {
+                      const lower = String(cat || '').toLowerCase();
+                      if (lower.includes('very strong')) return '🔥🔥';
+                      if (lower.includes('strong')) return '🔥';
+                      if (lower.includes('neutral')) return '⚖️';
+                      if (lower.includes('very weak')) return '👎👎';
+                      if (lower.includes('weak')) return '👎';
+                      return '📈';
+                    };
+
+                    const getRsClass = (cat) => {
+                      const lower = String(cat || '').toLowerCase();
+                      if (lower.includes('very strong')) return 'very-strong';
+                      if (lower.includes('strong')) return 'strong';
+                      if (lower.includes('neutral')) return 'neutral';
+                      if (lower.includes('very weak')) return 'very-weak';
+                      if (lower.includes('weak')) return 'weak';
+                      return '';
+                    };
+
+                    return (
+                      <span
+                        className={`header-metric-pill-v2 rs ${getRsClass(rsVal)}`}
+                        title={`Relative Strength (RS vs Benchmark): ${rsVal}${liveDiffStr}`}
+                      >
+                        <span className="metric-pill-label">RS</span>
+                        <span className="metric-pill-emoji">{getRsEmoji(rsVal)}</span>
+                      </span>
+                    );
+                  })()}
+
+                  {(() => {
                     const earningsDateVal = summaryData?.catalysts?.earningsDate || formData.earningsDate || stock?.earningsDate;
                     if (!earningsDateVal) return null;
-                    const daysAway = summaryData?.catalysts?.earningsDaysAway !== undefined && summaryData?.catalysts?.earningsDaysAway !== null
-                      ? summaryData.catalysts.earningsDaysAway
-                      : (() => {
-                          try {
-                            const d = new Date(earningsDateVal);
-                            if (!isNaN(d.getTime())) {
-                              return Math.ceil((d.getTime() - Date.now()) / (1000 * 60 * 60 * 24));
-                            }
-                          } catch (_e) {
-                            /* ignore date parse failure */
-                          }
-                          return null;
-                        })();
+                    const daysAway = calculateDaysAway(earningsDateVal);
 
                     const isImminent = typeof daysAway === 'number' && daysAway >= 0 && daysAway <= 7;
                     const isPast = typeof daysAway === 'number' && daysAway < 0;
@@ -1994,7 +2108,10 @@ export default function EditStockModal({
                         <button
                           key={df.id}
                           className={`duration-btn ${timeframe === df.id ? 'active' : ''}`}
-                          onClick={() => setTimeframe(df.id)}
+                          onClick={() => {
+                            setTimeframe(df.id);
+                            setInterval('auto');
+                          }}
                           title={df.title}
                         >
                           {df.label}
@@ -2026,6 +2143,48 @@ export default function EditStockModal({
                         })()}
                       </select>
                     </div>
+                    <div className="benchmark-picker-dropdown">
+                      <span className="picker-label">Benchmark</span>
+                      <select
+                        value={selectedBenchmark}
+                        onChange={(e) => {
+                          const key = e.target.value;
+                          setSelectedBenchmark(key);
+                          if (key === 'none') {
+                            setBenchmarkMode('normal');
+                          } else if (benchmarkMode === 'normal') {
+                            setBenchmarkMode('pct');
+                          }
+                        }}
+                        className="interval-select-premium benchmark-select-premium"
+                        title="Compare Benchmark Index"
+                        aria-label="Compare Benchmark"
+                      >
+                        {getBenchmarkOptions(country).map(opt => (
+                          <option key={opt.key} value={opt.key}>{opt.label}</option>
+                        ))}
+                      </select>
+                    </div>
+                    {selectedBenchmark !== 'none' && (
+                      <div className="benchmark-mode-toggle">
+                        <button
+                          type="button"
+                          className={`benchmark-mode-btn ${benchmarkMode === 'pct' ? 'active-pct' : ''}`}
+                          onClick={() => setBenchmarkMode('pct')}
+                          title="Percentage Performance Overlay (% Change)"
+                        >
+                          % Change
+                        </button>
+                        <button
+                          type="button"
+                          className={`benchmark-mode-btn ${benchmarkMode === 'rs' ? 'active-rs' : ''}`}
+                          onClick={() => setBenchmarkMode('rs')}
+                          title="Mansfield Relative Strength Ratio Line"
+                        >
+                          RS Line
+                        </button>
+                      </div>
+                    )}
                     <div className="ma-settings-container" ref={maSettingsRef}>
                       <button
                         type="button"
@@ -2107,6 +2266,9 @@ export default function EditStockModal({
                     height="100%"
                     maSettings={maSettings}
                     timeframe={timeframe}
+                    selectedBenchmark={selectedBenchmark}
+                    benchmarkMode={benchmarkMode}
+                    benchmarkCandles={benchmarkCandles}
                   />
                 </div>
 

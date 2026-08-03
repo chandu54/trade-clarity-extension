@@ -215,7 +215,7 @@ export default function UserGuideModal({
               </Section>
 
               <Section
-                title="6. Rules"
+                title="6. Rules & Relative Strength (RS)"
                 icon="🛡️"
                 actionLabel="Configure Rules →"
                 actionKey="rules"
@@ -223,8 +223,7 @@ export default function UserGuideModal({
                 onNavigate={handleNavigate}
               >
                 <p>
-                  Enforce discipline by locking your history to prevent accidental
-                  changes.
+                  Configure automated technical parameters, history protection, and benchmark outperformance rules.
                 </p>
                 <ul className="guide-list">
                   <li>
@@ -233,7 +232,19 @@ export default function UserGuideModal({
                     trading journal.
                   </li>
                   <li>
-                    <strong>Auto-Fetch Lookback:</strong> Enable background fetching of ADR & Liquidity, and define the exact number of trading days (e.g., 20) to use for your moving average calculations.
+                    <strong>Auto-Fetch Lookback:</strong> Enable background fetching of ADR, Liquidity, and Moving Averages across trading days.
+                  </li>
+                  <li>
+                    <strong>Relative Strength (RS) Timeframe:</strong> Configure RS calculation duration in <em>Settings &gt; Rules</em> (1 Month, 3 Months [Default], 6 Months, or 1 Year).
+                  </li>
+                  <li>
+                    <strong>Smart Benchmark Resolution:</strong> Automatically compares stock performance against market indices (Nifty Mid/Smallcap for India; Nasdaq 100 for US Tech / S&P 500 for US Non-Tech).
+                  </li>
+                  <li>
+                    <strong>5-Tier Threshold Categorization:</strong> Categorizes net outperformance into <strong>Very Strong</strong> (&gt; +25%), <strong>Strong</strong> (+15% to +25%), <strong>Neutral</strong> (-3% to +15%), <strong>Weak</strong> (-15% to -3%), and <strong>Very Weak</strong> (&lt; -15%). Values auto-populate across Watchlist grids and background sync based on your exact Rule settings.
+                  </li>
+                  <li>
+                    <strong>RS Chart View:</strong> In Deep View charts, toggle between <strong>% Change</strong> (normalized percentage overlay) and <strong>RS Line</strong> (Mansfield RS ratio indicator in a dedicated bottom sub-pane).
                   </li>
                 </ul>
               </Section>
@@ -264,6 +275,9 @@ export default function UserGuideModal({
                     Sector defined here, the app will automatically assign that sector
                     to the imported stocks.
                   </div>
+                  <li>
+                    <strong>TradingView Export:</strong> Export your selected watchlist formatted with TradingView section headers (<code>###</code>). Choose to group stocks by <strong>Sector</strong>, <strong>Tag</strong>, or <strong>None</strong> for direct copying or <code>.txt</code> download.
+                  </li>
                   <li>
                     <strong>Export CSV:</strong> Exports the current grid view for use
                     in Excel or trading platforms.

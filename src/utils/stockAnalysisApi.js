@@ -31,9 +31,9 @@ class LRUFundamentalsCache {
   isValid(key, ttlMs = 8 * 60 * 60 * 1000) {
     const item = this.get(key);
     if (!item || !item.data) return false;
-    // Don't treat cached failed attempts (all N/A) as valid
-    if (item.data.hasRawData === false) return false;
-    if (item.data.fundamentals && item.data.fundamentals.marketCap === 'N/A' && item.data.fundamentals.peRatio === 'N/A') return false;
+    // Don't treat cached failed attempts (all N/A and no quarterly history) as valid
+    if (item.data.hasRawData === false && (!item.data.fundamentals?.quarterlyHistory || item.data.fundamentals.quarterlyHistory.length === 0)) return false;
+    if (item.data.fundamentals && item.data.fundamentals.marketCap === 'N/A' && item.data.fundamentals.peRatio === 'N/A' && (!item.data.fundamentals?.quarterlyHistory || item.data.fundamentals.quarterlyHistory.length === 0)) return false;
     // Invalidate old caches that do not have quarterlyHistory or lack netProfit / qoqProfitGrowth
     if (!item.data.fundamentals || !Array.isArray(item.data.fundamentals.quarterlyHistory)) return false;
     const qHist = item.data.fundamentals.quarterlyHistory;
@@ -105,6 +105,189 @@ class LRUFundamentalsCache {
 
 export const globalFundamentalsCache = new LRUFundamentalsCache(200);
 globalFundamentalsCache.loadFromStorage();
+
+// ─── NSE India Event Calendar Cache ───────────────────────────────────────────
+// Caches the full NSE upcoming results calendar (all ~550 stocks) for 4h.
+// Used as a free, auth-less fallback when Yahoo Finance returns no earningsDate.
+let nseCalendarCache = null;     // Array of { symbol, date, purpose, bm_desc }
+let nseCalendarFetchedAt = 0;
+const NSE_CALENDAR_TTL = 4 * 60 * 60 * 1000; // 4 hours
+const NSE_HEADERS = {
+  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+  'Accept': 'application/json, text/plain, */*',
+  'Referer': 'https://www.nseindia.com/',
+};
+
+async function ensureNseCalendar() {
+  const now = Date.now();
+  if (nseCalendarCache && (now - nseCalendarFetchedAt < NSE_CALENDAR_TTL)) {
+    return nseCalendarCache;
+  }
+  try {
+    const res = await fetch('https://www.nseindia.com/api/event-calendar', {
+      headers: NSE_HEADERS,
+      cache: 'no-cache'
+    });
+    if (res.ok) {
+      const data = await res.json();
+      if (Array.isArray(data) && data.length > 0) {
+        nseCalendarCache = data;
+        nseCalendarFetchedAt = now;
+      }
+    }
+  } catch (e) {
+    console.warn('[NSE Calendar] Failed to fetch event calendar:', e.message);
+  }
+  return nseCalendarCache;
+}
+
+export function calculateDaysAway(dateVal) {
+  if (!dateVal) return null;
+  try {
+    const d = typeof dateVal === 'number' ? new Date(dateVal) : new Date(dateVal);
+    if (isNaN(d.getTime())) return null;
+
+    const today = new Date();
+    const todayStart = new Date(today.getFullYear(), today.getMonth(), today.getDate()).getTime();
+    const targetStart = new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+
+    return Math.round((targetStart - todayStart) / (1000 * 60 * 60 * 24));
+  } catch (_e) {
+    return null;
+  }
+}
+
+export async function fetchNseEarningsDate(nseSymbol) {
+  if (!nseSymbol) return null;
+  const symbol = nseSymbol.replace(/\.(NS|BO)$/i, '').toUpperCase();
+
+  try {
+    const calendar = await ensureNseCalendar();
+    if (!calendar) return null;
+
+    const now = Date.now();
+    const oneDayMs = 24 * 60 * 60 * 1000;
+
+    // Filter entries for this symbol with "Financial Results" purpose
+    const results = calendar
+      .filter(e =>
+        e.symbol === symbol &&
+        (e.purpose || '').toLowerCase().includes('financial results')
+      )
+      .map(e => {
+        // NSE date format: "DD-Mon-YYYY" e.g. "04-Aug-2026"
+        const d = new Date(e.date);
+        return { ...e, parsed: d };
+      })
+      .filter(e => !isNaN(e.parsed.getTime()))
+      .sort((a, b) => a.parsed - b.parsed);
+
+    if (results.length === 0) return null;
+
+    // Find the nearest upcoming date (with 1-day past buffer to catch same-day)
+    const upcoming = results.find(e => e.parsed.getTime() >= now - oneDayMs);
+    const entry = upcoming || results[results.length - 1];
+
+    const d = entry.parsed;
+    const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    const daysAway = calculateDaysAway(d);
+    return { dateStr, daysAway };
+  } catch (e) {
+    console.warn('[NSE Calendar] fetchNseEarningsDate error:', e.message);
+    return null;
+  }
+}
+
+/**
+ * Fetches historical quarterly financial results for an Indian stock directly from NSE India API.
+ * Used as a fallback when Yahoo Finance does not supply quarterlyHistory.
+ * @param {string} nseSymbol - Plain NSE symbol e.g. "KALYANKJIL" (without .NS)
+ * @param {string} country - Country code ("IN")
+ * @returns {Promise<Array<Object>>} Array of quarterly result objects
+ */
+export async function fetchNseQuarterlyResults(nseSymbol, country = 'IN') {
+  if (!nseSymbol) return [];
+  const symbol = nseSymbol.replace(/\.(NS|BO)$/i, '').toUpperCase();
+
+  try {
+    const url = `https://www.nseindia.com/api/results-comparision?symbol=${encodeURIComponent(symbol)}`;
+    const res = await fetch(url, {
+      headers: NSE_HEADERS,
+      cache: 'no-cache'
+    });
+    if (!res.ok) return [];
+
+    const json = await res.json();
+    const data = json.resCmpData || [];
+    if (!Array.isArray(data) || data.length === 0) return [];
+
+    // Chronological order (oldest to newest)
+    const items = [...data].reverse();
+
+    const quarterlyHistory = items.map(q => {
+      const endDate = q.re_to_dt || q.re_create_dt || '';
+      let quarterFmt = endDate;
+      if (endDate) {
+        const d = new Date(endDate);
+        if (!isNaN(d.getTime())) {
+          quarterFmt = d.toLocaleDateString(undefined, { month: 'short', year: 'numeric' });
+        }
+      }
+
+      // Amounts from NSE are in Lakhs (1 Lakh = 100,000 INR)
+      const rawRevLakhs = parseFloat(q.re_total_inc || q.re_net_sale || 0);
+      const rawNetLakhs = parseFloat(q.re_net_profit || q.re_con_pro_loss || q.re_proloss_ord_act || 0);
+      const eps = parseFloat(q.re_basic_eps_for_cont_dic_opr || q.re_basic_eps || 0);
+
+      const rawRev = rawRevLakhs > 0 ? rawRevLakhs * 100000 : null;
+      const rawNet = !isNaN(rawNetLakhs) ? rawNetLakhs * 100000 : null;
+
+      let opm = 'N/A';
+      if (rawRev && typeof rawNet === 'number') {
+        opm = `${((rawNet / rawRev) * 100).toFixed(1)}%`;
+      }
+
+      return {
+        quarter: quarterFmt,
+        epsActual: !isNaN(eps) && eps !== 0 ? eps.toFixed(2) : 'N/A',
+        epsEstimate: 'N/A',
+        surprisePercent: null,
+        revenue: rawRev !== null ? formatLargeNumber(rawRev, country) : 'N/A',
+        netProfit: rawNet !== null ? formatLargeNumber(rawNet, country) : 'N/A',
+        opm,
+        ebitda: 'N/A',
+        rawRev,
+        rawNet
+      };
+    });
+
+    // Calculate QoQ Growth (%) for Revenue and Net Profit across quarters
+    for (let i = 0; i < quarterlyHistory.length; i++) {
+      const curr = quarterlyHistory[i];
+      const prev = quarterlyHistory[i - 1];
+
+      if (prev && typeof curr.rawRev === 'number' && typeof prev.rawRev === 'number' && prev.rawRev > 0) {
+        const growth = ((curr.rawRev - prev.rawRev) / Math.abs(prev.rawRev)) * 100;
+        curr.qoqRevenueGrowth = `${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`;
+      } else {
+        curr.qoqRevenueGrowth = 'N/A';
+      }
+
+      if (prev && typeof curr.rawNet === 'number' && typeof prev.rawNet === 'number' && Math.abs(prev.rawNet) > 0) {
+        const growth = ((curr.rawNet - prev.rawNet) / Math.abs(prev.rawNet)) * 100;
+        curr.qoqProfitGrowth = `${growth >= 0 ? '+' : ''}${growth.toFixed(1)}%`;
+      } else {
+        curr.qoqProfitGrowth = 'N/A';
+      }
+    }
+
+    return quarterlyHistory;
+  } catch (e) {
+    console.warn('[NSE Results Fallback] Error fetching quarterly results for', symbol, ':', e.message);
+    return [];
+  }
+}
+
 
 let sessionCrumb = null;
 let sessionCookie = null;
@@ -373,13 +556,28 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
     const d = rawSec ? new Date(rawSec * 1000) : new Date(fmtStr);
     if (!isNaN(d.getTime())) {
       earningsDateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-      const diffMs = d.getTime() - Date.now();
-      earningsDaysAway = Math.ceil(diffMs / (1000 * 60 * 60 * 24));
+      earningsDaysAway = calculateDaysAway(d);
     }
     isEarningsEstimate = !!calendarEvents.earnings?.isEarningsDateEstimate;
   }
 
   const effectiveCountry = (country === 'IN' || ticker?.endsWith('.NS') || ticker?.endsWith('.BO') || symbol?.endsWith('.NS') || symbol?.endsWith('.BO')) ? 'IN' : 'US';
+
+  // NSE India fallback: if Yahoo gave us no earningsDate and this is an Indian stock,
+  // look it up in the NSE event calendar (fetched once and cached for 4 hours).
+  if (!earningsDateStr && effectiveCountry === 'IN') {
+    try {
+      const nseResult = await fetchNseEarningsDate(symbol);
+      if (nseResult) {
+        earningsDateStr = nseResult.dateStr;
+        earningsDaysAway = nseResult.daysAway;
+        isEarningsEstimate = true; // NSE dates are official board meeting dates, not "estimates" per se, but mark for transparency
+      }
+    } catch (nseErr) {
+      console.warn('[NSE Fallback] Error fetching NSE earnings date for', symbol, ':', nseErr.message);
+    }
+  }
+
 
   // 3-tier Fallback Parser for Quarterly Financial Performance (with Profit, OPM, EBITDA & Revenue)
   let quarterlyHistory = [];
@@ -494,6 +692,18 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
     });
   }
 
+  // NSE India Fallback for Quarterly Financial Performance (if Yahoo yielded no quarterlyHistory)
+  if (quarterlyHistory.length === 0 && effectiveCountry === 'IN') {
+    try {
+      const nseQuarters = await fetchNseQuarterlyResults(symbol, effectiveCountry);
+      if (nseQuarters && nseQuarters.length > 0) {
+        quarterlyHistory = nseQuarters;
+      }
+    } catch (nseQErr) {
+      console.warn('[NSE Quarterly Fallback] Error fetching results for', symbol, ':', nseQErr.message);
+    }
+  }
+
   // Calculate QoQ Growth (%) for Revenue and Net Profit across quarters
   for (let i = 0; i < quarterlyHistory.length; i++) {
     const curr = quarterlyHistory[i];
@@ -535,6 +745,25 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
     date: new Date(s.date * 1000).toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' })
   })) : [];
 
+  let rawRevenueGrowth = financialData.revenueGrowth?.raw || null;
+  let rawEarningsGrowth = financialData.earningsGrowth?.raw || null;
+
+  if (rawRevenueGrowth === null && quarterlyHistory.length >= 2) {
+    const latestQ = quarterlyHistory[quarterlyHistory.length - 1];
+    const prevQ = quarterlyHistory[quarterlyHistory.length - 2];
+    if (typeof latestQ.rawRev === 'number' && typeof prevQ.rawRev === 'number' && prevQ.rawRev > 0) {
+      rawRevenueGrowth = (latestQ.rawRev - prevQ.rawRev) / Math.abs(prevQ.rawRev);
+    }
+  }
+
+  if (rawEarningsGrowth === null && quarterlyHistory.length >= 2) {
+    const latestQ = quarterlyHistory[quarterlyHistory.length - 1];
+    const prevQ = quarterlyHistory[quarterlyHistory.length - 2];
+    if (typeof latestQ.rawNet === 'number' && typeof prevQ.rawNet === 'number' && Math.abs(prevQ.rawNet) > 0) {
+      rawEarningsGrowth = (latestQ.rawNet - prevQ.rawNet) / Math.abs(prevQ.rawNet);
+    }
+  }
+
   const fundamentals = {
     marketCap: formatLargeNumber(summaryDetail.marketCap?.raw, effectiveCountry),
     rawMarketCap: summaryDetail.marketCap?.raw || null,
@@ -548,11 +777,11 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
     priceToBook: keyStats.priceToBook?.fmt || (keyStats.priceToBook?.raw ? keyStats.priceToBook.raw.toFixed(2) : 'N/A'),
     epsTrailing: keyStats.trailingEps?.fmt || (keyStats.trailingEps?.raw ? keyStats.trailingEps.raw.toFixed(2) : 'N/A'),
 
-    revenueGrowth: financialData.revenueGrowth?.fmt || (financialData.revenueGrowth?.raw ? `${(financialData.revenueGrowth.raw * 100).toFixed(1)}%` : 'N/A'),
-    rawRevenueGrowth: financialData.revenueGrowth?.raw || null,
+    revenueGrowth: financialData.revenueGrowth?.fmt || (typeof rawRevenueGrowth === 'number' ? `${(rawRevenueGrowth * 100).toFixed(1)}%` : 'N/A'),
+    rawRevenueGrowth,
 
-    earningsGrowth: financialData.earningsGrowth?.fmt || (financialData.earningsGrowth?.raw ? `${(financialData.earningsGrowth.raw * 100).toFixed(1)}%` : 'N/A'),
-    rawEarningsGrowth: financialData.earningsGrowth?.raw || null,
+    earningsGrowth: financialData.earningsGrowth?.fmt || (typeof rawEarningsGrowth === 'number' ? `${(rawEarningsGrowth * 100).toFixed(1)}%` : 'N/A'),
+    rawEarningsGrowth,
 
     profitMargins: financialData.profitMargins?.fmt || (financialData.profitMargins?.raw ? `${(financialData.profitMargins.raw * 100).toFixed(1)}%` : 'N/A'),
     operatingMargins: financialData.operatingMargins?.fmt || (financialData.operatingMargins?.raw ? `${(financialData.operatingMargins.raw * 100).toFixed(1)}%` : 'N/A'),
@@ -597,7 +826,7 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
     }))
   };
 
-  const hasRawData = !!rawSummary;
+  const hasRawData = !!rawSummary || (quarterlyHistory && quarterlyHistory.length > 0);
 
   const parsedData = {
     symbol,

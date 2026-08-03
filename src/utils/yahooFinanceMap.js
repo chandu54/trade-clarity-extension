@@ -179,8 +179,60 @@ export function clearQuoteCache() {
   inflightRequestsMap.clear();
 }
 
-export async function fetchStockData(symbols, country, timeframe = '3mo', customInterval = null, signal = null, forceRefresh = false) {
+class RequestQueue {
+  constructor(concurrency = 3, minDelayMs = 80) {
+    this.concurrency = concurrency;
+    this.minDelayMs = minDelayMs;
+    this.activeCount = 0;
+    this.queue = [];
+    this.lastRequestTime = 0;
+  }
+
+  enqueue(fn, isHighPriority = false) {
+    return new Promise((resolve, reject) => {
+      const item = { fn, resolve, reject };
+      if (isHighPriority) {
+        this.queue.unshift(item);
+      } else {
+        this.queue.push(item);
+      }
+      this.dequeue();
+    });
+  }
+
+  dequeue() {
+    if (this.activeCount >= this.concurrency || this.queue.length === 0) {
+      return;
+    }
+
+    const now = Date.now();
+    const timeSinceLast = now - this.lastRequestTime;
+    const delay = Math.max(0, this.minDelayMs - timeSinceLast);
+
+    setTimeout(() => {
+      if (this.queue.length === 0) return;
+      const { fn, resolve, reject } = this.queue.shift();
+      this.activeCount++;
+      this.lastRequestTime = Date.now();
+
+      fn()
+        .then(resolve)
+        .catch(reject)
+        .finally(() => {
+          this.activeCount--;
+          this.dequeue();
+        });
+    }, delay);
+  }
+}
+
+const globalRateQueue = new RequestQueue(3, 80);
+const inFlightStockRequests = new Map();
+
+export async function fetchStockData(symbols, country, timeframe = '3mo', customInterval = null, signal = null, forceRefresh = false, onBatch = null) {
   if (!symbols || !symbols.length) return [];
+
+  const isSingleStockCall = symbols.length === 1;
 
   const validTimeframes = {
     '1d': { range: '5d', interval: '5m' },
@@ -203,17 +255,45 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
       ticker = `${symbol}.NS`;
     }
 
-    const earningsDate = null;
+    let earningsDate = null;
 
     try {
       const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
       const baseUrl = isLocalhost ? '/yahoo-api' : 'https://query1.finance.yahoo.com';
       const url = `${baseUrl}/v8/finance/chart/${encodeURIComponent(ticker)}?range=${tf.range}&interval=${fetchInterval}`;
-      let response = await fetch(url, { signal, cache: 'no-cache' });
-      
-      if (response.status === 429 && !isLocalhost) {
-        const fallbackUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${tf.range}&interval=${fetchInterval}`;
-        response = await fetch(fallbackUrl, { signal, cache: 'no-cache' });
+      const fallbackUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?range=${tf.range}&interval=${fetchInterval}`;
+
+      let response;
+      if (inFlightStockRequests.has(url)) {
+        response = await inFlightStockRequests.get(url);
+      } else {
+        const fetchPromise = (async () => {
+          let attempts = 0;
+          let res = null;
+          while (attempts < 3) {
+            attempts++;
+            try {
+              const fetchUrl = (attempts % 2 === 1 || isLocalhost) ? url : fallbackUrl;
+              res = await globalRateQueue.enqueue(() => fetch(fetchUrl, { signal }), isSingleStockCall);
+              if (res.status === 429 && !isLocalhost) {
+                console.warn(`[RateLimit] Yahoo returned 429 for ${ticker}. Retrying with backoff (attempt ${attempts}/3)...`);
+                await new Promise(r => setTimeout(r, 1200 * attempts));
+                continue;
+              }
+              break;
+            } catch (err) {
+              if (attempts >= 3) throw err;
+              await new Promise(r => setTimeout(r, 1000));
+            }
+          }
+          return res;
+        })();
+        inFlightStockRequests.set(url, fetchPromise);
+        try {
+          response = await fetchPromise;
+        } finally {
+          inFlightStockRequests.delete(url);
+        }
       }
       
       if (!response.ok) {
@@ -227,6 +307,15 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
 
       const meta = result.meta || {};
       const isMarketOpen = isMarketOpenFromMeta(meta);
+
+      // Extract earningsDate from meta (earningsTimestamp or earningsTimestampStart as fallback)
+      const earningsTs = meta.earningsTimestamp || meta.earningsTimestampStart || null;
+      if (earningsTs) {
+        const earningsD = new Date(earningsTs * 1000);
+        if (!isNaN(earningsD.getTime())) {
+          earningsDate = earningsD.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+        }
+      }
 
       const quote = result.indicators?.quote?.[0] || {};
       const adjIndicators = result.indicators?.adjclose?.[0]?.adjclose || [];
@@ -252,84 +341,54 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
           const lowPrice = (lows[i] != null && lows[i] > 0) ? lows[i] : closePrice;
           rawBars.push({
             time: timestamps[i],
-            open: openPrice,
-            high: highPrice,
-            low: lowPrice,
-            close: closePrice
+            open: Number(openPrice.toFixed(2)),
+            high: Number(highPrice.toFixed(2)),
+            low: Number(lowPrice.toFixed(2)),
+            close: Number(closePrice.toFixed(2)),
+            volume: quote.volume?.[i] || 0
           });
         }
       }
 
-      const uniqueBars = [];
-      const seenTimes = new Set();
-      
-      for (const bar of rawBars) {
-        if (!seenTimes.has(bar.time)) {
-          seenTimes.add(bar.time);
-          uniqueBars.push(bar);
-        }
+      if (rawBars.length === 0) {
+        return { symbol, error: 'No valid candle bars' };
       }
 
+      const currentPrice = meta.regularMarketPrice || rawBars[rawBars.length - 1].close;
+      
       // Find actual previous day's close robustly from the 5d historical data
-      let calculatedPrevClose = null;
-      let lastDayStart = null;
-      if (uniqueBars.length > 0) {
-        const lastCandleTime = new Date(uniqueBars[uniqueBars.length - 1].time * 1000);
-        lastDayStart = new Date(lastCandleTime.getFullYear(), lastCandleTime.getMonth(), lastCandleTime.getDate()).getTime() / 1000;
-        
-        for (let i = uniqueBars.length - 1; i >= 0; i--) {
-          if (uniqueBars[i].time < lastDayStart) {
-            calculatedPrevClose = uniqueBars[i].close;
-            break;
-          }
-        }
+      let previousClose = meta.chartPreviousClose || meta.previousClose;
+      if (!previousClose && rawBars.length >= 2) {
+        previousClose = rawBars[rawBars.length - 2].close;
+      }
+      if (!previousClose) {
+        previousClose = currentPrice;
       }
 
-      let candlesticks = uniqueBars.sort((a, b) => a.time - b.time);
-      
-      // Filter for '1d' timeframe to only show the last traded day
-      if (timeframe === '1d' && lastDayStart) {
-        candlesticks = candlesticks.filter(c => c.time >= lastDayStart);
-      }
+      const periodStartPrice = rawBars[0].close;
+      const periodChangePct = periodStartPrice > 0 ? ((currentPrice - periodStartPrice) / periodStartPrice) * 100 : 0;
 
-      const currentPrice = meta.regularMarketPrice || (candlesticks.length > 0 ? candlesticks[candlesticks.length - 1].close : 0);
-      const prevClose = meta.previousClose || calculatedPrevClose || currentPrice;
-      const isAdvancing = currentPrice >= prevClose;
-      const dailyChange = currentPrice - prevClose;
-      const dailyChangePct = prevClose > 0 ? (dailyChange / prevClose) * 100 : 0;
-      
-      let periodChangePct = 0;
-      if (timeframe === '1d') {
-        periodChangePct = dailyChangePct;
-      } else {
-        const periodStartPrice = meta.chartPreviousClose || (candlesticks.length > 0 ? candlesticks[0].close : currentPrice);
-        periodChangePct = periodStartPrice > 0 ? ((currentPrice - periodStartPrice) / periodStartPrice) * 100 : 0;
-      }
-
-      let movingAverages = "";
-      if (candlesticks.length > 0) {
-        movingAverages = mapMovingAverageBucket(candlesticks.map(c => c.close), currentPrice);
-      }
+      const priceDiff = currentPrice - previousClose;
+      const dailyChangePct = previousClose > 0 ? (priceDiff / previousClose) * 100 : 0;
+      const isAdvancing = priceDiff >= 0;
 
       return {
         symbol,
-        longName: meta.longName || meta.shortName || symbol,
-        currentPrice: currentPrice || 0,
-        prevClose: prevClose || 0,
-        dailyChange: dailyChange || 0,
-        dailyChangePct: dailyChangePct || 0,
-        periodChangePct: periodChangePct || 0,
+        currentPrice: Number(currentPrice.toFixed(2)),
+        previousClose: Number(previousClose.toFixed(2)),
+        periodStartPrice: Number(periodStartPrice.toFixed(2)),
+        periodChangePct: Number(periodChangePct.toFixed(2)),
+        dailyChangePct: Number(dailyChangePct.toFixed(2)),
         isAdvancing,
-        high52w: meta.fiftyTwoWeekHigh || null,
-        low52w: meta.fiftyTwoWeekLow || null,
-        candlesticks,
-        movingAverages,
+        name: meta.longName || meta.shortName || symbol,
+        candlesticks: rawBars,
         earningsDate,
         _isMarketOpen: isMarketOpen,
         _meta: meta
       };
-    } catch (error) {
-      return { symbol, error: error.message };
+    } catch (err) {
+      if (err.name === 'AbortError') throw err;
+      return { symbol, error: err.message };
     }
   };
 
@@ -339,7 +398,16 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
     if (!forceRefresh) {
       if (globalQuoteCache.isValid(cacheKey, timeframe, country)) {
         const item = globalQuoteCache.get(cacheKey);
-        if (item) {
+        if (item && item.data) {
+          // Recompute periodChangePct from stored candlesticks so legacy cached entries are corrected immediately
+          if (timeframe !== '1d' && Array.isArray(item.data.candlesticks) && item.data.candlesticks.length > 0) {
+            const candles = item.data.candlesticks;
+            const curPx = item.data.currentPrice || candles[candles.length - 1].close;
+            const startPx = candles[0].close;
+            if (startPx > 0) {
+              item.data.periodChangePct = ((curPx - startPx) / startPx) * 100;
+            }
+          }
           return item.data;
         }
       }
@@ -386,7 +454,12 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
 
     try {
       const batchResults = await Promise.all(batch.map(fetchItem));
+      const validBatch = batchResults.filter(r => r && !r.error);
       results.push(...batchResults);
+
+      if (typeof onBatch === 'function' && validBatch.length > 0) {
+        onBatch(validBatch);
+      }
     } catch (e) {
       if (e.name === 'AbortError') break;
       throw e;
@@ -401,11 +474,11 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
   return results.filter(r => !r.error);
 }
 
-export async function fetchStockQuotes(symbols, country, signal = null, forceRefresh = false) {
+export async function fetchStockQuotes(symbols, country, signal = null, forceRefresh = false, onBatch = null) {
   if (!symbols || !symbols.length) return [];
 
   try {
-    return await fetchStockData(symbols, country, '5d', '1d', signal, forceRefresh);
+    return await fetchStockData(symbols, country, '5d', '1d', signal, forceRefresh, onBatch);
   } catch (error) {
     if (error.name !== 'AbortError') {
       console.error("Failed to fetch stock quotes via chart API:", error);

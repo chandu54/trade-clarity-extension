@@ -3,6 +3,7 @@ import AddStockModal from "./AddStockModal";
 import MultiSelectDropdown from "./MultiSelectDropdown";
 import EditStockModal from "./EditStockModal";
 import ImportWatchlistModal from "./ImportWatchlistModal";
+import ExportTradingViewModal from "./ExportTradingViewModal";
 import TrashIcon from "./icons/TrashIcon";
 import { useToast } from "./ToastContext";
 import { useConfirm } from "./ConfirmContext";
@@ -19,6 +20,7 @@ import { getLocalDateString } from "../utils/weekHelpers";
 import { parseInstitutionalDate } from "../utils/dateUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
 import { fetchStockQuotes } from "../utils/yahooFinanceMap";
+import { hydrateStockRsValues } from "../utils/benchmarkUtils";
 
 
 const FLAG_COLOR_MAP = {
@@ -532,39 +534,131 @@ export default function StockGrid({
     setLoadingQuotes(true);
     try {
       const symbolsList = symbols;
-      const results = await fetchStockQuotes(symbolsList, country, controller.signal, forceRefresh);
+      const results = await fetchStockQuotes(symbolsList, country, controller.signal, forceRefresh, (partialBatch) => {
+        if (controller.signal.aborted) return;
+        setQuotes(prev => {
+          const updated = { ...prev };
+          partialBatch.forEach((r) => {
+            if (r && r.symbol && r.currentPrice) {
+              updated[r.symbol] = {
+                currentPrice: r.currentPrice,
+                dailyChangePct: r.dailyChangePct,
+                isAdvancing: r.isAdvancing,
+                longName: r.longName || r.name,
+                earningsDate: r.earningsDate,
+              };
+            }
+          });
+          return updated;
+        });
+      });
       if (controller.signal.aborted) return;
 
       if (results && results.length > 0) {
         const mapping = {};
         results.forEach((r) => {
-          mapping[r.symbol] = {
-            currentPrice: r.currentPrice,
-            dailyChangePct: r.dailyChangePct,
-            isAdvancing: r.isAdvancing,
-            longName: r.longName || r.name,
-            earningsDate: r.earningsDate,
-          };
+          if (r && r.symbol && r.currentPrice) {
+            mapping[r.symbol] = {
+              currentPrice: r.currentPrice,
+              dailyChangePct: r.dailyChangePct,
+              isAdvancing: r.isAdvancing,
+              longName: r.longName || r.name,
+              earningsDate: r.earningsDate,
+            };
+          }
         });
-        setQuotes(mapping);
+        setQuotes(prev => ({ ...prev, ...mapping }));
       }
     } catch (err) {
       if (err.name !== 'AbortError') {
         console.error("Failed to fetch stock quotes for grid:", err);
       }
     } finally {
+      setLoadingQuotes(false);
       if (fetchAbortControllerRef.current === controller) {
-        setLoadingQuotes(false);
         fetchAbortControllerRef.current = null;
       }
     }
   }, [symbolsSerialized, country]);
+
+  const hydrateRsForGrid = useCallback(async () => {
+    const rsAutoCalc = data?.uiConfig?.rsAutoCalc;
+    if (rsAutoCalc === false || !week?.stocks) return;
+
+    const stockList = Object.values(week.stocks);
+    if (stockList.length === 0) return;
+
+    try {
+      const updatedStocks = await hydrateStockRsValues(stockList, country, data.uiConfig || {});
+      const stocksMap = {};
+      updatedStocks.forEach(stk => {
+        if (stk && stk.symbol) {
+          stocksMap[stk.symbol] = stk;
+        }
+      });
+
+      setData(prev => {
+        const prevWeek = prev.weeks?.[country]?.[weekKey];
+        if (!prevWeek) return prev;
+        
+        let hasChanges = false;
+        const mergedStocks = { ...prevWeek.stocks };
+
+        const rsInfo = getActualParamKeyAndDef(data?.paramDefinitions, 'rs', 'rs', country);
+        const rsKey = rsInfo?.key || (country === 'IN' ? 'in.rs' : 'us.rs');
+
+        Object.keys(stocksMap).forEach(sym => {
+          const newRs = stocksMap[sym]?.params?.rs || stocksMap[sym]?.parameters?.rs || stocksMap[sym]?.params?.[rsKey] || stocksMap[sym]?.parameters?.[rsKey];
+          const oldRs = mergedStocks[sym]?.params?.[rsKey] || mergedStocks[sym]?.params?.rs;
+          if (newRs && newRs !== oldRs) {
+            hasChanges = true;
+            mergedStocks[sym] = {
+              ...mergedStocks[sym],
+              params: {
+                ...(mergedStocks[sym].params || {}),
+                rs: newRs,
+                [rsKey]: newRs,
+                'in.rs': newRs,
+                'us.rs': newRs
+              },
+              parameters: {
+                ...(mergedStocks[sym].parameters || {}),
+                rs: newRs,
+                [rsKey]: newRs,
+                'in.rs': newRs,
+                'us.rs': newRs
+              }
+            };
+          }
+        });
+
+        if (!hasChanges) return prev;
+
+        return {
+          ...prev,
+          weeks: {
+            ...prev.weeks,
+            [country]: {
+              ...prev.weeks[country],
+              [weekKey]: {
+                ...prevWeek,
+                stocks: mergedStocks
+              }
+            }
+          }
+        };
+      });
+    } catch (err) {
+      console.warn("Failed to auto-hydrate RS for grid:", err);
+    }
+  }, [week?.stocks, country, weekKey, data?.uiConfig, data?.paramDefinitions, setData]);
 
   useEffect(() => {
     let active = true;
     setTimeout(() => {
       if (active) {
         fetchQuotesForGrid();
+        hydrateRsForGrid();
       }
     }, 0);
     return () => {
@@ -574,7 +668,7 @@ export default function StockGrid({
         fetchAbortControllerRef.current.abort();
       }
     };
-  }, [symbolsSerialized, country, weekKey, fetchQuotesForGrid]);
+  }, [symbolsSerialized, country, weekKey, fetchQuotesForGrid, hydrateRsForGrid]);
 
   const [importPendingStocks, setImportPendingStocks] = useState(null);
 
@@ -617,6 +711,7 @@ export default function StockGrid({
 
   const [exportMenuOpen, setExportMenuOpen] = useState(false);
   const exportMenuRef = useRef(null);
+  const [showTvExportModal, setShowTvExportModal] = useState(false);
 
   const [importMenuOpen, setImportMenuOpen] = useState(false);
   const importMenuRef = useRef(null);
@@ -711,11 +806,14 @@ export default function StockGrid({
 
       // Check if metrics are missing
       const params = stock.params || {};
+      const rsInfo = getActualParamKeyAndDef(data?.paramDefinitions, 'rs', 'rs', country);
+      const rsKey = rsInfo?.key || 'rs';
       const hasAdr = params[adrKey] !== undefined && params[adrKey] !== null && params[adrKey] !== "";
       const hasLiq = params[liqKey] !== undefined && params[liqKey] !== null && params[liqKey] !== "";
       const hasMa = params['movingAverages'] !== undefined && params['movingAverages'] !== null && params['movingAverages'] !== "";
+      const hasRs = params[rsKey] !== undefined && params[rsKey] !== null && params[rsKey] !== "";
 
-      if (!hasAdr || !hasLiq || !hasMa) return true;
+      if (!hasAdr || !hasLiq || !hasMa || !hasRs) return true;
 
       // Check if last sync was before today
       if (!stock.lastSyncTime || stock.lastSyncTime < todayStart) return true;
@@ -867,12 +965,14 @@ export default function StockGrid({
     const msgListener = (req) => {
       if (req.action === "FETCH_PROGRESS") {
         setFetchProgress(req.payload);
-        if (req.payload.completed >= req.payload.total) {
+        if (req.payload.total > 0 && req.payload.completed >= req.payload.total) {
           setTimeout(() => {
             setFetchProgress({ total: 0, completed: 0 });
-            showToast("Metrics updated successfully!", "success");
-          }, 1500);
+          }, 300);
         }
+      } else if (req.action === "FETCH_METRICS_COMPLETE") {
+        setFetchProgress({ total: 0, completed: 0 });
+        showToast("Metrics updated successfully!", "success");
       } else if (req.action === "BULK_AI_PROGRESS") {
         setAiProgress(req.payload);
         setRateLimitWait(null); // clear rate-limit status when new progress arrives
@@ -2328,26 +2428,32 @@ export default function StockGrid({
               
               {!isReadOnly && (
                 <>
-                  <button 
-                    className={`force-sync-btn ${(fetchProgress.total > 0 || loadingQuotes) ? 'is-syncing' : ''}`}
-                    onClick={() => triggerFullSync(true)}
-                    title="Force refresh all stock metrics"
-                    disabled={fetchProgress.total > 0 || loadingQuotes}
-                  >
-                    <svg 
-                      xmlns="http://www.w3.org/2000/svg" 
-                      width="14" 
-                      height="14" 
-                      viewBox="0 0 24 24" 
-                      fill="none" 
-                      stroke="currentColor" 
-                      strokeWidth="2.5" 
-                      strokeLinecap="round" 
-                      strokeLinejoin="round"
-                    >
-                      <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.3" />
-                    </svg>
-                  </button>
+                  {(() => {
+                    const isSyncingMetrics = fetchProgress.total > 0 && fetchProgress.completed < fetchProgress.total;
+                    const isRefreshing = isSyncingMetrics || loadingQuotes;
+                    return (
+                      <button 
+                        className={`force-sync-btn ${isRefreshing ? 'is-syncing' : ''}`}
+                        onClick={() => triggerFullSync(true)}
+                        title="Force refresh all stock metrics"
+                        disabled={isRefreshing}
+                      >
+                        <svg 
+                          xmlns="http://www.w3.org/2000/svg" 
+                          width="14" 
+                          height="14" 
+                          viewBox="0 0 24 24" 
+                          fill="none" 
+                          stroke="currentColor" 
+                          strokeWidth="2.5" 
+                          strokeLinecap="round" 
+                          strokeLinejoin="round"
+                        >
+                          <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.3" />
+                        </svg>
+                      </button>
+                    );
+                  })()}
 
                   <button
                     className={`force-sync-btn ${detectingSectors ? 'is-syncing' : ''}`}
@@ -2452,6 +2558,15 @@ export default function StockGrid({
             </button>
             {exportMenuOpen && (
               <ul className="action-dropdown shadow">
+                <li
+                  onClick={() => {
+                    setExportMenuOpen(false);
+                    setShowTvExportModal(true);
+                  }}
+                >
+                  TradingView Export
+                </li>
+                <li className="divider" />
                 <li onClick={() => handleExport("csv", "all")}>CSV / All</li>
                 <li onClick={() => handleExport("csv", "filtered")}>
                   CSV / Filtered
@@ -2587,6 +2702,18 @@ export default function StockGrid({
           onSelectStock={setEditingStock}
           watchlistName={selectedWatchlistId === "all" ? "All Stocks" : (activeWatchlist?.name || "Watchlist")}
           onQuickLog={onQuickLog}
+        />
+      )}
+
+      {showTvExportModal && (
+        <ExportTradingViewModal
+          isOpen={true}
+          onClose={() => setShowTvExportModal(false)}
+          stocks={week?.stocks || {}}
+          stockSectorCache={data.stockSectorCache || {}}
+          watchlists={data.watchlists || []}
+          selectedWatchlistId={selectedWatchlistId}
+          country={country}
         />
       )}
 

@@ -124,6 +124,20 @@ In the chart control toolbar, you can manage the visibility and style of technic
 - Customize the line weight using the thickness selector (1px to 4px).
 - Your styling preferences are stored locally and persist across sessions.
 
+### 📈 Relative Strength (RS) View & Automatic Rules Resolution
+TradeClarity automatically evaluates market outperformance for every stock against its benchmark index:
+- **Smart Benchmark Auto-Selection**:
+  - **India (IN)**: Default benchmark is **Nifty Mid/Smallcap (`^CRSMID`)**.
+  - **US (Tech)** (`IT`, `AI Stocks`, `Software`, `Electronics`): Benchmark is **Nasdaq 100 (`^NDX`)**.
+  - **US (Non-Tech)**: Benchmark is **S&P 500 (`^GSPC`)**.
+- **Rules Configuration**: Go to **Settings > Rules** to configure:
+  - **Calculation Timeframe**: `1 Month`, `3 Months` [Default], `6 Months`, or `1 Year`.
+  - **Benchmark Preference**: `Smart Auto`, `Main Market Index`, or `Smallcap Index`.
+  - **5-Tier Thresholds**: `Very Strong` (> +25%), `Strong` (+15% to +25%), `Neutral` (-3% to +15%), `Weak` (-15% to -3%), and `Very Weak` (< -15%).
+- **Interactive Chart Overlay Modes**:
+  - **`% Change`**: Plots normalized percentage performance overlay of stock vs benchmark.
+  - **`RS Line`**: Plots the Mansfield Relative Strength ratio line with a dashed 0% baseline in its own dedicated bottom sub-pane.
+
 ---
 
 ## 7. Visual Insights & AI
@@ -194,9 +208,16 @@ Hover over the **"i" icon** next to the week dropdown.
 
 ### 📤 Exporting Watchlists (For Trading)
 
-- To import your picks into a trading platform (like TradingView or a broker):
-  1.  Filter your grid (e.g., show only "Tradable" stocks).
-  2.  Click **Export > CSV / Filtered Stocks**.
+- **TradingView Export (With Sections)**:
+  1. Select any watchlist from the **Watchlist** dropdown (or use "All Stocks").
+  2. Click **Export > TradingView Export**.
+  3. Select your **Group By** preference:
+     - **Sector**: Groups stocks under sector headers (e.g. `###AUTO`, `###BANKS`).
+     - **Tag**: Groups stocks under tag headers (e.g. `###BREAKOUT`, `###LT LEAD`).
+     - **None**: Generates a plain list without section headers.
+  4. Click **Download .txt** to export a file ready for TradingView import, or **Copy to Clipboard** to paste directly into TradingView.
+- **CSV & JSON Exports**:
+  - Click **Export > CSV / All** or **CSV / Filtered** to export structured data.
 
 ### 🗑️ Data Purging (Maintenance)
 

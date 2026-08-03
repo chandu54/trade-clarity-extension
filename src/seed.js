@@ -35,10 +35,10 @@ export const DEFAULT_DATA = {
     rs: {
       label: "Relative Strength",
       type: "select",
-      options: ["Weak", "Neutral", "Strong", "Very Strong"],
+      options: ["Very Weak", "Weak", "Neutral", "Strong", "Very Strong"],
       filterable: true,
       isCheck: true,
-      idealValues: ["Strong"],
+      idealValues: ["Strong", "Very Strong"],
       order: 40,
     },
 

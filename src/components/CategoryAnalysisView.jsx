@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { fetchStockData } from '../utils/yahooFinanceMap';
+import { fetchBenchmarkCandles } from '../utils/benchmarkUtils';
 import BirdsEyeGrid from './BirdsEyeGrid';
 import DeepViewAi from './DeepViewAi';
 import EditStockModal from './EditStockModal';
@@ -20,10 +21,31 @@ export default function CategoryAnalysisView({
 }) {
   const [activeTab, setActiveTab] = useState('birdsEye');
   const [timeframe, setTimeframe] = useState('3mo');
+  const [selectedBenchmark, setSelectedBenchmark] = useState('none');
+  const [benchmarkMode, setBenchmarkMode] = useState('pct');
+  const [benchmarkCandles, setBenchmarkCandles] = useState([]);
   const [stockData, setStockData] = useState(initialStockData);
   const [loading, setLoading] = useState(initialStockData.length === 0);
   const [selectedStockForEdit, setSelectedStockForEdit] = useState(null);
   const [copied, setCopied] = useState(false);
+
+  useEffect(() => {
+    if (selectedBenchmark === 'none') {
+      Promise.resolve().then(() => setBenchmarkCandles([]));
+      return;
+    }
+
+    let isMounted = true;
+    fetchBenchmarkCandles(country, selectedBenchmark, timeframe).then(candles => {
+      if (isMounted) {
+        setBenchmarkCandles(candles);
+      }
+    }).catch(err => {
+      console.warn("Failed to fetch benchmark data:", err);
+    });
+
+    return () => { isMounted = false; };
+  }, [selectedBenchmark, country, timeframe]);
 
   // Dynamic indicator logic
   const [indicatorStyle, setIndicatorStyle] = useState({ left: 0, width: 0 });
@@ -203,6 +225,11 @@ export default function CategoryAnalysisView({
                 stocksCount={symbols.length}
                 timeframe={timeframe}
                 setTimeframe={setTimeframe}
+                selectedBenchmark={selectedBenchmark}
+                setSelectedBenchmark={setSelectedBenchmark}
+                benchmarkMode={benchmarkMode}
+                setBenchmarkMode={setBenchmarkMode}
+                benchmarkCandles={benchmarkCandles}
                 data={mergedStockData}
                 country={country}
                 onTileClick={(stock) => setSelectedStockForEdit(stock)}

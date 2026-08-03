@@ -318,6 +318,32 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
                 </label>
               </div>
 
+              <div className="form-field mt-4">
+                <label htmlFor="rsBenchmarkSetting" className="settings-label-v2">
+                  Relative Strength (RS) Calculation Benchmark
+                  <span className="info-icon" title="Choose the index preference used for auto-populating Relative Strength categories." />
+                </label>
+                <select
+                  id="rsBenchmarkSetting"
+                  className="select-control settings-select-v2"
+                  value={data?.uiConfig?.rsBenchmarkSetting || 'auto'}
+                  onChange={(e) => {
+                    const val = e.target.value;
+                    setData(prev => ({
+                      ...prev,
+                      uiConfig: {
+                        ...(prev.uiConfig || {}),
+                        rsBenchmarkSetting: val
+                      }
+                    }));
+                  }}
+                >
+                  <option value="auto">Smart Auto (Nifty Smallcap for IN, Nasdaq/S&P by sector for US)</option>
+                  <option value="main">Main Market Index (Nifty 50 for IN, S&P 500 for US)</option>
+                  <option value="smallcap">Smallcap / Midcap Index (Nifty Mid/Smallcap for IN, Russell 2000 for US)</option>
+                </select>
+              </div>
+
               <div className="api-portal-card mt-6">
                 <div className="api-portal-row">
                   <div className="api-portal-brand">

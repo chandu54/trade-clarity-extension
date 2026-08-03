@@ -15,8 +15,10 @@
     "https://fc.yahoo.com/*",
     "https://finance.yahoo.com/*",
     "https://generativelanguage.googleapis.com/*",
-    "https://www.niftyindices.com/*"
+    "https://www.niftyindices.com/*",
+    "https://www.nseindia.com/*"
   ],
+
   "action": {
     "default_title": "Open TradeClarity.market",
     "default_icon": {

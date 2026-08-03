@@ -10,7 +10,8 @@ describe('EditingRulesModal', () => {
       uiConfig: {
         lockPreviousWeeks: true,
         enableApiHydration: true,
-        autoRefreshMetrics: true
+        autoRefreshMetrics: true,
+        rsAutoCalc: true
       }
     },
     setData: vi.fn()
@@ -21,6 +22,7 @@ describe('EditingRulesModal', () => {
     expect(screen.getByText('Rules')).toBeDefined();
     expect(screen.getByText('Auto-Refresh Metrics Daily')).toBeDefined();
     expect(screen.getByText('Auto-Identify Stock Sectors')).toBeDefined();
+    expect(screen.getByText('Relative Strength (RS) & Benchmark Rules')).toBeDefined();
   });
 
   it('toggles "Auto-Identify Stock Sectors" correctly', () => {
@@ -31,9 +33,10 @@ describe('EditingRulesModal', () => {
     // switches:
     // 0: lockPreviousWeeks
     // 1: enableApiHydration
-    // 2: autoIdentifySectors
-    // 3: autoRefreshMetrics
-    const autoIdentifyToggle = switches[2];
+    // 2: rsAutoCalc
+    // 3: autoIdentifySectors
+    // 4: autoRefreshMetrics
+    const autoIdentifyToggle = switches[3];
     
     fireEvent.click(autoIdentifyToggle);
     
@@ -46,14 +49,11 @@ describe('EditingRulesModal', () => {
     const setData = vi.fn();
     render(<EditingRulesModal {...defaultProps} setData={setData} />);
     
-    // Find the fourth switch (Auto-Refresh is at the bottom)
     const switches = screen.getAllByRole('checkbox');
-    const autoRefreshToggle = switches[3];
+    const autoRefreshToggle = switches[4];
     
     fireEvent.click(autoRefreshToggle);
     
-    // It should call setData with autoRefreshMetrics: false
-    // Since default was true (and modal renders it checked)
     expect(setData).toHaveBeenCalled();
     const callArg = setData.mock.calls[0][0];
     expect(callArg.uiConfig.autoRefreshMetrics).toBe(false);

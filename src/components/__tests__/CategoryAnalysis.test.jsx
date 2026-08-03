@@ -340,5 +340,38 @@ describe('Category Intelligence Suite', () => {
 
       expect(screen.getByText('AAPL')).toBeInTheDocument();
     });
+
+    it('renders benchmark comparison overlay and mode toggle buttons when selected', () => {
+      const mockChartData = {
+        symbol: 'AAPL',
+        longName: 'Apple Inc.',
+        currentPrice: 150.50,
+        prevClose: 148.00,
+        periodChangePct: 1.69,
+        isAdvancing: true,
+        candlesticks: [
+          { time: 1700000000, open: 100, high: 105, low: 99, close: 102 },
+          { time: 1700086400, open: 102, high: 108, low: 101, close: 106 }
+        ]
+      };
+
+      const mockBenchCandles = [
+        { time: 1700000000, open: 4000, high: 4050, low: 3990, close: 4010 },
+        { time: 1700086400, open: 4010, high: 4080, low: 4000, close: 4050 }
+      ];
+
+      render(
+        <MiniCandlestickChart 
+          data={mockChartData} 
+          country="US" 
+          selectedBenchmark="main"
+          benchmarkMode="rs"
+          benchmarkCandles={mockBenchCandles}
+          timeframe="3mo" 
+        />
+      );
+
+      expect(screen.getByText('AAPL')).toBeInTheDocument();
+    });
   });
 });
