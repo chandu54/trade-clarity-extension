@@ -385,5 +385,26 @@ describe('StockGrid', () => {
     // Verify mockSetData was called
     expect(props.setData).toHaveBeenCalled();
   });
+
+  it('does not repeatedly call fetchStockQuotes in a loop on mount or state updates', async () => {
+    const { fetchStockQuotes } = await import('../../utils/yahooFinanceMap');
+    fetchStockQuotes.mockClear();
+
+    renderWithContext(<StockGrid {...props} />);
+
+    // Wait for initial quote fetch
+    await waitFor(() => {
+      expect(fetchStockQuotes).toHaveBeenCalled();
+    });
+
+    const callCountAfterMount = fetchStockQuotes.mock.calls.length;
+
+    // Wait a bit to ensure no secondary/tertiary loop calls happen
+    await new Promise(r => setTimeout(r, 100));
+
+    expect(fetchStockQuotes.mock.calls.length).toBe(callCountAfterMount);
+    expect(callCountAfterMount).toBeLessThanOrEqual(1);
+  });
 });
+
 

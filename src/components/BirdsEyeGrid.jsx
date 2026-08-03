@@ -68,8 +68,8 @@ export default function BirdsEyeGrid({
             </button>
           </div>
 
-          <div className="benchmark-picker-dropdown flex items-center gap-1.5 ml-2">
-            <span className="text-xs font-semibold text-slate-500 dark:text-slate-400">Benchmark:</span>
+          <div className="benchmark-picker-dropdown">
+            <span className="picker-label">Benchmark</span>
             <select
               value={selectedBenchmark}
               onChange={(e) => {
@@ -81,7 +81,7 @@ export default function BirdsEyeGrid({
                   setBenchmarkMode('pct');
                 }
               }}
-              className="bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700/80 rounded px-2 py-1 text-xs font-medium focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="interval-select-premium benchmark-select-premium"
               title="Compare Benchmark Index"
               aria-label="Compare Benchmark"
             >

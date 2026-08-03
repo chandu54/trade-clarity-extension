@@ -658,7 +658,6 @@ export default function StockGrid({
     setTimeout(() => {
       if (active) {
         fetchQuotesForGrid();
-        hydrateRsForGrid();
       }
     }, 0);
     return () => {
@@ -668,7 +667,21 @@ export default function StockGrid({
         fetchAbortControllerRef.current.abort();
       }
     };
-  }, [symbolsSerialized, country, weekKey, fetchQuotesForGrid, hydrateRsForGrid]);
+  }, [symbolsSerialized, country, weekKey, fetchQuotesForGrid]);
+
+  const hydrateRsForGridRef = useRef(hydrateRsForGrid);
+  useEffect(() => {
+    hydrateRsForGridRef.current = hydrateRsForGrid;
+  }, [hydrateRsForGrid]);
+
+  const rsHydratedKeyRef = useRef("");
+  useEffect(() => {
+    const currentKey = `${symbolsSerialized}:${country}:${weekKey}`;
+    if (rsHydratedKeyRef.current === currentKey) return;
+    rsHydratedKeyRef.current = currentKey;
+
+    hydrateRsForGridRef.current();
+  }, [symbolsSerialized, country, weekKey]);
 
   const [importPendingStocks, setImportPendingStocks] = useState(null);
 
@@ -851,9 +864,11 @@ export default function StockGrid({
       });
     }
 
-    // Refresh quotes simultaneously
-    fetchQuotesForGrid(force);
-  }, [week, country, weekKey, data, setData, fetchQuotesForGrid]);
+    // Refresh quotes simultaneously only when explicitly forced by user
+    if (force) {
+      fetchQuotesForGrid(true);
+    }
+  }, [week, country, weekKey, data?.paramDefinitions, data?.uiConfig?.adrDays, data?.uiConfig?.liquidityDays, setData, fetchQuotesForGrid]);
 
   // --- AUTOMATED DAILY REFRESH ---
   const autoSyncTriggeredRef = useRef(false);

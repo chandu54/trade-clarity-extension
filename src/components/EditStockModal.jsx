@@ -234,8 +234,8 @@ export default function EditStockModal({
   const [isParamsCollapsed, setIsParamsCollapsed] = useState(true);
   const [timeframe, setTimeframe] = useState('3mo');
   const [interval, setInterval] = useState('auto');
-  const [selectedBenchmark, setSelectedBenchmark] = useState('main');
-  const [benchmarkMode, setBenchmarkMode] = useState('pct');
+  const [selectedBenchmark, setSelectedBenchmark] = useState('none');
+  const [benchmarkMode, setBenchmarkMode] = useState('normal');
   const [benchmarkCandles, setBenchmarkCandles] = useState([]);
   const [loadingChart, setLoadingChart] = useState(false);
 
@@ -2093,114 +2093,116 @@ export default function EditStockModal({
             >
               <div className="deep-view-left-panel">
                 <div className="panel-header">
-                  <span className="section-title">Chart</span>
                   <div className="chart-header-controls">
-                    <div className="duration-picker">
-                      <span className="picker-label">Range</span>
-                      {[
-                        { id: '1d', label: '1D', title: '1 Day Intraday' },
-                        { id: '1w', label: '1W', title: '1 Week History' },
-                        { id: '1mo', label: '1MO', title: '1 Month History' },
-                        { id: '3mo', label: '3MO', title: '3 Months History' },
-                        { id: '6mo', label: '6MO', title: '6 Months History' },
-                        { id: '1y', label: '1Y', title: '1 Year History' }
-                      ].map(df => (
-                        <button
-                          key={df.id}
-                          className={`duration-btn ${timeframe === df.id ? 'active' : ''}`}
-                          onClick={() => {
-                            setTimeframe(df.id);
-                            setInterval('auto');
-                          }}
-                          title={df.title}
-                        >
-                          {df.label}
-                        </button>
-                      ))}
-                    </div>
-                    <div className="interval-picker-dropdown">
-                      <span className="picker-label">Interval</span>
-                      <select
-                        value={interval}
-                        onChange={(e) => setInterval(e.target.value)}
-                        className="interval-select-premium"
-                      >
-                        <option value="auto">Auto</option>
-                        {(() => {
-                          const options = [
-                            { val: '5m', label: '5m', minRange: ['1d', '1w'] },
-                            { val: '15m', label: '15m', minRange: ['1d', '1w', '1mo'] },
-                            { val: '1h', label: '1h', minRange: ['1d', '1w', '1mo'] },
-                            { val: '1d', label: '1d', minRange: ['1w', '1mo', '3mo', '6mo', '1y'] },
-                            { val: '1wk', label: '1wk', minRange: ['1mo', '3mo', '6mo', '1y'] },
-                            { val: '1mo', label: '1mo', minRange: ['3mo', '6mo', '1y'] }
-                          ];
-                          return options
-                            .filter(opt => opt.minRange.includes(timeframe))
-                            .map(opt => (
-                              <option key={opt.val} value={opt.val}>{opt.label}</option>
-                            ));
-                        })()}
-                      </select>
-                    </div>
-                    <div className="benchmark-picker-dropdown">
-                      <span className="picker-label">Benchmark</span>
-                      <select
-                        value={selectedBenchmark}
-                        onChange={(e) => {
-                          const key = e.target.value;
-                          setSelectedBenchmark(key);
-                          if (key === 'none') {
-                            setBenchmarkMode('normal');
-                          } else if (benchmarkMode === 'normal') {
-                            setBenchmarkMode('pct');
-                          }
-                        }}
-                        className="interval-select-premium benchmark-select-premium"
-                        title="Compare Benchmark Index"
-                        aria-label="Compare Benchmark"
-                      >
-                        {getBenchmarkOptions(country).map(opt => (
-                          <option key={opt.key} value={opt.key}>{opt.label}</option>
+                    <div className="chart-header-left">
+                      <div className="duration-picker">
+                        {[
+                          { id: '1d', label: '1D', title: '1 Day Intraday' },
+                          { id: '1w', label: '1W', title: '1 Week History' },
+                          { id: '1mo', label: '1MO', title: '1 Month History' },
+                          { id: '3mo', label: '3MO', title: '3 Months History' },
+                          { id: '6mo', label: '6MO', title: '6 Months History' },
+                          { id: '1y', label: '1Y', title: '1 Year History' }
+                        ].map(df => (
+                          <button
+                            key={df.id}
+                            className={`duration-btn ${timeframe === df.id ? 'active' : ''}`}
+                            onClick={() => {
+                              setTimeframe(df.id);
+                              setInterval('auto');
+                            }}
+                            title={df.title}
+                          >
+                            {df.label}
+                          </button>
                         ))}
-                      </select>
-                    </div>
-                    {selectedBenchmark !== 'none' && (
-                      <div className="benchmark-mode-toggle">
-                        <button
-                          type="button"
-                          className={`benchmark-mode-btn ${benchmarkMode === 'pct' ? 'active-pct' : ''}`}
-                          onClick={() => setBenchmarkMode('pct')}
-                          title="Percentage Performance Overlay (% Change)"
-                        >
-                          % Change
-                        </button>
-                        <button
-                          type="button"
-                          className={`benchmark-mode-btn ${benchmarkMode === 'rs' ? 'active-rs' : ''}`}
-                          onClick={() => setBenchmarkMode('rs')}
-                          title="Mansfield Relative Strength Ratio Line"
-                        >
-                          RS Line
-                        </button>
                       </div>
-                    )}
-                    <div className="ma-settings-container" ref={maSettingsRef}>
-                      <button
-                        type="button"
-                        className={`ma-settings-trigger ${isMaPopoverOpen ? 'active' : ''}`}
-                        onClick={() => setIsMaPopoverOpen(!isMaPopoverOpen)}
-                        title="Moving Average Settings"
-                      >
-                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="icon-12">
-                          <circle cx="12" cy="12" r="3"/>
-                          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
-                        </svg>
-                        <span>MAs</span>
-                        <span className="ma-active-count-badge">
-                          {Object.values(maSettings).filter(s => s.visible).length}
-                        </span>
-                      </button>
+                    </div>
+                    
+                    <div className="chart-header-right">
+                      <div className="interval-picker-dropdown">
+                        <span className="picker-label">Interval</span>
+                        <select
+                          value={interval}
+                          onChange={(e) => setInterval(e.target.value)}
+                          className="interval-select-premium"
+                        >
+                          <option value="auto">Auto</option>
+                          {(() => {
+                            const options = [
+                              { val: '5m', label: '5m', minRange: ['1d', '1w'] },
+                              { val: '15m', label: '15m', minRange: ['1d', '1w', '1mo'] },
+                              { val: '1h', label: '1h', minRange: ['1d', '1w', '1mo'] },
+                              { val: '1d', label: '1d', minRange: ['1w', '1mo', '3mo', '6mo', '1y'] },
+                              { val: '1wk', label: '1wk', minRange: ['1mo', '3mo', '6mo', '1y'] },
+                              { val: '1mo', label: '1mo', minRange: ['3mo', '6mo', '1y'] }
+                            ];
+                            return options
+                              .filter(opt => opt.minRange.includes(timeframe))
+                              .map(opt => (
+                                <option key={opt.val} value={opt.val}>{opt.label}</option>
+                              ));
+                          })()}
+                        </select>
+                      </div>
+                      <div className="benchmark-picker-dropdown">
+                        <span className="picker-label">Benchmark</span>
+                        <select
+                          value={selectedBenchmark}
+                          onChange={(e) => {
+                            const key = e.target.value;
+                            setSelectedBenchmark(key);
+                            if (key === 'none') {
+                              setBenchmarkMode('normal');
+                            } else if (benchmarkMode === 'normal') {
+                              setBenchmarkMode('pct');
+                            }
+                          }}
+                          className="interval-select-premium benchmark-select-premium"
+                          title="Compare Benchmark Index"
+                          aria-label="Compare Benchmark"
+                        >
+                          {getBenchmarkOptions(country).map(opt => (
+                            <option key={opt.key} value={opt.key}>{opt.label}</option>
+                          ))}
+                        </select>
+                      </div>
+                      {selectedBenchmark !== 'none' && (
+                        <div className="benchmark-mode-toggle">
+                          <button
+                            type="button"
+                            className={`benchmark-mode-btn ${benchmarkMode === 'pct' ? 'active-pct' : ''}`}
+                            onClick={() => setBenchmarkMode('pct')}
+                            title="Percentage Performance Overlay (% Change)"
+                          >
+                            % Change
+                          </button>
+                          <button
+                            type="button"
+                            className={`benchmark-mode-btn ${benchmarkMode === 'rs' ? 'active-rs' : ''}`}
+                            onClick={() => setBenchmarkMode('rs')}
+                            title="Mansfield Relative Strength Ratio Line"
+                          >
+                            RS Line
+                          </button>
+                        </div>
+                      )}
+                      <div className="ma-settings-container" ref={maSettingsRef}>
+                        <button
+                          type="button"
+                          className={`ma-settings-trigger ${isMaPopoverOpen ? 'active' : ''}`}
+                          onClick={() => setIsMaPopoverOpen(!isMaPopoverOpen)}
+                          title="Moving Average Settings"
+                        >
+                          <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="icon-12">
+                            <circle cx="12" cy="12" r="3"/>
+                            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+                          </svg>
+                          <span>MAs</span>
+                          <span className="ma-active-count-badge">
+                            {Object.values(maSettings).filter(s => s.visible).length}
+                          </span>
+                        </button>
                       
                       {isMaPopoverOpen && (
                         <div className="ma-settings-popover shadow">
@@ -2250,6 +2252,7 @@ export default function EditStockModal({
                     </div>
                   </div>
                 </div>
+              </div>
                 <div className="chart-wrapper-large">
                   {loadingChart && (
                     <div className="chart-loading-overlay-premium" title="Chart loading...">

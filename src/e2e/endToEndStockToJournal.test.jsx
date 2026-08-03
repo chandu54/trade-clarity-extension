@@ -192,7 +192,8 @@ describe('TradeClarity Authentic End-to-End Stock-to-Journal Lifecycle (Network 
         ['AAPL'],
         'US',
         expect.any(Object),
-        false
+        false,
+        expect.anything()
       );
     });
 

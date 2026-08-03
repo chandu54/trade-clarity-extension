@@ -1,5 +1,3 @@
-import { mapMovingAverageBucket } from './metrics.js';
-
 // LRU Cache implementation following Chrome Extension storage best practices
 export class LRUQuoteCache {
   constructor(maxSize = 300) {
