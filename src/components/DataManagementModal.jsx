@@ -28,7 +28,7 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
 
   const handleClearStockCaches = async () => {
     try {
-      globalQuoteCache.clear();
+      await globalQuoteCache.clear();
       await globalFundamentalsCache.clear();
       const msg = "Quote & stock price cache cleared! (Sector cache preserved)";
       showToast?.(msg, "success");

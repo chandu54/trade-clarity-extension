@@ -391,4 +391,58 @@ describe('fetchStockQuotes', () => {
     const result = await fetchStockQuotes(['AAPL'], 'US');
     expect(result).toEqual([]);
   });
+
+  it('should calculate dailyChangePct using regularMarketPreviousClose instead of chartPreviousClose', async () => {
+    const mockData = {
+      chart: {
+        result: [{
+          meta: {
+            regularMarketPrice: 883.75,
+            regularMarketPreviousClose: 897.05,
+            chartPreviousClose: 778.45,
+            longName: '63MOONS'
+          },
+          indicators: { quote: [{ close: [778.45, 897.05, 883.75] }] },
+          timestamp: [1625000000, 1625086400, 1625172800]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, mockData));
+    const result = await fetchStockQuotes(['63MOONS'], 'IN');
+
+    expect(result[0].symbol).toBe('63MOONS');
+    expect(result[0].currentPrice).toBe(883.75);
+    expect(result[0].previousClose).toBe(897.05);
+    expect(result[0].dailyChangePct).toBe(-1.48);
+    expect(result[0].isAdvancing).toBe(false);
+  });
+
+  it('should extract previous close from candles when Yahoo meta.previousClose matches start-of-range price (Zerodha ABB scenario)', async () => {
+    // Yahoo returns chartPreviousClose & previousClose = 7284 (5d ago price)
+    // Candle array contains: [..., 7601.00 (yesterday), 7854.00 (today)]
+    const mockAbb = {
+      chart: {
+        result: [{
+          meta: {
+            regularMarketPrice: 7854.00,
+            previousClose: 7284.00,
+            chartPreviousClose: 7284.00,
+            longName: 'ABB India'
+          },
+          indicators: { quote: [{ close: [7284.00, 7450.00, 7601.00, 7854.00] }] },
+          timestamp: [1722400000, 1722486400, 1722572800, 1722659200]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, mockAbb));
+    const result = await fetchStockQuotes(['ABB'], 'IN');
+
+    expect(result[0].symbol).toBe('ABB');
+    expect(result[0].currentPrice).toBe(7854.00);
+    expect(result[0].previousClose).toBe(7601.00); // Yesterday's candle close, NOT 7284.00
+    expect(result[0].dailyChangePct).toBe(3.33);   // +3.33% (matches Zerodha), NOT +7.82%
+    expect(result[0].isAdvancing).toBe(true);
+  });
 });

@@ -39,7 +39,14 @@ export class LRUQuoteCache {
     const now = Date.now();
     const age = now - item.fetchedAt;
 
-    // Strict Stale-Data Rule:
+    // 1. Calendar Day Invalidation: If fetched on a previous calendar day -> STALE!
+    const fetchedDate = new Date(item.fetchedAt).toDateString();
+    const currentDate = new Date(now).toDateString();
+    if (fetchedDate !== currentDate) {
+      return false;
+    }
+
+    // 2. Strict Stale-Data Rule:
     // If cached when market was CLOSED, but market is NOW OPEN -> Must consider STALE & re-fetch live data!
     if (!item.isMarketOpen) {
       if (isMarketOpenForCountry(country)) {
@@ -58,20 +65,36 @@ export class LRUQuoteCache {
     return age < ttl;
   }
 
-  clear() {
+  async clear() {
     this.cache.clear();
-    saveQuoteCacheToStorage();
-    if (typeof chrome !== 'undefined' && typeof chrome.storage?.local?.remove === 'function') {
-      chrome.storage.local.remove('trading_app_data.quoteCache');
+    if (saveTimer) {
+      clearTimeout(saveTimer);
+      saveTimer = null;
     }
-    if (typeof window !== 'undefined' && window.localStorage) {
-      localStorage.removeItem('trading_app_data.quoteCache');
-      localStorage.removeItem('trading_app_data.stockQuotes');
+    const storageKey = 'trading_app_data';
+    try {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        const res = await new Promise(r => chrome.storage.local.get(storageKey, r));
+        const appData = res[storageKey] || {};
+        delete appData.quoteCache;
+        appData.quoteCacheVersion = QUOTE_CACHE_VERSION;
+        await chrome.storage.local.set({ [storageKey]: appData });
+      }
+      if (typeof window !== 'undefined' && window.localStorage) {
+        const appData = JSON.parse(localStorage.getItem(storageKey) || '{}');
+        delete appData.quoteCache;
+        appData.quoteCacheVersion = QUOTE_CACHE_VERSION;
+        localStorage.setItem(storageKey, JSON.stringify(appData));
+        localStorage.removeItem('trading_app_data.stockQuotes');
+      }
+    } catch (e) {
+      console.warn("Failed to clear quoteCache from storage:", e);
     }
   }
 }
 
 export const globalQuoteCache = new LRUQuoteCache(300);
+const QUOTE_CACHE_VERSION = 'v4_live_market_prev_close_fix';
 const inflightRequestsMap = new Map();
 
 let saveTimer = null;
@@ -95,10 +118,12 @@ export async function saveQuoteCacheToStorage() {
         const res = await new Promise(r => chrome.storage.local.get(storageKey, r));
         const appData = res[storageKey] || {};
         appData.quoteCache = serializedCache;
+        appData.quoteCacheVersion = QUOTE_CACHE_VERSION;
         await chrome.storage.local.set({ [storageKey]: appData });
       } else if (typeof window !== 'undefined' && window.localStorage) {
         const appData = JSON.parse(localStorage.getItem(storageKey) || '{}');
         appData.quoteCache = serializedCache;
+        appData.quoteCacheVersion = QUOTE_CACHE_VERSION;
         localStorage.setItem(storageKey, JSON.stringify(appData));
       }
     } catch (e) {
@@ -118,15 +143,34 @@ export async function loadQuoteCacheFromStorage() {
       appData = JSON.parse(localStorage.getItem(storageKey) || 'null');
     }
 
-    if (appData && appData.quoteCache) {
-      const now = Date.now();
-      Object.entries(appData.quoteCache).forEach(([key, item]) => {
-        if (item && item.data && item.fetchedAt) {
-          if (now - item.fetchedAt < 24 * 60 * 60 * 1000) {
-            globalQuoteCache.cache.set(key, item);
+    if (appData) {
+      // Purge legacy cache if version mismatch
+      if (appData.quoteCacheVersion !== QUOTE_CACHE_VERSION) {
+        console.info("[QuoteCache] Legacy cache version detected. Purging quoteCache to enforce exact 1-day change calculations.");
+        globalQuoteCache.clear();
+        return;
+      }
+
+      if (appData.quoteCache) {
+        const now = Date.now();
+        Object.entries(appData.quoteCache).forEach(([key, item]) => {
+          if (item && item.data && item.fetchedAt) {
+            if (now - item.fetchedAt < 24 * 60 * 60 * 1000) {
+              if (Array.isArray(item.data.candlesticks) && item.data.candlesticks.length >= 2) {
+                const curPx = item.data.currentPrice || item.data.candlesticks[item.data.candlesticks.length - 1].close;
+                const prevPx = extractPreviousClose(item.data._meta, item.data.candlesticks);
+                if (prevPx && prevPx > 0) {
+                  const diff = curPx - prevPx;
+                  item.data.previousClose = Number(prevPx.toFixed(2));
+                  item.data.dailyChangePct = Number(((diff / prevPx) * 100).toFixed(2));
+                  item.data.isAdvancing = diff >= 0;
+                }
+              }
+              globalQuoteCache.cache.set(key, item);
+            }
           }
-        }
-      });
+        });
+      }
     }
   } catch (e) {
     console.warn("Failed to load quoteCache from storage:", e);
@@ -226,6 +270,43 @@ class RequestQueue {
 
 const globalRateQueue = new RequestQueue(3, 80);
 const inFlightStockRequests = new Map();
+
+export function extractPreviousClose(meta, rawBars, currentPrice = null) {
+  // 1. Official regularMarketPreviousClose if present and valid (distinct from chartPreviousClose)
+  if (meta && typeof meta.regularMarketPreviousClose === 'number' && meta.regularMarketPreviousClose > 0) {
+    if (!meta.chartPreviousClose || Math.abs(meta.regularMarketPreviousClose - meta.chartPreviousClose) > 0.001) {
+      return meta.regularMarketPreviousClose;
+    }
+  }
+
+  // 2. Extract from rawBars (the daily candle series)
+  if (Array.isArray(rawBars) && rawBars.length >= 2) {
+    const lastBar = rawBars[rawBars.length - 1];
+    const prevBar = rawBars[rawBars.length - 2];
+
+    // If last bar's close equals currentPrice, then lastBar is TODAY'S active candle, so prevBar is YESTERDAY'S candle!
+    // If last bar's close differs from currentPrice, then lastBar IS YESTERDAY'S completed candle!
+    if (typeof currentPrice === 'number' && currentPrice > 0 && Math.abs(lastBar.close - currentPrice) < 0.01) {
+      return prevBar.close;
+    } else {
+      return lastBar.close;
+    }
+  }
+
+  if (Array.isArray(rawBars) && rawBars.length === 1) {
+    return rawBars[0].close;
+  }
+
+  // Fallback 1: Yahoo previousClose / chartPreviousClose
+  if (meta && typeof meta.previousClose === 'number' && meta.previousClose > 0) {
+    return meta.previousClose;
+  }
+  if (meta && typeof meta.chartPreviousClose === 'number' && meta.chartPreviousClose > 0) {
+    return meta.chartPreviousClose;
+  }
+
+  return null;
+}
 
 export async function fetchStockData(symbols, country, timeframe = '3mo', customInterval = null, signal = null, forceRefresh = false, onBatch = null) {
   if (!symbols || !symbols.length) return [];
@@ -354,14 +435,8 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
 
       const currentPrice = meta.regularMarketPrice || rawBars[rawBars.length - 1].close;
       
-      // Find actual previous day's close robustly from the 5d historical data
-      let previousClose = meta.chartPreviousClose || meta.previousClose;
-      if (!previousClose && rawBars.length >= 2) {
-        previousClose = rawBars[rawBars.length - 2].close;
-      }
-      if (!previousClose) {
-        previousClose = currentPrice;
-      }
+      // Robustly extract actual previous day's close for 1-day percentage change
+      let previousClose = extractPreviousClose(meta, rawBars, currentPrice) || currentPrice;
 
       const periodStartPrice = rawBars[0].close;
       const periodChangePct = periodStartPrice > 0 ? ((currentPrice - periodStartPrice) / periodStartPrice) * 100 : 0;
@@ -397,13 +472,22 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
       if (globalQuoteCache.isValid(cacheKey, timeframe, country)) {
         const item = globalQuoteCache.get(cacheKey);
         if (item && item.data) {
-          // Recompute periodChangePct from stored candlesticks so legacy cached entries are corrected immediately
-          if (timeframe !== '1d' && Array.isArray(item.data.candlesticks) && item.data.candlesticks.length > 0) {
+          // Recompute periodChangePct & dailyChangePct from stored candlesticks so any legacy cached entries are corrected instantly
+          if (Array.isArray(item.data.candlesticks) && item.data.candlesticks.length > 0) {
             const candles = item.data.candlesticks;
             const curPx = item.data.currentPrice || candles[candles.length - 1].close;
             const startPx = candles[0].close;
             if (startPx > 0) {
-              item.data.periodChangePct = ((curPx - startPx) / startPx) * 100;
+              item.data.periodChangePct = Number((((curPx - startPx) / startPx) * 100).toFixed(2));
+            }
+            if (candles.length >= 2) {
+              const prevPx = extractPreviousClose(item.data._meta, candles, curPx);
+              if (prevPx && prevPx > 0) {
+                const diff = curPx - prevPx;
+                item.data.previousClose = Number(prevPx.toFixed(2));
+                item.data.dailyChangePct = Number(((diff / prevPx) * 100).toFixed(2));
+                item.data.isAdvancing = diff >= 0;
+              }
             }
           }
           return item.data;
