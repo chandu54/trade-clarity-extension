@@ -445,4 +445,32 @@ describe('fetchStockQuotes', () => {
     expect(result[0].dailyChangePct).toBe(3.33);   // +3.33% (matches Zerodha), NOT +7.82%
     expect(result[0].isAdvancing).toBe(true);
   });
+
+  it('should reject regularMarketPreviousClose if Yahoo updated it to currentPrice post-market close (prevent 0.00% bug)', async () => {
+    // Post-market close: Yahoo sets regularMarketPreviousClose = 420.00 (same as regularMarketPrice 420.00)
+    // Candle array contains: [..., 424.35 (yesterday), 420.00 (today)]
+    const mockPostMarket = {
+      chart: {
+        result: [{
+          meta: {
+            regularMarketPrice: 420.00,
+            regularMarketPreviousClose: 420.00,
+            chartPreviousClose: 400.00,
+            longName: 'ABCAPITAL'
+          },
+          indicators: { quote: [{ close: [400.00, 424.35, 420.00] }] },
+          timestamp: [1722400000, 1722486400, 1722572800]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, mockPostMarket));
+    const result = await fetchStockQuotes(['ABCAPITAL'], 'IN');
+
+    expect(result[0].symbol).toBe('ABCAPITAL');
+    expect(result[0].currentPrice).toBe(420.00);
+    expect(result[0].previousClose).toBe(424.35); // Yesterday's candle close, NOT 420.00
+    expect(result[0].dailyChangePct).toBe(-1.03);  // -1.03%, NOT 0.00%
+    expect(result[0].isAdvancing).toBe(false);
+  });
 });

@@ -15,6 +15,16 @@ export default defineConfig({
           'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
           'Accept': 'application/json'
         }
+      },
+      '/nse-api': {
+        target: 'https://www.nseindia.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/nse-api/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*',
+          'Referer': 'https://www.nseindia.com/'
+        }
       }
     }
   },
@@ -22,6 +32,7 @@ export default defineConfig({
     outDir: "../extension",
     emptyOutDir: true, // Clear the extension folder before building
     chunkSizeWarningLimit: 1000,
+    modulePreload: false, // Disable Vite module preload links to prevent Chrome extension cross-world resource mismatch warning
     rollupOptions: {
       input: {
         dashboard: resolve(__dirname, "dashboard.html"),

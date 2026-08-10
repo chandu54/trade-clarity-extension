@@ -200,6 +200,51 @@ const renderAiAnalysis = (aiAnalysis) => {
   );
 };
 
+const getSectorRotationSignal = (dailyChangePct, periodChangePct) => {
+  if (dailyChangePct == null || periodChangePct == null) return null;
+  const is1wUp = periodChangePct >= 0;
+  const is1dUp = dailyChangePct >= 0;
+
+  if (is1wUp && is1dUp) {
+    return {
+      label: 'ROTATING IN',
+      symbol: '🔥',
+      color: '#10b981',
+      bg: 'rgba(16, 185, 129, 0.12)',
+      border: 'rgba(16, 185, 129, 0.3)',
+      desc: 'Institutional Sector Inflow: Strong 1-Week Outperformance with Active Buying Today'
+    };
+  }
+  if (is1wUp && !is1dUp) {
+    return {
+      label: 'PULLBACK',
+      symbol: '🟡',
+      color: '#f59e0b',
+      bg: 'rgba(245, 158, 11, 0.12)',
+      border: 'rgba(245, 158, 11, 0.3)',
+      desc: 'Healthy Retracement: Up on 1-Week Horizon, Temporary Intra-day Dip'
+    };
+  }
+  if (!is1wUp && is1dUp) {
+    return {
+      label: 'REBOUND',
+      symbol: '⚡',
+      color: '#60a5fa',
+      bg: 'rgba(96, 165, 250, 0.12)',
+      border: 'rgba(96, 165, 250, 0.3)',
+      desc: 'Counter-Trend Bounce: Down on 1-Week Horizon, Short-Term Daily Relief'
+    };
+  }
+  return {
+    label: 'ROTATING OUT',
+    symbol: '🔴',
+    color: '#ef4444',
+    bg: 'rgba(239, 68, 68, 0.12)',
+    border: 'rgba(239, 68, 68, 0.3)',
+    desc: 'Institutional Outflow: Persistent Selling across 1-Week and Daily Horizons'
+  };
+};
+
 export default function MarketPulseView({ country, aiSettings }) {
   const [subTab, setSubTab] = useState('snapshot'); // snapshot | intelligence | heatmap
   const [data, setData] = useState([]);
@@ -215,6 +260,7 @@ export default function MarketPulseView({ country, aiSettings }) {
   const [sortBy, setSortBy] = useState('custom'); // custom | performance | momentum | name | favorites
   const [showSortMenu, setShowSortMenu] = useState(false);
   const [favorites, setFavorites] = useState({}); // { symbol: true }
+  const [matrixFilter, setMatrixFilter] = useState('all'); // all | bull | pullback | bear
   const searchInputRef = React.useRef(null);
 
   // AI Sector Analysis State
@@ -486,6 +532,11 @@ export default function MarketPulseView({ country, aiSettings }) {
   }, [loadData, refreshInterval]);
 
   const thesis = generateTechnicalThesis(data);
+  const allIndicesFlat = data.flatMap(g => g.indices || []);
+  const totalAdvancingSectors = allIndicesFlat.filter(idx => idx.advances > idx.declines).length;
+  const totalDecliningSectors = allIndicesFlat.filter(idx => idx.declines > idx.advances).length;
+  const totalSectorsCount = (totalAdvancingSectors + totalDecliningSectors) || 1;
+  const advSectorPct = Math.round((totalAdvancingSectors / totalSectorsCount) * 100);
   const handleOpenTV = (symbol) => {
     const url = country === 'IN' 
       ? `https://www.tradingview.com/chart/?symbol=NSE:${symbol.replace('.NS', '').replace('^', '')}` 
@@ -833,7 +884,52 @@ export default function MarketPulseView({ country, aiSettings }) {
           </div>
         ) : (
           <div className="matrix-card">
-            <div className="matrix-header">
+            <div className="pulse-macro-bar">
+              <div className="macro-bar-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '6px', flexWrap: 'wrap', gap: '8px' }}>
+                <div className="macro-bar-label">
+                  <span>💡 EXECUTIVE MACRO SUMMARY</span>
+                </div>
+                {data.length > 0 && (
+                  <div className="macro-breadth-pill" style={{ fontSize: '11px', fontWeight: 700, padding: '2px 8px', borderRadius: '4px', background: 'rgba(255,255,255,0.06)', whiteSpace: 'nowrap', display: 'flex', alignItems: 'center', gap: '4px' }} title={`Sector Breadth: ${totalAdvancingSectors} Advancing, ${totalDecliningSectors} Declining (${advSectorPct}% Bullish)`}>
+                    <span style={{ color: '#10b981' }}>{totalAdvancingSectors} Adv</span>
+                    <span style={{ opacity: 0.3 }}>/</span>
+                    <span style={{ color: '#ef4444' }}>{totalDecliningSectors} Dec</span>
+                    <span style={{ opacity: 0.6, fontSize: '10px' }}>({advSectorPct}% Bullish)</span>
+                  </div>
+                )}
+              </div>
+              <div className="macro-bar-message" style={{ fontSize: '12px', fontWeight: 500, color: 'var(--text)', lineHeight: 1.4 }} title={thesis}>
+                {thesis}
+              </div>
+            </div>
+
+            <div className="matrix-header" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+              <div className="matrix-filter-pills" style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                {[
+                  { id: 'all', label: 'All Sectors' },
+                  { id: 'bull', label: '🟢 Structural Bull' },
+                  { id: 'pullback', label: '🟡 Pullback Candidates' },
+                  { id: 'bear', label: '🔴 Structural Bear' }
+                ].map(f => (
+                  <button
+                    key={f.id}
+                    className={`matrix-filter-pill ${matrixFilter === f.id ? 'active' : ''}`}
+                    onClick={() => setMatrixFilter(f.id)}
+                    style={{
+                      fontSize: '11px',
+                      padding: '3px 9px',
+                      borderRadius: '6px',
+                      border: matrixFilter === f.id ? '1px solid var(--primary)' : '1px solid rgba(255,255,255,0.1)',
+                      background: matrixFilter === f.id ? 'rgba(37,99,235,0.25)' : 'rgba(255,255,255,0.03)',
+                      color: matrixFilter === f.id ? '#fff' : 'var(--muted)',
+                      cursor: 'pointer',
+                      fontWeight: 600
+                    }}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+              </div>
               <div className="matrix-subtitle">
                 *SMA Distance shows % deviation from trendline
               </div>
@@ -846,7 +942,10 @@ export default function MarketPulseView({ country, aiSettings }) {
                     <th className="matrix-th">Category</th>
                     <th className="matrix-th">Index & Performance</th>
                     <th className="matrix-th text-center">
-                      RS Rating <span className="info-icon" title="Relative Strength vs Benchmark. Shows if the index is outperforming (+) or underperforming (-) the Nifty 50 today." />
+                      Market Breadth <span className="info-icon" title="Official NSE Market Breadth. Ratio of advancing vs declining stocks within the index." />
+                    </th>
+                    <th className="matrix-th text-center">
+                      RS vs Benchmark <span className="info-icon" title="Relative Strength vs Benchmark. Shows today's outperformance (+) or underperformance (-) relative to Nifty 50 (IN) or S&P 500 (US)." />
                     </th>
                     <th className="matrix-th text-center">
                       52W High <span className="info-icon" title="Distance from the 52-Week High. 0% means the index is at a yearly peak (potential breakout)." />
@@ -869,8 +968,16 @@ export default function MarketPulseView({ country, aiSettings }) {
                   </tr>
                 </thead>
                 <tbody>
-                  {orderedData.flatMap(group => 
-                    group.indices.map((idx, i) => {
+                  {orderedData.flatMap(group => {
+                    const filteredIndices = group.indices.filter(idx => {
+                      if (matrixFilter === 'all') return true;
+                      const phase = idx.marketPhase || '';
+                      if (matrixFilter === 'bull') return phase.includes('Bull') || idx.healthScore >= 70;
+                      if (matrixFilter === 'pullback') return phase.includes('Reversion') || (idx.sma200 && idx.currentPrice > idx.sma200 && idx.currentPrice < idx.sma21);
+                      if (matrixFilter === 'bear') return phase.includes('Bear') || idx.healthScore < 40;
+                      return true;
+                    });
+                    return filteredIndices.map((idx, i) => {
                       const sma21Dist = idx.sma21 ? ((idx.currentPrice - idx.sma21) / idx.sma21) * 100 : null;
                       const sma50Dist = idx.sma50 ? ((idx.currentPrice - idx.sma50) / idx.sma50) * 100 : null;
                       const sma200Dist = idx.sma200 ? ((idx.currentPrice - idx.sma200) / idx.sma200) * 100 : null;
@@ -882,7 +989,7 @@ export default function MarketPulseView({ country, aiSettings }) {
                       return (
                         <tr key={idx.symbol} className="matrix-row">
                           {i === 0 && (
-                            <td rowSpan={group.indices.length} className="matrix-category-cell">
+                            <td rowSpan={filteredIndices.length} className="matrix-category-cell">
                               {group.category.split(' ').map(word => word.charAt(0).toUpperCase() + word.slice(1).toLowerCase()).join(' ')}
                             </td>
                           )}
@@ -898,14 +1005,62 @@ export default function MarketPulseView({ country, aiSettings }) {
                                 <span className="symbol-badge">
                                   {formatSymbolBadge(idx.symbol)}
                                 </span>
+                                {idx.periodChangePct != null && timeframe === '1d' && (() => {
+                                  const rot = getSectorRotationSignal(idx.dailyChangePct, idx.periodChangePct);
+                                  if (!rot) return null;
+                                  return (
+                                    <span 
+                                      className="rotation-badge" 
+                                      style={{ 
+                                        color: rot.color, 
+                                        background: rot.bg, 
+                                        border: `1px solid ${rot.border}`, 
+                                        fontSize: '9px', 
+                                        fontWeight: 700, 
+                                        padding: '1px 6px', 
+                                        borderRadius: '4px', 
+                                        marginLeft: '6px', 
+                                        whiteSpace: 'nowrap',
+                                        display: 'inline-flex',
+                                        alignItems: 'center',
+                                        gap: '3px'
+                                      }} 
+                                      title={rot.desc}
+                                    >
+                                      <span>{rot.symbol}</span>
+                                      <span>{rot.label}</span>
+                                      <span style={{ opacity: 0.75, fontWeight: 500 }}>({idx.periodChangePct > 0 ? '+' : ''}{idx.periodChangePct.toFixed(1)}% 1W)</span>
+                                    </span>
+                                  );
+                                })()}
                               </div>
                               <div className="price-row">
                                 <span className="price">{formatPrice(idx.currentPrice)}</span>
-                                <span className={`change ${idx.dailyChange >= 0 ? 'up' : 'down'}`}>
-                                  {idx.dailyChange >= 0 ? '+' : ''}{formatPct(idx.dailyChangePct)}
+                                <span className={`change ${idx.dailyChangePct >= 0 ? 'up' : 'down'}`}>
+                                  {idx.dailyChangePct > 0 ? '+' : ''}{formatPct(idx.dailyChangePct)}
                                 </span>
                               </div>
                             </div>
+                          </td>
+                          <td className="matrix-data-cell text-center">
+                            {idx.advances != null && idx.declines != null ? (() => {
+                              const total = (idx.advances + idx.declines) || 1;
+                              const advPct = Math.round((idx.advances / total) * 100);
+                              return (
+                                <div className="breadth-cell-container" style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }} title={`Official NSE Breadth: ${idx.advances} Advancing (${advPct}%), ${idx.declines} Declining, ${idx.unchanged || 0} Unchanged`}>
+                                  <div className="breadth-counts" style={{ fontSize: '11px', lineHeight: 1 }}>
+                                    <span style={{ color: '#10b981', fontWeight: 700 }}>{idx.advances}A</span>
+                                    <span style={{ opacity: 0.3, margin: '0 3px' }}>/</span>
+                                    <span style={{ color: '#ef4444', fontWeight: 700 }}>{idx.declines}D</span>
+                                  </div>
+                                  <div className="breadth-bar-track" style={{ width: '56px', height: '4px', borderRadius: '2px', background: 'rgba(239, 68, 68, 0.4)', overflow: 'hidden', marginTop: '4px', display: 'flex' }}>
+                                    <div className="breadth-bar-fill" style={{ width: `${advPct}%`, height: '100%', background: '#10b981', borderRadius: '2px' }} />
+                                  </div>
+                                </div>
+                              );
+                            })() : (
+                              <span className="matrix-dist-cell dist-null">--</span>
+                            )}
                           </td>
                           <td className="matrix-data-cell text-center">
                             <span className={`matrix-dist-cell ${rsClass}`}>
@@ -944,20 +1099,10 @@ export default function MarketPulseView({ country, aiSettings }) {
                           </td>
                         </tr>
                       );
-                    })
-                  )}
+                    });
+                  })}
                 </tbody>
               </table>
-            </div>
-
-            <div className="pulse-thesis-card">
-              <div className="thesis-title">
-                <span className="accent"></span>
-                Technical Thesis
-              </div>
-              <div className="thesis-content">
-                {thesis}
-              </div>
             </div>
           </div>
         )}

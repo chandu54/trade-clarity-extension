@@ -123,21 +123,64 @@ async function ensureNseCalendar() {
   if (nseCalendarCache && (now - nseCalendarFetchedAt < NSE_CALENDAR_TTL)) {
     return nseCalendarCache;
   }
+
+  const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+  const baseUrl = isLocalhost ? '/nse-api' : 'https://www.nseindia.com';
+  const primaryUrl = `${baseUrl}/api/event-calendar`;
+  const fallbackUrl = `${baseUrl}/api/corporate-board-meetings?index=equities`;
+
+  let calendarEntries = [];
+
   try {
-    const res = await fetch('https://www.nseindia.com/api/event-calendar', {
+    const res = await fetch(primaryUrl, {
       headers: NSE_HEADERS,
       cache: 'no-cache'
     });
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data) && data.length > 0) {
-        nseCalendarCache = data;
-        nseCalendarFetchedAt = now;
+        calendarEntries = data;
       }
     }
   } catch (e) {
-    console.warn('[NSE Calendar] Failed to fetch event calendar:', e.message);
+    console.warn('[NSE Calendar] Primary event-calendar fetch failed:', e.message);
   }
+
+  // Fallback to board-meetings endpoint if primary calendar is empty or failed
+  if (calendarEntries.length === 0) {
+    try {
+      const res = await fetch(fallbackUrl, {
+        headers: NSE_HEADERS,
+        cache: 'no-cache'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        const rows = Array.isArray(data) ? data : (data.data || data.rows || []);
+        if (Array.isArray(rows) && rows.length > 0) {
+          calendarEntries = rows;
+        }
+      }
+    } catch (e) {
+      console.warn('[NSE Calendar] Fallback board-meetings fetch failed:', e.message);
+    }
+  }
+
+  if (calendarEntries.length > 0) {
+    // Normalize entries into standard { symbol, date, purpose } objects
+    nseCalendarCache = calendarEntries.map(e => {
+      const rawSymbol = (e.symbol || e.bm_symbol || e.sm_symbol || '').replace(/-EQ$/i, '').toUpperCase();
+      const rawDate = e.date || e.bm_date || e.boardMeetingDate || e.bm_dt;
+      const rawPurpose = e.purpose || e.bm_desc || e.desc || e.purpose_desc || '';
+      return {
+        symbol: rawSymbol,
+        date: rawDate,
+        purpose: rawPurpose
+      };
+    }).filter(e => Boolean(e.symbol && e.date));
+
+    nseCalendarFetchedAt = now;
+  }
+
   return nseCalendarCache;
 }
 
@@ -159,23 +202,25 @@ export function calculateDaysAway(dateVal) {
 
 export async function fetchNseEarningsDate(nseSymbol) {
   if (!nseSymbol) return null;
-  const symbol = nseSymbol.replace(/\.(NS|BO)$/i, '').toUpperCase();
+  const symbol = nseSymbol.replace(/\.(NS|BO)$/i, '').replace(/-EQ$/i, '').toUpperCase();
 
   try {
     const calendar = await ensureNseCalendar();
-    if (!calendar) return null;
+    if (!calendar || calendar.length === 0) return null;
 
     const now = Date.now();
-    const oneDayMs = 24 * 60 * 60 * 1000;
+    const pastWindowMs = 7 * 24 * 60 * 60 * 1000; // 7-day past buffer for recently announced earnings
 
-    // Filter entries for this symbol with "Financial Results" purpose
+    const isFinancialPurpose = (purposeStr) => {
+      if (!purposeStr) return false;
+      const p = String(purposeStr).toLowerCase();
+      return p.includes('result') || p.includes('financial') || p.includes('quarter') || p.includes('account');
+    };
+
+    // Filter entries for this symbol matching financial results board meetings
     const results = calendar
-      .filter(e =>
-        e.symbol === symbol &&
-        (e.purpose || '').toLowerCase().includes('financial results')
-      )
+      .filter(e => e.symbol === symbol && isFinancialPurpose(e.purpose))
       .map(e => {
-        // NSE date format: "DD-Mon-YYYY" e.g. "04-Aug-2026"
         const d = new Date(e.date);
         return { ...e, parsed: d };
       })
@@ -184,9 +229,9 @@ export async function fetchNseEarningsDate(nseSymbol) {
 
     if (results.length === 0) return null;
 
-    // Find the nearest upcoming date (with 1-day past buffer to catch same-day)
-    const upcoming = results.find(e => e.parsed.getTime() >= now - oneDayMs);
-    const entry = upcoming || results[results.length - 1];
+    // Find the nearest date within past 7 days to future dates
+    const upcomingOrRecent = results.find(e => e.parsed.getTime() >= now - pastWindowMs);
+    const entry = upcomingOrRecent || results[results.length - 1];
 
     const d = entry.parsed;
     const dateStr = d.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });

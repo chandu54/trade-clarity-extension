@@ -1,3 +1,5 @@
+import { fetchNseEarningsDate } from './stockAnalysisApi.js';
+
 // LRU Cache implementation following Chrome Extension storage best practices
 export class LRUQuoteCache {
   constructor(maxSize = 300) {
@@ -94,7 +96,7 @@ export class LRUQuoteCache {
 }
 
 export const globalQuoteCache = new LRUQuoteCache(300);
-const QUOTE_CACHE_VERSION = 'v4_live_market_prev_close_fix';
+const QUOTE_CACHE_VERSION = 'v5_post_market_close_fix';
 const inflightRequestsMap = new Map();
 
 let saveTimer = null;
@@ -272,37 +274,47 @@ const globalRateQueue = new RequestQueue(3, 80);
 const inFlightStockRequests = new Map();
 
 export function extractPreviousClose(meta, rawBars, currentPrice = null) {
-  // 1. Official regularMarketPreviousClose if present and valid (distinct from chartPreviousClose)
+  const curPx = currentPrice || meta?.regularMarketPrice || (Array.isArray(rawBars) && rawBars.length > 0 ? rawBars[rawBars.length - 1].close : null);
+
+  // 1. Official regularMarketPreviousClose if present, valid, AND distinctly different from currentPrice
+  // (At market close, Yahoo sets regularMarketPreviousClose equal to currentPrice; we reject that to avoid 0.00% change).
   if (meta && typeof meta.regularMarketPreviousClose === 'number' && meta.regularMarketPreviousClose > 0) {
-    if (!meta.chartPreviousClose || Math.abs(meta.regularMarketPreviousClose - meta.chartPreviousClose) > 0.001) {
+    if (!curPx || Math.abs(meta.regularMarketPreviousClose - curPx) > 0.01) {
       return meta.regularMarketPreviousClose;
     }
   }
 
-  // 2. Extract from rawBars (the daily candle series)
+  // 2. Extract from rawBars (the candle series):
+  // Find the last candle whose calendar date is BEFORE the latest candle's calendar date!
   if (Array.isArray(rawBars) && rawBars.length >= 2) {
     const lastBar = rawBars[rawBars.length - 1];
-    const prevBar = rawBars[rawBars.length - 2];
+    const lastBarDateStr = new Date(lastBar.time * 1000).toDateString();
 
-    // If last bar's close equals currentPrice, then lastBar is TODAY'S active candle, so prevBar is YESTERDAY'S candle!
-    // If last bar's close differs from currentPrice, then lastBar IS YESTERDAY'S completed candle!
-    if (typeof currentPrice === 'number' && currentPrice > 0 && Math.abs(lastBar.close - currentPrice) < 0.01) {
-      return prevBar.close;
-    } else {
-      return lastBar.close;
+    for (let i = rawBars.length - 1; i >= 0; i--) {
+      const d = new Date(rawBars[i].time * 1000).toDateString();
+      if (d !== lastBarDateStr) {
+        return rawBars[i].close;
+      }
     }
+
+    return rawBars[rawBars.length - 2].close;
   }
 
   if (Array.isArray(rawBars) && rawBars.length === 1) {
     return rawBars[0].close;
   }
 
-  // Fallback 1: Yahoo previousClose / chartPreviousClose
+  // 3. Fallbacks (only if distinct from currentPrice)
   if (meta && typeof meta.previousClose === 'number' && meta.previousClose > 0) {
-    return meta.previousClose;
+    if (!curPx || Math.abs(meta.previousClose - curPx) > 0.01) {
+      return meta.previousClose;
+    }
   }
+
   if (meta && typeof meta.chartPreviousClose === 'number' && meta.chartPreviousClose > 0) {
-    return meta.chartPreviousClose;
+    if (!curPx || Math.abs(meta.chartPreviousClose - curPx) > 0.01) {
+      return meta.chartPreviousClose;
+    }
   }
 
   return null;
@@ -314,7 +326,7 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
   const isSingleStockCall = symbols.length === 1;
 
   const validTimeframes = {
-    '1d': { range: '5d', interval: '5m' },
+    '1d': { range: '5d', interval: '15m' },
     '5d': { range: '5d', interval: '15m' },
     '1w': { range: '5d', interval: '15m' },
     '1mo': { range: '1mo', interval: '1d' },
@@ -325,7 +337,8 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
     '2y': { range: '2y', interval: '1d' },
     '5y': { range: '5y', interval: '1wk' }
   };
-  const tf = validTimeframes[timeframe] || validTimeframes['3mo'];
+  const tfKey = (timeframe || '3mo').toLowerCase();
+  const tf = validTimeframes[tfKey] || validTimeframes['3mo'];
   const fetchInterval = customInterval && customInterval !== 'auto' ? customInterval : tf.interval;
 
   const fetchSymbolData = async (symbol) => {
@@ -438,12 +451,12 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
       // Robustly extract actual previous day's close for 1-day percentage change
       let previousClose = extractPreviousClose(meta, rawBars, currentPrice) || currentPrice;
 
-      const periodStartPrice = rawBars[0].close;
-      const periodChangePct = periodStartPrice > 0 ? ((currentPrice - periodStartPrice) / periodStartPrice) * 100 : 0;
-
       const priceDiff = currentPrice - previousClose;
       const dailyChangePct = previousClose > 0 ? (priceDiff / previousClose) * 100 : 0;
       const isAdvancing = priceDiff >= 0;
+
+      const periodStartPrice = tfKey === '1d' ? previousClose : rawBars[0].close;
+      const periodChangePct = tfKey === '1d' ? dailyChangePct : (periodStartPrice > 0 ? ((currentPrice - periodStartPrice) / periodStartPrice) * 100 : 0);
 
       return {
         symbol,
@@ -560,7 +573,27 @@ export async function fetchStockQuotes(symbols, country, signal = null, forceRef
   if (!symbols || !symbols.length) return [];
 
   try {
-    return await fetchStockData(symbols, country, '5d', '1d', signal, forceRefresh, onBatch);
+    const results = await fetchStockData(symbols, country, '5d', '1d', signal, forceRefresh, onBatch);
+
+    // Fallback enrichment for Indian stocks: If Yahoo did not provide earningsDate, query NSE Calendar API
+    if (country === 'IN' && Array.isArray(results)) {
+      const missingEarnings = results.filter(r => r && !r.earningsDate);
+      if (missingEarnings.length > 0) {
+        await Promise.all(missingEarnings.map(async (r) => {
+          try {
+            const nseData = await fetchNseEarningsDate(r.symbol);
+            if (nseData?.dateStr) {
+              r.earningsDate = nseData.dateStr;
+              r.earningsDaysAway = nseData.daysAway;
+            }
+          } catch (_e) {
+            // Silently swallow fallback errors
+          }
+        }));
+      }
+    }
+
+    return results;
   } catch (error) {
     if (error.name !== 'AbortError') {
       console.error("Failed to fetch stock quotes via chart API:", error);
