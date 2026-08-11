@@ -1002,9 +1002,6 @@ export default function MarketPulseView({ country, aiSettings }) {
                                     return /^\d+$/.test(name) ? `NIFTY ${name}` : name;
                                   })()}
                                 </span>
-                                <span className="symbol-badge">
-                                  {formatSymbolBadge(idx.symbol)}
-                                </span>
                                 {idx.periodChangePct != null && timeframe === '1d' && (() => {
                                   const rot = getSectorRotationSignal(idx.dailyChangePct, idx.periodChangePct);
                                   if (!rot) return null;

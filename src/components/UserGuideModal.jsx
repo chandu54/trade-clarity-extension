@@ -797,7 +797,30 @@ export default function UserGuideModal({
                 </ul>
               </Section>
 
-              <Section title="3. Creating & Editing Trades (Form Fields)" icon="📝">
+              <Section title="3. Auto-Importing Trades (Zerodha, Drag & Drop, Excel/CSV)" icon="📥">
+                <p>
+                  Quickly populate your journal by importing executions and tax P&L statements without manual data entry.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Drag & Drop Upload:</strong> Drag any Zerodha Tradebook, Zerodha Tax P&L Statement, or broker export file (.xlsx, .xls, .csv, .txt) directly onto the upload zone, or click to select from your file browser.
+                  </li>
+                  <li>
+                    <strong>Broker Support & Intelligence:</strong> Auto-detects Zerodha Tax P&L summary sheets, Zerodha Tradebook executions, or general broker CSVs. Automatically groups buy and sell trades using FIFO position matching.
+                  </li>
+                  <li>
+                    <strong>Trade Status Intelligence:</strong> Positions with 0 open quantity are automatically identified as <strong>Closed</strong> with locked realized P&L and holding days, while remaining open shares are imported as <strong>Active</strong>.
+                  </li>
+                  <li>
+                    <strong>Exclude Liquid ETFs:</strong> Enable the <em>Exclude Liquid ETFs (LIQUIDCASE)</em> checkbox to filter out cash liquid funds (LIQUIDCASE, LIQUIDBEES, ICICILIQ, etc.) from importing into your stock journal.
+                  </li>
+                  <li>
+                    <strong>Interactive Preview & Customization:</strong> Review matched positions in a spacious 1280px grid, adjust initial stop loss levels or setup tags inline, and use <em>Select All</em> or <em>Clear Selection</em> controls before saving.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="4. Creating & Editing Trades (Form Fields)" icon="📝">
                 <p>
                   When you add a trade or click the edit icon in the ledger, a comprehensive detail form opens. Understanding these inputs helps ensure accurate record keeping:
                 </p>

@@ -8,6 +8,7 @@ import BirdsEyeGrid from './BirdsEyeGrid';
 import { getPortfolioAnalysis, getRiskSuggestions } from '../services/ai';
 import BenchmarkComparisonChart from './BenchmarkComparisonChart';
 import EditStockModal from './EditStockModal';
+import ImportTradesModal from './ImportTradesModal';
 import { getLatestWeekKey, getWeekRangeLabel } from '../utils/weekHelpers';
 
 const checkIsAiBlocked = (blockedUntil) => {
@@ -30,6 +31,15 @@ function getTradingViewImage(url) {
     return `https://s3.tradingview.com/x/${match[1]}.png`;
   }
   return null;
+}
+
+// Helper: Safe Money Formatter (guards against null, undefined, NaN values)
+function formatMoney(val, country = 'IN', minDec = 2, maxDec = 2) {
+  if (val === null || val === undefined || isNaN(Number(val))) {
+    return '—';
+  }
+  const symbol = country === 'IN' ? '₹' : '$';
+  return `${symbol}${Number(val).toLocaleString(undefined, { minimumFractionDigits: minDec, maximumFractionDigits: maxDec })}`;
 }
 
 // Helper: Get Sunday date string (YYYY-MM-DD) for a given date string
@@ -235,6 +245,7 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
 
   // Overlay state
   const [showModal, setShowModal] = useState(false);
+  const [showImportModal, setShowImportModal] = useState(false);
   const [editingTradeId, setEditingTradeId] = useState(null);
   const [expandedTradeId, setExpandedTradeId] = useState(null);
 
@@ -691,22 +702,30 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
     return [...new Set(journalEntries.map(e => e.symbol))].sort().join(",");
   }, [journalEntries]);
 
-  // Helper to fetch synced Moving Averages from database
+  // Helper to fetch synced Moving Averages from database (scopes to active country first, sorts week keys descending)
   const getSyncedMA = useCallback((symbol) => {
-    if (!data?.weeks) return "";
-    for (const c of Object.keys(data.weeks)) {
-      for (const w of Object.keys(data.weeks[c])) {
-        const weekData = data.weeks[c][w];
-        if (weekData && weekData.stocks && weekData.stocks[symbol]) {
-          const stock = weekData.stocks[symbol];
-          if (stock.params && stock.params.movingAverages) {
-            return stock.params.movingAverages;
+    if (!data?.weeks || !symbol) return "";
+    const cleanSym = symbol.toUpperCase().trim();
+    const countriesToCheck = [country, ...Object.keys(data.weeks).filter(c => c !== country)];
+
+    for (const c of countriesToCheck) {
+      const countryWeeks = data.weeks[c];
+      if (!countryWeeks) continue;
+      // Sort week keys descending (e.g. 2026-W32 before 2026-W31)
+      const sortedWeeks = Object.keys(countryWeeks).sort().reverse();
+      for (const w of sortedWeeks) {
+        const weekData = countryWeeks[w];
+        if (weekData && weekData.stocks && weekData.stocks[cleanSym]) {
+          const stock = weekData.stocks[cleanSym];
+          if (stock.params) {
+            const maVal = stock.params.movingAverages || stock.params[stock.params.movingAveragesKey];
+            if (maVal) return maVal;
           }
         }
       }
     }
     return "";
-  }, [data?.weeks]);
+  }, [data?.weeks, country]);
 
   // Keep liveMAs populated from synced DB metrics on mount/updates
   useEffect(() => {
@@ -803,8 +822,10 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
   // Comprehensive math calculators based on transaction arrays
   const calculatedPositions = useMemo(() => {
     return journalEntries.map(trade => {
-      const buys = trade.transactions.filter(t => t.type === 'Buy');
-      const sells = trade.transactions.filter(t => t.type === 'Sell');
+      if (!trade) return null;
+      const transactions = Array.isArray(trade.transactions) ? trade.transactions : [];
+      const buys = transactions.filter(t => t && t.type === 'Buy');
+      const sells = transactions.filter(t => t && t.type === 'Sell');
 
       const totalBought = buys.reduce((acc, t) => acc + Number(t.qty || 0), 0);
       const totalSold = sells.reduce((acc, t) => acc + Number(t.qty || 0), 0);
@@ -866,6 +887,20 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
             : ((activeStopLoss - avgEntryPrice) / avgEntryPrice) * 100)
         : 0;
 
+      // Holding days calculation
+      let holdingDays = trade.holdingDays;
+      if (holdingDays === undefined || holdingDays === null) {
+        if (buys.length > 0 && buys[0].date) {
+          const startDate = new Date(buys[0].date);
+          const endDate = isClosed && sells.length > 0 && sells[sells.length - 1].date
+            ? new Date(sells[sells.length - 1].date)
+            : new Date();
+          if (!isNaN(startDate.getTime()) && !isNaN(endDate.getTime())) {
+            holdingDays = Math.max(0, Math.floor((endDate.getTime() - startDate.getTime()) / (1000 * 60 * 60 * 24)));
+          }
+        }
+      }
+
       return {
         ...trade,
         openQty,
@@ -884,9 +919,10 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
         isClosed,
         isLong,
         activeStopLossPct,
-        activeStopLoss
+        activeStopLoss,
+        holdingDays
       };
-    });
+    }).filter(Boolean);
   }, [journalEntries, livePrices]);
 
 
@@ -2261,7 +2297,7 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
             </div>
           )}
           <span className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">
-            {country === 'IN' ? '₹' : '$'}{dashboardMetrics.investedCapital.toLocaleString(undefined, { maximumFractionDigits: 0 })} of {country === 'IN' ? '₹' : '$'}{accountCapital.toLocaleString(undefined, { maximumFractionDigits: 0 })}
+            {formatMoney(dashboardMetrics.investedCapital, country, 0, 0)} of {formatMoney(accountCapital, country, 0, 0)}
           </span>
         </div>
 
@@ -2269,7 +2305,7 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
         <div className="flex-1 p-4 md:p-5 flex flex-col justify-between hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
           <span className="text-[9px] font-extrabold text-slate-500 dark:text-slate-400 tracking-wider uppercase">FLOATING P&L</span>
           <div className={`mt-1 text-2xl font-black font-mono h-8 flex items-center ${dashboardMetrics.floatingPnL > 0 ? 'text-emerald-500 dark:text-emerald-400' : dashboardMetrics.floatingPnL < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-slate-400'}`}>
-            {dashboardMetrics.floatingPnL > 0 ? '+' : ''}{country === 'IN' ? '₹' : '$'}{dashboardMetrics.floatingPnL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {dashboardMetrics.floatingPnL > 0 ? '+' : ''}{formatMoney(dashboardMetrics.floatingPnL, country, 2, 2)}
           </div>
           <span className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">
             Active positions
@@ -2280,7 +2316,7 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
         <div className="flex-1 p-4 md:p-5 flex flex-col justify-between hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
           <span className="text-[9px] font-extrabold text-slate-500 dark:text-slate-400 tracking-wider uppercase">TOTAL P&L</span>
           <div className={`mt-1 text-2xl font-black font-mono h-8 flex items-center ${dashboardMetrics.totalPnL > 0 ? 'text-emerald-500 dark:text-emerald-400' : dashboardMetrics.totalPnL < 0 ? 'text-rose-500 dark:text-rose-400' : 'text-slate-400'}`}>
-            {dashboardMetrics.totalPnL > 0 ? '+' : ''}{country === 'IN' ? '₹' : '$'}{dashboardMetrics.totalPnL.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            {dashboardMetrics.totalPnL > 0 ? '+' : ''}{formatMoney(dashboardMetrics.totalPnL, country, 2, 2)}
           </div>
           <span className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">
             {dashboardMetrics.returnPct > 0 ? '+' : ''}{dashboardMetrics.returnPct.toFixed(2)}% return · {metrics.profitFactor} PF
@@ -2294,7 +2330,7 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
             {dashboardMetrics.openRiskPct.toFixed(1)}%
           </div>
           <span className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">
-            {country === 'IN' ? '₹' : '$'}{(dashboardMetrics.openRisk).toLocaleString(undefined, { maximumFractionDigits: 0 })} at risk
+            {formatMoney(dashboardMetrics.openRisk, country, 0, 0)} at risk
           </span>
         </div>
 
@@ -2302,7 +2338,7 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
         <div className="flex-1 p-4 md:p-5 flex flex-col justify-between hover:bg-slate-50/50 dark:hover:bg-slate-900/20 transition-colors">
           <span className="text-[9px] font-extrabold text-slate-500 dark:text-slate-400 tracking-wider uppercase">LOCKED PROFIT</span>
           <div className="mt-1 text-2xl font-black text-emerald-500 dark:text-emerald-400 font-mono h-8 flex items-center">
-            +{country === 'IN' ? '₹' : '$'}{dashboardMetrics.lockedProfit.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+            +{formatMoney(dashboardMetrics.lockedProfit, country, 2, 2)}
           </div>
           <span className="mt-2 text-[10px] text-slate-500 dark:text-slate-400 font-semibold truncate">
             if all SL hit
@@ -2371,7 +2407,19 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
               Alt+R
             </kbd>
           </div>
-          
+
+          {/* Import Trades Custom Button */}
+          <div
+            role="button"
+            className="flex items-center gap-1.5 cursor-pointer border border-blue-200 dark:border-blue-800/60 bg-blue-50/80 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900 px-3 py-1.5 rounded-md text-xs font-extrabold text-blue-600 dark:text-blue-400 shadow-sm transition-all"
+            onClick={() => setShowImportModal(true)}
+          >
+            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-3.5 h-3.5">
+              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+            </svg>
+            <span>Import Trades (Beta)</span>
+          </div>
+
           {/* Log Position Custom Div Button */}
           <div 
             role="button"
@@ -2757,14 +2805,14 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
                                 </div>
                                 {pos.currentStopLoss ? (
                                   <div className={`text-xs font-bold mt-0.5 ${isSlProfitLock ? 'text-emerald-600/90 dark:text-emerald-400/90' : 'text-slate-500 dark:text-slate-400'}`} title="Current Trailed Stop Loss / Initial Stop Loss">
-                                    {country === 'IN' ? '₹' : '$'}{pos.currentStopLoss.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {formatMoney(pos.currentStopLoss, country, 2, 2)}
                                     <span className="text-[10px] text-slate-400/80 font-semibold ml-1">
-                                      (Init: {country === 'IN' ? '₹' : '$'}{pos.initialStopLoss.toLocaleString(undefined, { minimumFractionDigits: 2 })})
+                                      (Init: {formatMoney(pos.initialStopLoss, country, 2, 2)})
                                     </span>
                                   </div>
                                 ) : (
                                   <div className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-0.5" title="Initial Stop Loss">
-                                    {country === 'IN' ? '₹' : '$'}{pos.initialStopLoss.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                    {formatMoney(pos.initialStopLoss, country, 2, 2)}
                                   </div>
                                 )}
                               </div>
@@ -2776,7 +2824,7 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
                                   {changePct > 0 ? '+' : ''}{changePct.toFixed(2)}%
                                 </span>
                                 <span className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-0.5" title="Average Exit Price">
-                                  {country === 'IN' ? '₹' : '$'}{pos.avgExitPrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  {formatMoney(pos.avgExitPrice, country, 2, 2)}
                                 </span>
                               </div>
                             ) : (
@@ -2785,11 +2833,11 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
                                   {changePct > 0 ? '+' : ''}{changePct.toFixed(2)}%
                                 </span>
                                 <span className="text-xs text-slate-500 dark:text-slate-400 font-bold mt-0.5" title="Live Price">
-                                  {country === 'IN' ? '₹' : '$'}{pos.livePrice.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                  {formatMoney(pos.livePrice, country, 2, 2)}
                                 </span>
                                 {pos.totalSold > 0 && (
                                   <span className="text-[10px] text-amber-600/80 dark:text-amber-400/80 font-bold mt-0.5" title="Average Partial Exit Price">
-                                    Exit: {country === 'IN' ? '₹' : '$'}{pos.avgExitPrice.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                    Exit: {formatMoney(pos.avgExitPrice, country, 2, 2)}
                                   </span>
                                 )}
                               </div>
@@ -2888,14 +2936,14 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
                                       <div>
                                         <span className="block text-[8.5px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-0.5">INITIAL STOP LOSS</span>
                                         <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100 font-mono">
-                                          {country === 'IN' ? '₹' : '$'}{pos.initialStopLoss.toLocaleString(undefined, { minimumFractionDigits: 2 })}
+                                          {formatMoney(pos.initialStopLoss, country, 2, 2)}
                                         </span>
                                       </div>
                                       <div>
                                         <span className="block text-[8.5px] font-black text-slate-500 dark:text-slate-400 uppercase tracking-widest mb-0.5">TRAILING STOP LOSS</span>
                                         <span className="text-xs font-extrabold text-slate-800 dark:text-slate-100 font-mono">
                                           {pos.currentStopLoss 
-                                            ? `${country === 'IN' ? '₹' : '$'}${pos.currentStopLoss.toLocaleString(undefined, { minimumFractionDigits: 2 })}` 
+                                            ? formatMoney(pos.currentStopLoss, country, 2, 2)
                                             : <span className="text-slate-405 dark:text-slate-500 italic font-medium">None</span>
                                           }
                                         </span>
@@ -4506,6 +4554,31 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
           sortedStocks={journalStocks}
           onSelectStock={setSelectedStockForEdit}
           watchlistName="Journal Stocks"
+        />
+      )}
+
+      {showImportModal && (
+        <ImportTradesModal
+          isOpen={showImportModal}
+          onClose={() => setShowImportModal(false)}
+          country={country}
+          existingJournals={data?.journals?.[country] || []}
+          onImportSuccess={(importedPositions) => {
+            setData(prev => {
+              const prevData = prev || {};
+              let newData;
+              try {
+                newData = JSON.parse(JSON.stringify(prevData));
+              } catch (_e) {
+                newData = { ...prevData };
+              }
+              if (!newData.journals) newData.journals = { IN: [], US: [] };
+              if (!newData.journals[country]) newData.journals[country] = [];
+              newData.journals[country] = [...importedPositions, ...newData.journals[country]];
+              return newData;
+            });
+            setStatusFilter('All');
+          }}
         />
       )}
 

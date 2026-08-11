@@ -341,6 +341,14 @@ The position ledger is your central trade database. It displays all open, closed
 - **Real-time P&L**: Computes floating profit/loss for open positions based on live index price ticks, and locks in realized P&L when a trade status is changed to "Closed".
 - **Search & Filter**: Search for trades instantly by symbol or text in notes, and filter trades by status (Open, Closed, Scaled, Planned) or strategies (e.g. Pullback, Breakout).
 
+### 📥 Auto-Importing Trades (Zerodha, Drag & Drop, Excel/CSV)
+Quickly populate your journal by importing executions and tax P&L statements without manual data entry.
+- **Drag & Drop Upload**: Drag any Zerodha Tradebook, Zerodha Tax P&L Statement, or broker export file (`.xlsx`, `.xls`, `.csv`, `.txt`) directly onto the upload zone, or click to select from your file browser.
+- **Broker Support & Intelligence**: Auto-detects Zerodha Tax P&L summary sheets, Zerodha Tradebook executions, or general broker CSVs. Automatically groups buy and sell trades using FIFO position matching.
+- **Trade Status Intelligence**: Positions with 0 open quantity are automatically identified as **Closed** with locked realized P&L and holding days, while remaining open shares are imported as **Active**.
+- **Exclude Liquid ETFs**: Enable the *Exclude Liquid ETFs (LIQUIDCASE)* checkbox to filter out cash liquid funds (LIQUIDCASE, LIQUIDBEES, ICICILIQ, etc.) from importing into your stock journal.
+- **Interactive Preview & Customization**: Review matched positions in a spacious 1280px grid, adjust initial stop loss levels or setup tags inline, and use *Select All* or *Clear Selection* controls before saving.
+
 ### 📝 Creating & Editing Trades (Form Fields)
 When you add a trade or click the edit icon in the ledger, a comprehensive detail form opens:
 - **Ticker Symbol**: The stock ticker code representing your trade (e.g. AAPL or RELIANCE).

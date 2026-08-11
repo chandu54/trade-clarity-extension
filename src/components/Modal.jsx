@@ -1,7 +1,7 @@
 import { createPortal } from "react-dom";
 import { useEffect } from "react";
 
-export default function Modal({ children, isOpen = true, onClose, title, subtitle, className = "" }) {
+export default function Modal({ children, isOpen = true, onClose, title, subtitle, className = "", maxWidth }) {
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (e.key === 'Escape' && isOpen && onClose) {
@@ -20,10 +20,12 @@ export default function Modal({ children, isOpen = true, onClose, title, subtitl
 
   if (!isOpen) return null;
 
+  const widthClass = `${className} ${maxWidth || ''}`.trim();
+
   return createPortal(
     <div className="modal-overlay" onClick={onClose}>
       <div 
-        className={`modal-box ${className}`} 
+        className={`modal-box ${widthClass}`} 
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
