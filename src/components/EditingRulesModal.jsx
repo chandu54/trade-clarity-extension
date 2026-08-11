@@ -362,6 +362,32 @@ export default function EditingRulesModal({ data, setData, onClose, isOpen }) {
         </label>
       </div>
 
+      <div className="param-row margin-top-16">
+        <div>
+          <strong>Auto-Calculate Stock Stage Daily</strong>
+          <div className="muted small">
+            Automatically analyze and classify stocks into Stage 1, 2, 3, or 4 (Stan Weinstein Stage Analysis).
+          </div>
+        </div>
+
+        <label className="switch">
+          <input
+            type="checkbox"
+            checked={data.uiConfig?.autoCalculateStage !== false}
+            onChange={(e) => {
+              setData({
+                ...data,
+                uiConfig: {
+                  ...(data.uiConfig || {}),
+                  autoCalculateStage: e.target.checked,
+                },
+              });
+            }}
+          />
+          <span className="slider" />
+        </label>
+      </div>
+
       <div className="modal-footer">
         <button className="btn-outline" onClick={onClose}>
           Close

@@ -29,7 +29,7 @@ export const DEFAULT_DATA = {
       filterable: true,
       isCheck: true,
       idealValues: ["Stage 2"],
-      order: 70,
+      order: 45,
     },
 
     rs: {

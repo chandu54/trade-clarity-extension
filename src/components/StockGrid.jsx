@@ -957,11 +957,10 @@ export default function StockGrid({
       }
 
       // Ctrl + K (or Cmd + K) -> Focus Search Bar
-      if ((e.ctrlKey || e.metaKey) && e.key === "k") {
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k") {
         e.preventDefault();
-        // Expand filters if they are collapsed so the search bar is actually visible
-        if (!showFilters) setShowFilters(true);
         searchInputRef.current?.focus();
+        searchInputRef.current?.select();
       }
     };
 
@@ -993,12 +992,16 @@ export default function StockGrid({
         setAiProgress(req.payload);
         setRateLimitWait(null); // clear rate-limit status when new progress arrives
       } else if (req.action === "BULK_AI_RATE_LIMIT_WAIT") {
-        setRateLimitWait(req.payload);
-        setAiProgress(p => ({
-          ...p,
-          completed: req.payload.completed !== undefined ? req.payload.completed : p.completed,
-          total: req.payload.total !== undefined ? req.payload.total : p.total
-        }));
+        if (!req.payload) {
+          setRateLimitWait(null);
+        } else {
+          setRateLimitWait(req.payload);
+          setAiProgress(p => ({
+            ...p,
+            completed: req.payload.completed !== undefined ? req.payload.completed : p.completed,
+            total: req.payload.total !== undefined ? req.payload.total : p.total
+          }));
+        }
       } else if (req.action === "BULK_AI_ANALYSIS_COMPLETE") {
         setAiProgress({ total: 0, completed: 0 });
         setRateLimitWait(null);
@@ -2224,55 +2227,66 @@ export default function StockGrid({
           )}
         </div>
 
-        {(fetchProgress.total > 0 || aiProgress.total > 0) && (
-          <div className="sync-badges-container">
-            {fetchProgress.total > 0 && (
-              <div className={`sync-activity-badge ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
-                <div className="status-dot" />
-                <span>Fetching metrics in background..</span>
-                <span className="percent">
-                  {Math.round((fetchProgress.completed / fetchProgress.total) * 100)}%
-                </span>
-              </div>
-            )}
-
-            {aiProgress.total > 0 && (
-              <div 
-                className={`sync-activity-badge ai-badge ${aiProgress.completed >= aiProgress.total ? "sync-finished" : ""}`} 
-                style={{ 
-                  color: rateLimitWait ? "var(--color-warning, #f59e0b)" : "var(--color-primary)", 
-                  borderColor: rateLimitWait ? "var(--color-warning, #f59e0b)" : "var(--color-primary-light)", 
-                  cursor: "help" 
-                }}
-                title={rateLimitWait 
-                  ? `Rate limit hit. Resuming in ~${rateLimitWait.waitSeconds}s... (${rateLimitWait.completed}/${rateLimitWait.total} stocks done)`
-                  : (aiProgress.startTime && aiProgress.estimatedEndTime 
-                    ? `Triggered: ${new Date(aiProgress.startTime).toLocaleTimeString()}\nEstimated Completion: ${new Date(aiProgress.estimatedEndTime).toLocaleTimeString()}` 
-                    : "AI Analysis in progress...")}
-              >
-                <div className="status-dot" style={{ backgroundColor: rateLimitWait ? "var(--color-warning, #f59e0b)" : "var(--color-primary)", boxShadow: `0 0 8px ${rateLimitWait ? "var(--color-warning, #f59e0b)" : "var(--color-primary)"}` }} />
-                {rateLimitWait 
-                  ? <span>⏳ Rate limit – waiting {rateLimitWait.waitSeconds}s...</span>
-                  : <span>AI Deep Analysis running...</span>
-                }
-                {!rateLimitWait && <span style={{ fontSize: "0.85em", opacity: 0.8, marginLeft: "-4px" }}>(Hover for ETA)</span>}
-                <span className="percent">
-                  {Math.round((aiProgress.completed / aiProgress.total) * 100)}%
-                </span>
-                <button
-                  type="button"
-                  className="btn-stop-ai-mini"
-                  onClick={handleStopBulkAi}
-                  title="Cancel running AI analysis"
-                >
-                  ⏹ Stop AI
-                </button>
-              </div>
-            )}
-          </div>
-        )}
-
         <div className="command-right">
+          {(fetchProgress.total > 0 || aiProgress.total > 0) && (
+            <div className="sync-badges-container">
+              <div className={`dual-activity-capsule-hub ${aiProgress.total > 0 ? "has-ai" : ""}`}>
+                {fetchProgress.total > 0 && (
+                  <div className={`activity-capsule-item metric-sync ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
+                    <div className="pulse-dot green" />
+                    <span className="capsule-label">Metrics</span>
+                    <span className="capsule-percent">{Math.round((fetchProgress.completed / fetchProgress.total) * 100)}%</span>
+                    <span className="capsule-count">({fetchProgress.completed}/{fetchProgress.total})</span>
+                    <div className="capsule-progress-track">
+                      <div 
+                        className="capsule-progress-bar green-bar" 
+                        style={{ width: `${Math.round((fetchProgress.completed / fetchProgress.total) * 100)}%` }} 
+                      />
+                    </div>
+                  </div>
+                )}
+
+                {fetchProgress.total > 0 && aiProgress.total > 0 && (
+                  <div className="activity-capsule-divider" />
+                )}
+
+                {aiProgress.total > 0 && (
+                  <div 
+                    className={`activity-capsule-item ai-analysis ${aiProgress.completed >= aiProgress.total ? "sync-finished" : ""} ${rateLimitWait ? "is-waiting" : ""}`}
+                    title={rateLimitWait 
+                      ? `Rate limit hit. Resuming in ~${rateLimitWait.waitSeconds}s... (${rateLimitWait.completed}/${rateLimitWait.total} stocks done)`
+                      : (aiProgress.startTime && aiProgress.estimatedEndTime 
+                        ? `Triggered: ${new Date(aiProgress.startTime).toLocaleTimeString()}\nEstimated Completion: ${new Date(aiProgress.estimatedEndTime).toLocaleTimeString()}` 
+                        : "AI Analysis in progress...")}
+                  >
+                    <svg className="ai-sparkle-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                      <path d="M12 0C12 6.627 6.627 12 0 12C6.627 12 12 17.373 12 24C12 17.373 17.373 12 24 12C17.373 12 12 6.627 12 0Z" />
+                    </svg>
+                    <span className="capsule-label">
+                      {rateLimitWait ? `AI Wait (${rateLimitWait.waitSeconds}s)` : "Bulk AI"}
+                    </span>
+                    <span className="capsule-percent">{Math.round((aiProgress.completed / aiProgress.total) * 100)}%</span>
+                    <span className="capsule-count">({aiProgress.completed}/{aiProgress.total})</span>
+                    <button
+                      type="button"
+                      className="btn-stop-ai-mini"
+                      onClick={handleStopBulkAi}
+                      title="Cancel running AI analysis"
+                    >
+                      ⏹ Stop
+                    </button>
+                    <div className="capsule-progress-track">
+                      <div 
+                        className={`capsule-progress-bar ${rateLimitWait ? "amber-bar" : "purple-bar"}`} 
+                        style={{ width: `${Math.round((aiProgress.completed / aiProgress.total) * 100)}%` }} 
+                      />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
           {/* SEARCH BOX */}
           <div className="search-box-v2">
             <span className="search-icon-v2">
@@ -2692,7 +2706,7 @@ export default function StockGrid({
           </thead>
 
           <tbody>
-            {stocks.map((stock) => (
+            {stocks.map((stock, rowIndex) => (
               <tr
                 key={stock.symbol}
                 className={stock.tradable ? "tradable" : ""}
@@ -2881,8 +2895,9 @@ export default function StockGrid({
                           </button>
                           {activeTagDropdown === stock.symbol && (() => {
                             const userSelectableTags = availableTags.filter((t) => !t.toUpperCase().startsWith("AI:"));
+                            const isNearBottom = rowIndex >= stocks.length - 2;
                             return (
-                              <div className="custom-tag-dropdown">
+                              <div className={`custom-tag-dropdown ${isNearBottom ? "open-upward" : ""}`}>
                                 {userSelectableTags.length === 0 && (
                                   <div className="tag-option empty">
                                     No tags defined
@@ -3026,124 +3041,130 @@ export default function StockGrid({
                   </div>
                 </td>
 
-                {visibleParams.map(([key, p]) => (
-                  <td key={key} className={`cw-${key}`}>
-                    {key === "movingAverages" && stock.params[key] ? (
-                      <MovingAverageRibbon value={stock.params[key]} />
-                    ) : (
-                      <div className="param-standard-renderer">
-                        {p.type === "checkbox" && (
-                          <input
-                            type="checkbox"
-                            className="grid-checkbox compact"
-                            checked={!!stock.params[key]}
-                            disabled={isReadOnly}
-                            onChange={(e) => {
-                              if (isReadOnly) return;
-                              updateStockParam(stock.symbol, key, e.target.checked);
-                            }}
-                          />
-                        )}
+                {visibleParams.map(([key, p]) => {
+                  const baseKey = key.replace(/^(in|us)\./, "");
+                  const countryKey = `${country.toLowerCase()}.${baseKey}`;
+                  const val = stock.params?.[key] ?? stock.params?.[baseKey] ?? stock.params?.[countryKey] ?? "";
 
-                        {p.type === "select" && (
-                          <div className="input-clear-wrapper type-select">
-                            <select
-                              className="select-control input-with-clear"
-                              value={stock.params[key] || ""}
-                              disabled={isReadOnly}
-                              onChange={(e) => {
-                                if (isReadOnly) return;
-                                updateStockParam(stock.symbol, key, e.target.value);
-                              }}
-                            >
-                              <option value=""></option>
-                              {p.options?.map((o) => (
-                                <option key={o}>{o}</option>
-                              ))}
-                            </select>
-                            {!isReadOnly && stock.params[key] && (
-                              <ClearButton
-                                onClick={() => {
-                                  updateStockParam(stock.symbol, key, "");
-                                }}
-                                isSelect
-                              />
-                            )}
-                          </div>
-                        )}
-
-                        {p.type === "number" && (
-                          <div className="input-clear-wrapper type-number">
+                  return (
+                    <td key={key} className={`cw-${key}`}>
+                      {key === "movingAverages" && val ? (
+                        <MovingAverageRibbon value={val} />
+                      ) : (
+                        <div className="param-standard-renderer">
+                          {p.type === "checkbox" && (
                             <input
-                              type="text"
-                              className="grid-text-input input-with-clear"
-                              value={stock.params[key] || ""}
+                              type="checkbox"
+                              className="grid-checkbox compact"
+                              checked={!!val}
                               disabled={isReadOnly}
                               onChange={(e) => {
                                 if (isReadOnly) return;
-                                updateStockParam(stock.symbol, key, e.target.value);
+                                updateStockParam(stock.symbol, key, e.target.checked);
                               }}
                             />
-                            {!isReadOnly && stock.params[key] && (
-                              <ClearButton
-                                onClick={() => {
-                                  updateStockParam(stock.symbol, key, "");
-                                }}
-                              />
-                            )}
-                          </div>
-                        )}
+                          )}
 
-                        {p.type === "date" && (
-                          <div className="input-clear-wrapper type-date">
-                            <input
-                              key={stock.params[key] || "empty-date"}
-                              type="date"
-                              className="grid-text-input input-with-clear"
-                              defaultValue={stock.params[key] || ""}
-                              disabled={isReadOnly}
-                              onBlur={(e) => {
-                                if (isReadOnly) return;
-                                if (stock.params[key] !== e.target.value) {
+                          {p.type === "select" && (
+                            <div className="input-clear-wrapper type-select">
+                              <select
+                                className="select-control input-with-clear"
+                                value={val}
+                                disabled={isReadOnly}
+                                onChange={(e) => {
+                                  if (isReadOnly) return;
                                   updateStockParam(stock.symbol, key, e.target.value);
-                                }
-                              }}
-                            />
-                            {!isReadOnly && stock.params[key] && (
-                              <ClearButton
-                                onClick={() => {
-                                  updateStockParam(stock.symbol, key, "");
                                 }}
-                                isSelect
-                              />
-                            )}
-                          </div>
-                        )}
+                              >
+                                <option value=""></option>
+                                {p.options?.map((o) => (
+                                  <option key={o}>{o}</option>
+                                ))}
+                              </select>
+                              {!isReadOnly && val && (
+                                <ClearButton
+                                  onClick={() => {
+                                    updateStockParam(stock.symbol, key, "");
+                                  }}
+                                  isSelect
+                                />
+                              )}
+                            </div>
+                          )}
 
-                        {p.type === "text" && (
-                          <div className="input-clear-wrapper">
-                            <input
-                              className="grid-text-input input-with-clear"
-                              value={stock.params[key] || ""}
-                              disabled={isReadOnly}
-                              onChange={(e) => {
-                                if (isReadOnly) return;
-                                updateStockParam(stock.symbol, key, e.target.value);
-                              }}
-                            />
-                            {!isReadOnly && stock.params[key] && (
-                              <ClearButton
-                                onClick={() => {
-                                  updateStockParam(stock.symbol, key, "");
+                          {p.type === "number" && (
+                            <div className="input-clear-wrapper type-number">
+                              <input
+                                type="text"
+                                className="grid-text-input input-with-clear"
+                                value={val}
+                                disabled={isReadOnly}
+                                onChange={(e) => {
+                                  if (isReadOnly) return;
+                                  updateStockParam(stock.symbol, key, e.target.value);
                                 }}
                               />
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    )}
-                  </td>
-                ))}
+                              {!isReadOnly && val && (
+                                <ClearButton
+                                  onClick={() => {
+                                    updateStockParam(stock.symbol, key, "");
+                                  }}
+                                />
+                              )}
+                            </div>
+                          )}
+
+                          {p.type === "date" && (
+                            <div className="input-clear-wrapper type-date">
+                              <input
+                                key={val || "empty-date"}
+                                type="date"
+                                className="grid-text-input input-with-clear"
+                                defaultValue={val}
+                                disabled={isReadOnly}
+                                onBlur={(e) => {
+                                  if (isReadOnly) return;
+                                  if (val !== e.target.value) {
+                                    updateStockParam(stock.symbol, key, e.target.value);
+                                  }
+                                }}
+                              />
+                              {!isReadOnly && val && (
+                                <ClearButton
+                                  onClick={() => {
+                                    updateStockParam(stock.symbol, key, "");
+                                  }}
+                                  isSelect
+                                />
+                              )}
+                            </div>
+                          )}
+
+                          {p.type === "text" && (
+                            <div className="input-clear-wrapper">
+                              <input
+                                className="grid-text-input input-with-clear"
+                                value={val}
+                                disabled={isReadOnly}
+                                onChange={(e) => {
+                                  if (isReadOnly) return;
+                                  updateStockParam(stock.symbol, key, e.target.value);
+                                }}
+                              />
+                              {!isReadOnly && val && (
+                                <ClearButton
+                                  onClick={() => {
+                                    updateStockParam(stock.symbol, key, "");
+                                  }}
+                                />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </td>
+                  );
+                })}
 
 
                 <td className="checks-cell cw-checks">{renderChecksBadge(stock)}</td>

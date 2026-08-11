@@ -1,6 +1,8 @@
 import { mapAdrBucket, mapLiquidityBucket, mapMovingAverageBucket } from "./utils/metrics.js";
 import { getActualParamKeyAndDef } from "./utils/paramUtils.js";
 import { calculateStockRsCategory } from "./utils/benchmarkUtils.js";
+import { evaluateStageFromCandles } from "./utils/calculateStageMetric.ts";
+import { evaluateIPOTag } from "./utils/detectYoungIPO";
 import { getBulkStockVerdicts } from "./services/ai.js";
 import { fetchStockData } from "./utils/yahooFinanceMap.js";
 import { CONFIG } from "./constants/config.js";
@@ -89,6 +91,10 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       action: "BULK_AI_PROGRESS",
       payload: { total: 0, completed: 0 }
     }).catch(() => {});
+    chrome.runtime.sendMessage({
+      action: "BULK_AI_RATE_LIMIT_WAIT",
+      payload: null
+    }).catch(() => {});
     sendResponse({ status: "stopped" });
   }
   return true;
@@ -109,6 +115,10 @@ function parseRetryAfterMs(errorMessage, fallbackMs = 65000) {
 
 async function waitWithCountdown(seconds, completed, total) {
   for (let s = seconds; s > 0; s--) {
+    if (!isAiProcessing) {
+      console.log("[BG] AI processing was cancelled. Stopping wait countdown.");
+      break;
+    }
     chrome.runtime.sendMessage({
       action: "BULK_AI_RATE_LIMIT_WAIT",
       payload: { waitSeconds: s, completed, total }
@@ -194,6 +204,11 @@ async function processAiQueue() {
 
   try {
     for (let i = 0; i < total; i += chunkSize) {
+      if (!isAiProcessing) {
+        console.log("[BG] AI processing was cancelled. Stopping queue execution.");
+        break;
+      }
+
       chrome.runtime.sendMessage({
         action: "BULK_AI_PROGRESS",
         payload: { completed: i, total, startTime, estimatedEndTime }
@@ -453,12 +468,13 @@ async function fetchAndCalculateMetrics(
       ticker = `${symbol}.NS`;
     }
 
-    const maxDays = Math.max(adrDays, liquidityDays, 250);
+    const maxDays = uiConfig?.autoCalculateStage !== false
+      ? Math.max(adrDays, liquidityDays, 250)
+      : Math.max(adrDays, liquidityDays);
     let range = "1mo";
     if (maxDays > 20) range = "3mo";
     if (maxDays > 60) range = "6mo";
-    if (maxDays > 120) range = "1y";
-    if (maxDays >= 250) range = "2y";
+    if (maxDays >= 120) range = "1y";
 
     // Fetch Data (Consolidating everything into the v8/chart API which is currently WORKING and bypasses 401s)
     let url = `${CONFIG.YAHOO_FINANCE_URL}${ticker}?range=${range}&interval=1d`;
@@ -607,19 +623,36 @@ async function fetchAndCalculateMetrics(
       rsCategory = category;
     }
 
-    console.log(`[Sync] Computed for ${symbol}: ADR=${formattedAdr}, Liquidity=${formattedLiquidity}, MAs=${maBucket}, RS=${rsCategory}`);
+    // --- STAGE MAPPING (Stan Weinstein Stage Analysis) ---
+    const stageMatch = getActualParamKeyAndDef(paramDefs, "stage", "Stage", country);
+    let stageCategory = "";
+    if (uiConfig?.autoCalculateStage !== false && validDays.length >= 200) {
+      const stageResult = evaluateStageFromCandles(symbol, validDays);
+      if (stageResult.status === "SUCCESS" && stageResult.mappedOption) {
+        stageCategory = stageResult.mappedOption;
+      }
+    }
+
+    // --- IPO TAG MAPPING ---
+    const ipoResult = evaluateIPOTag(symbol, validDays);
+    const isYoungIPO = ipoResult.isYoungIPO;
+
+    console.log(`[Sync] Computed for ${symbol}: ADR=${formattedAdr}, Liquidity=${formattedLiquidity}, MAs=${maBucket}, RS=${rsCategory}, Stage=${stageCategory}, YoungIPO=${isYoungIPO}`);
 
     return {
       adr: formattedAdr,
       liquidity: formattedLiquidity,
       movingAverages: maBucket,
       rs: rsCategory,
+      stage: stageCategory,
+      isYoungIPO: isYoungIPO,
       name: companyName,
       isInvalid: false,
       adrKey: adrMatch.key,
       liquidityKey: liqMatch.key,
       movingAveragesKey: maMatch.key,
       rsKey: rsMatch.key,
+      stageKey: stageMatch.key,
     };
   } catch (error) {
     clearTimeout(timeoutId);
@@ -648,6 +681,16 @@ async function updateStorageWithMetrics(updates) {
           const liqKey = metrics.liquidityKey || "liquidity";
           const maKey = metrics.movingAveragesKey || "movingAverages";
           const rsKey = metrics.rsKey || "rs";
+          const stageKey = metrics.stageKey || "stage";
+
+          // Auto-apply Young IPO tag if stock has < 60 days of historical candles
+          if (metrics.isYoungIPO) {
+            const currentTags = stock.tags || [];
+            if (!currentTags.includes("Young IPO")) {
+              stock.tags = [...currentTags, "Young IPO"];
+              dataChanged = true;
+            }
+          }
 
           // Only update if changed
           if (
@@ -655,13 +698,30 @@ async function updateStorageWithMetrics(updates) {
             stock.params[liqKey] !== metrics.liquidity ||
             stock.params[maKey] !== metrics.movingAverages ||
             stock.params[rsKey] !== metrics.rs ||
+            (metrics.stage && stock.params[stageKey] !== metrics.stage) ||
             stock.name !== metrics.name ||
             stock.isInvalid !== metrics.isInvalid
           ) {
             stock.params[adrKey] = metrics.adr;
+            stock.params['adr'] = metrics.adr;
+            stock.params[`${country.toLowerCase()}.adr`] = metrics.adr;
+
             stock.params[liqKey] = metrics.liquidity;
+            stock.params['liquidity'] = metrics.liquidity;
+            stock.params[`${country.toLowerCase()}.liquidity`] = metrics.liquidity;
+
             stock.params[maKey] = metrics.movingAverages;
+            stock.params['movingAverages'] = metrics.movingAverages;
+
             stock.params[rsKey] = metrics.rs;
+            stock.params['rs'] = metrics.rs;
+            stock.params[`${country.toLowerCase()}.rs`] = metrics.rs;
+
+            if (metrics.stage) {
+              stock.params[stageKey] = metrics.stage;
+              stock.params['stage'] = metrics.stage;
+              stock.params[`${country.toLowerCase()}.stage`] = metrics.stage;
+            }
             stock.name = metrics.name;
             stock.isInvalid = metrics.isInvalid;
             dataChanged = true;
