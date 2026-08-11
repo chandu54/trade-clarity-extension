@@ -102,7 +102,7 @@ describe('StockGrid', () => {
     renderWithContext(<StockGrid {...props} country="US" />);
     
     // Toggle filters
-    const filterToggle = screen.getByText(/Show All Filters/i);
+    const filterToggle = screen.getByTitle("Open Watchlist Filters");
     fireEvent.click(filterToggle);
 
     const sectorSelect = screen.getByLabelText('Sector');

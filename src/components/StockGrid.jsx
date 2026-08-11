@@ -4,6 +4,7 @@ import MultiSelectDropdown from "./MultiSelectDropdown";
 import EditStockModal from "./EditStockModal";
 import ImportWatchlistModal from "./ImportWatchlistModal";
 import ExportTradingViewModal from "./ExportTradingViewModal";
+import WatchlistFilterDrawer from "./WatchlistFilterDrawer";
 import TrashIcon from "./icons/TrashIcon";
 import { useToast } from "./ToastContext";
 import { useConfirm } from "./ConfirmContext";
@@ -233,7 +234,7 @@ const cleanNumeric = (val) => {
   return isNaN(num) ? NaN : num * multiplier;
 };
 
-const ClearButton = ({ onClick, isSelect }) => (
+export const ClearButton = ({ onClick, isSelect }) => (
   <button
     className={`clear-filter-btn ${isSelect ? 'is-select' : 'is-default'}`}
     onClick={onClick}
@@ -2025,6 +2026,7 @@ export default function StockGrid({
       style={{
         "--progress-width": `${(fetchProgress.completed / Math.max(1, fetchProgress.total)) * 100}%`,
         "--ai-progress-width": `${(aiProgress.completed / Math.max(1, aiProgress.total)) * 100}%`,
+        "--filter-summary-offset": (activeFilters.length > 0 || priceTrendFilter !== null) ? "44px" : "0px",
         "--cw-symbol": colWidths["symbol"] ? `${colWidths["symbol"]}px` : "auto",
         "--cw-livePrice": colWidths["__livePrice__"] ? `${colWidths["__livePrice__"]}px` : "auto",
         "--cw-sector": colWidths["sector"] ? `${colWidths["sector"]}px` : "auto",
@@ -2037,368 +2039,89 @@ export default function StockGrid({
         }, {})
       }}
     >
-      {/* FILTER BAR */}
-      {(filterableParams.length > 0 ||
-        isSectorFilterable ||
-        (availableTags.length > 0 && isTagFilterable)) && (
-        <div className={`filter-bar ${!showFilters ? "collapsed" : ""}`}>
-          <div className="filter-top-row">
-            <div className="filter-top-left">
-              <div
-                className="filter-toggle-group"
-                onClick={() => setShowFilters(!showFilters)}
-              >
-                <span className="filter-icon">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="16"
-                    height="16"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
-                  </svg>
-                </span>
-                <span className="filter-label">Filters</span>
-                {activeFilters.length > 0 && (
-                  <span className="active-filter-badge">
-                    {activeFilters.length}
-                  </span>
-                )}
-                <span className={`filter-chevron ${showFilters ? "open" : ""}`}>
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="12"
-                    height="12"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="3"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <polyline points="6 9 12 15 18 9" />
-                  </svg>
-                </span>
-              </div>
+      {/* WATCHLIST FILTER DRAWER (RIGHT SIDE SLIDE-OVER) */}
+      <WatchlistFilterDrawer
+        isOpen={showFilters}
+        onClose={() => setShowFilters(false)}
+        filters={filters}
+        setFilter={setFilter}
+        setFilters={setFilters}
+        priceTrendFilter={priceTrendFilter}
+        setPriceTrendFilter={setPriceTrendFilter}
+        activeFilters={activeFilters}
+        isSectorFilterable={isSectorFilterable}
+        sectors={sectors}
+        isTagFilterable={isTagFilterable}
+        availableTags={availableTags}
+        filterableParams={filterableParams}
+        isTradableFilterable={isTradableFilterable}
+        country={country}
+      />
 
-              {(activeFilters.length > 0 || priceTrendFilter !== null) && (
+      {/* COMPACT ACTIVE FILTERS SUMMARY BAR */}
+      {(activeFilters.length > 0 || priceTrendFilter !== null) && (
+        <div className="active-filters-summary-bar">
+          <div className="summary-pills-list">
+            {priceTrendFilter && (
+              <span className="summary-pill active-trend">
+                Price Action: <strong>{priceTrendFilter === 'up' ? '▲ Advances' : '▼ Declines'}</strong>
                 <button
-                  className="reset-filters-btn-v2"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setFilters({});
-                    setPriceTrendFilter(null);
-                  }}
-                  title="Clear all active filters"
+                  type="button"
+                  onClick={() => setPriceTrendFilter(null)}
+                  className="pill-remove-btn"
+                  title="Remove price action filter"
                 >
-                  Reset Filters
+                  ✕
                 </button>
-              )}
+              </span>
+            )}
+            {activeFilters.map(([key, value]) => {
+              let label;
+              if (key === "__sector__") label = "Sector";
+              else if (key === "__tag__") label = "Tag";
+              else if (key === "__tradable__") label = "Tradable";
+              else label = params[key]?.label || key;
 
-              <div className="search-box-v2">
-                <span className="search-icon-v2">
-                  <svg
-                    xmlns="http://www.w3.org/2000/svg"
-                    width="14"
-                    height="14"
-                    viewBox="0 0 24 24"
-                    fill="none"
-                    stroke="currentColor"
-                    strokeWidth="2.5"
-                    strokeLinecap="round"
-                    strokeLinejoin="round"
-                  >
-                    <circle cx="11" cy="11" r="8" />
-                    <line x1="21" y1="21" x2="16.65" y2="16.65" />
-                  </svg>
-                </span>
-                <input
-                  ref={searchInputRef}
-                  type="text"
-                  placeholder="Search symbols... (Ctrl+K)"
-                  aria-label="Search symbols"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                />
-                {searchQuery && (
+              let displayValue = value;
+              if (typeof value === "boolean") displayValue = value ? "Yes" : "No";
+              else if (value && typeof value === "object" && !Array.isArray(value)) {
+                const keys = Object.keys(value);
+                const above = keys.filter((k) => value[k] === "above").sort((a, b) => a - b);
+                const below = keys.filter((k) => value[k] === "below").sort((a, b) => a - b);
+                let parts = [];
+                if (above.length > 0) parts.push(`${above.join(", ")} (Above)`);
+                if (below.length > 0) parts.push(`${below.join(", ")} (Below)`);
+                displayValue = parts.join(" | ");
+              } else if (Array.isArray(value)) {
+                displayValue = value.length > 2 ? `${value.length} Selected` : value.join(", ");
+              }
+
+              return (
+                <span key={key} className="summary-pill">
+                  {label}: <strong>{displayValue}</strong>
                   <button
-                    className="search-clear-btn"
-                    onClick={() => setSearchQuery("")}
-                    title="Clear search"
+                    type="button"
+                    onClick={() => setFilter(key, Array.isArray(value) ? [] : "")}
+                    className="pill-remove-btn"
+                    title={`Remove ${label} filter`}
                   >
-                    <svg
-                      xmlns="http://www.w3.org/2000/svg"
-                      width="14"
-                      height="14"
-                      viewBox="0 0 24 24"
-                      fill="none"
-                      stroke="currentColor"
-                      strokeWidth="3"
-                      strokeLinecap="round"
-                      strokeLinejoin="round"
-                    >
-                      <line x1="18" y1="6" x2="6" y2="18" />
-                      <line x1="6" y1="6" x2="18" y2="18" />
-                    </svg>
+                    ✕
                   </button>
-                )}
-              </div>
-            </div>
-
-            <div className="active-filters-summary">
-              {!showFilters &&
-                activeFilters.length > 0 &&
-                activeFilters.map(([key, value]) => {
-                  let label;
-                  if (key === "__sector__") label = "Sector";
-                  else if (key === "__tag__") label = "Tag";
-                  else if (key === "__tradable__") label = "Tradable";
-                  else label = params[key]?.label || key;
-
-                  let displayValue = value;
-                  if (typeof value === "boolean")
-                    displayValue = value ? "Yes" : "No";
-                  else if (value && typeof value === "object" && !Array.isArray(value)) {
-                    // MA condition map: { "5": "below", "200": "above" }
-                    const keys = Object.keys(value);
-                    const above = keys
-                      .filter((k) => value[k] === "above")
-                      .sort((a, b) => a - b);
-                    const below = keys
-                      .filter((k) => value[k] === "below")
-                      .sort((a, b) => a - b);
-
-                    let parts = [];
-                    if (above.length > 0) parts.push(`${above.join(", ")} (Above)`);
-                    if (below.length > 0) parts.push(`${below.join(", ")} (Below)`);
-                    displayValue = parts.join(" | ");
-                  } else if (Array.isArray(value)) {
-                    displayValue =
-                      value.length > 2
-                        ? `${value.length} Selected`
-                        : value.join(", ");
-                  }
-
-                  return (
-                    <span key={key} className="summary-pill">
-                      {label}: <strong>{displayValue}</strong>
-                    </span>
-                  );
-                })}
-            </div>
-
-            <div className="filter-actions">
-              <button
-                className="toggle-filters-btn"
-                onClick={() => setShowFilters(!showFilters)}
-              >
-                {showFilters ? "Collapse" : "Show All Filters"}
-              </button>
-            </div>
+                </span>
+              );
+            })}
           </div>
-
-          {showFilters && (
-            <div className="filter-items">
-              {isSectorFilterable && (
-                <div className="filter-item">
-                  <label htmlFor="sector-filter">Sector</label>
-                  <div className="filter-input-wrapper">
-                    <MultiSelectDropdown
-                      id="sector-filter"
-                      options={sectors}
-                      value={
-                        Array.isArray(filters.__sector__)
-                          ? filters.__sector__
-                          : filters.__sector__
-                            ? [filters.__sector__]
-                            : []
-                      }
-                      onChange={(val) => setFilter("__sector__", val)}
-                      placeholder="All"
-                    />
-                    {filters.__sector__ &&
-                      (Array.isArray(filters.__sector__)
-                        ? filters.__sector__.length > 0
-                        : filters.__sector__ !== "") && (
-                        <ClearButton
-                          onClick={() => setFilter("__sector__", [])}
-                          isSelect
-                        />
-                      )}
-                  </div>
-                </div>
-              )}
-
-              {(availableTags || []).length > 0 && isTagFilterable && (
-                <div className="filter-item">
-                  <label htmlFor="tag-filter">Tag</label>
-                  <div className="filter-input-wrapper">
-                    <MultiSelectDropdown
-                      id="tag-filter"
-                      options={availableTags}
-                      value={
-                        Array.isArray(filters.__tag__)
-                          ? filters.__tag__
-                          : filters.__tag__
-                            ? [filters.__tag__]
-                            : []
-                      }
-                      onChange={(val) => setFilter("__tag__", val)}
-                      placeholder="All"
-                    />
-                    {filters.__tag__ &&
-                      (Array.isArray(filters.__tag__)
-                        ? filters.__tag__.length > 0
-                        : filters.__tag__ !== "") && (
-                        <ClearButton
-                          onClick={() => setFilter("__tag__", [])}
-                          isSelect
-                        />
-                      )}
-                  </div>
-                </div>
-              )}
-
-              {filterableParams.map(([key, p]) => (
-                <div key={key} className={`filter-item ${key === "movingAverages" ? "filter-item-ma" : ""}`}>
-                  <label htmlFor={`filter-param-${key}`}>
-                    {p.label}
-                    {(p.type === "number" || p.type === "date") && (
-                      <span
-                        className="info-help-icon"
-                        title="Supports operators: > < >= <= = and ranges (e.g. 10-20)"
-                      />
-                    )}
-                  </label>
-
-                  <div className="filter-input-wrapper">
-                    {key === "movingAverages" ? (
-                      <MovingAverageFilter
-                        id={`filter-param-${key}`}
-                        value={filters[key]}
-                        onChange={(val) => setFilter(key, val)}
-                      />
-                    ) : (
-                      <>
-                        {p.type === "checkbox" && (
-                          <>
-                            <select
-                              id={`filter-param-${key}`}
-                              className="select-control filter-select-control"
-                              value={filters[key] ?? ""}
-                              onChange={(e) =>
-                                setFilter(
-                                  key,
-                                  e.target.value === ""
-                                    ? ""
-                                    : e.target.value === "true",
-                                )
-                              }
-                            >
-                              <option value="">All</option>
-                              <option value="true">Yes</option>
-                              <option value="false">No</option>
-                            </select>
-                            {filters[key] !== undefined && filters[key] !== "" && (
-                              <ClearButton
-                                onClick={() => setFilter(key, "")}
-                                isSelect
-                              />
-                            )}
-                          </>
-                        )}
-
-                        {p.type === "select" && (
-                          <>
-                            <MultiSelectDropdown
-                              id={`filter-param-${key}`}
-                              options={p.options || []}
-                              value={
-                                Array.isArray(filters[key])
-                                  ? filters[key]
-                                  : filters[key]
-                                    ? [filters[key]]
-                                    : []
-                              }
-                              onChange={(val) => setFilter(key, val)}
-                              placeholder="All"
-                            />
-                            {filters[key] !== undefined &&
-                              (Array.isArray(filters[key])
-                                ? filters[key].length > 0
-                                : filters[key] !== "") && (
-                                <ClearButton
-                                  onClick={() => setFilter(key, [])}
-                                  isSelect
-                                />
-                              )}
-                          </>
-                        )}
-
-                        {(p.type === "text" ||
-                          p.type === "number" ||
-                          p.type === "date") && (
-                          <>
-                            <input
-                              id={`filter-param-${key}`}
-                              type="text"
-                              className="filter-input input-with-icon-padding"
-                              value={filters[key] || ""}
-                              onChange={(e) => setFilter(key, e.target.value)}
-                              placeholder={
-                                (key.toLowerCase().includes("liquidity") || (p.label && p.label.toLowerCase().includes("liquidity")))
-                                  ? (country === "IN" ? "Filter (Cr).." : "Filter (M)..")
-                                  : "Filter.."
-                              }
-                            />
-                            {filters[key] !== undefined && filters[key] !== "" && (
-                              <ClearButton onClick={() => setFilter(key, "")} />
-                            )}
-                          </>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-              ))}
-
-              {isTradableFilterable && (
-                <div className="filter-item">
-                  <label>Tradable</label>
-                  <div className="grid-full-width-relative">
-                    <select
-                      className="select-control input-with-icon-padding"
-                      value={filters.__tradable__ ?? ""}
-                      onChange={(e) =>
-                        setFilter(
-                          "__tradable__",
-                          e.target.value === ""
-                            ? ""
-                            : e.target.value === "true",
-                        )
-                      }
-                    >
-                      <option value="">All</option>
-                      <option value="true">Yes</option>
-                      <option value="false">No</option>
-                    </select>
-                    {filters.__tradable__ !== undefined &&
-                      filters.__tradable__ !== "" && (
-                        <ClearButton
-                          onClick={() => setFilter("__tradable__", "")}
-                          isSelect
-                        />
-                      )}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
+          <button
+            type="button"
+            className="reset-all-pill-btn"
+            onClick={() => {
+              setFilters({});
+              setPriceTrendFilter(null);
+            }}
+            title="Clear all active filters"
+          >
+            Reset All
+          </button>
         </div>
       )}
 
@@ -2550,6 +2273,81 @@ export default function StockGrid({
         )}
 
         <div className="command-right">
+          {/* SEARCH BOX */}
+          <div className="search-box-v2">
+            <span className="search-icon-v2">
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="11" cy="11" r="8" />
+                <line x1="21" y1="21" x2="16.65" y2="16.65" />
+              </svg>
+            </span>
+            <input
+              ref={searchInputRef}
+              type="text"
+              placeholder="Search symbols... (Ctrl+K)"
+              aria-label="Search symbols"
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+            />
+            {searchQuery && (
+              <button
+                className="search-clear-btn"
+                onClick={() => setSearchQuery("")}
+                title="Clear search"
+              >
+                <svg
+                  xmlns="http://www.w3.org/2000/svg"
+                  width="14"
+                  height="14"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="3"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                >
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+              </button>
+            )}
+          </div>
+
+          {/* FUNNEL FILTER ICON BUTTON */}
+          <button
+            type="button"
+            className={`action-pill funnel-filter-btn ${activeFilters.length > 0 || priceTrendFilter ? "active" : ""}`}
+            onClick={() => setShowFilters(!showFilters)}
+            title="Open Watchlist Filters"
+          >
+            <svg
+              xmlns="http://www.w3.org/2000/svg"
+              fill="none"
+              viewBox="0 0 24 24"
+              strokeWidth={2}
+              stroke="currentColor"
+              className="icon-14"
+            >
+              <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3" />
+            </svg>
+            <span>Filters</span>
+            {(activeFilters.length > 0 || priceTrendFilter) && (
+              <span className="funnel-badge">
+                {activeFilters.length + (priceTrendFilter ? 1 : 0)}
+              </span>
+            )}
+          </button>
+
           <div className="dropdown-action-group" ref={exportMenuRef}>
             <button
               className="action-pill"
