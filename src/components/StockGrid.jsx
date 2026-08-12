@@ -347,6 +347,7 @@ export default function StockGrid({
   availableTags,
   aiSettings,
   onQuickLog,
+  externalFilter,
 }) {
   const week = data.weeks?.[country]?.[weekKey];
   const params = data.paramDefinitions;
@@ -688,7 +689,30 @@ export default function StockGrid({
 
   const [searchQuery, setSearchQuery] = useState("");
   const [filters, setFilters] = useState({});
+  const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState("symbol");
+
+  const [prevExternalFilter, setPrevExternalFilter] = useState(externalFilter);
+
+  if (externalFilter !== prevExternalFilter) {
+    setPrevExternalFilter(externalFilter);
+    if (externalFilter) {
+      let nextSector = undefined;
+      let nextSymbols = undefined;
+      if (externalFilter.sector) {
+        nextSector = externalFilter.sector;
+      } else if (externalFilter.symbols && Array.isArray(externalFilter.symbols)) {
+        nextSymbols = externalFilter.symbols;
+      } else if (externalFilter.symbol) {
+        nextSymbols = [externalFilter.symbol];
+      }
+
+      if (nextSector !== undefined || nextSymbols !== undefined) {
+        setFilters(prev => ({ ...prev, __sector__: nextSector, __symbols__: nextSymbols }));
+        setShowFilters(true);
+      }
+    }
+  }
   const [sortDir, setSortDir] = useState("asc");
   const [priceTrendFilter, setPriceTrendFilter] = useState(null); // 'up' | 'down' | null
 
@@ -732,7 +756,6 @@ export default function StockGrid({
   const fileInputRef = useRef(null);
   const importTypeRef = useRef("stocks"); // 'stocks', 'backup', or 'tv'
   const [copiedStocks, setCopiedStocks] = useState(false);
-  const [showFilters, setShowFilters] = useState(false);
   const isFiltering = searchQuery.length > 0 || Object.keys(filters).length > 0;
 
   const updateStockField = (symbol, field, value) => {
@@ -826,8 +849,9 @@ export default function StockGrid({
       const hasLiq = params[liqKey] !== undefined && params[liqKey] !== null && params[liqKey] !== "";
       const hasMa = params['movingAverages'] !== undefined && params['movingAverages'] !== null && params['movingAverages'] !== "";
       const hasRs = params[rsKey] !== undefined && params[rsKey] !== null && params[rsKey] !== "";
+      const hasVcp = params['vcp_tightness'] !== undefined && params['vcp_tightness'] !== null && params['vcp_tightness'] !== "";
 
-      if (!hasAdr || !hasLiq || !hasMa || !hasRs) return true;
+      if (!hasAdr || !hasLiq || !hasMa || !hasRs || !hasVcp) return true;
 
       // Check if last sync was before today
       if (!stock.lastSyncTime || stock.lastSyncTime < todayStart) return true;
@@ -1163,6 +1187,13 @@ export default function StockGrid({
         } else if (typeof sectorFilter === "string" && sectorFilter !== "") {
           if (stock.sector !== sectorFilter) return false;
         }
+      }
+      /* SYMBOLS FILTER */
+      const symbolsFilter = filters.__symbols__;
+      if (Array.isArray(symbolsFilter) && symbolsFilter.length > 0) {
+        if (!symbolsFilter.includes(stock.symbol)) return false;
+      } else if (typeof symbolsFilter === "string" && symbolsFilter !== "") {
+        if (stock.symbol !== symbolsFilter) return false;
       }
       /* TRADABLE FILTER */
       const tradableFilter = filters.__tradable__;
@@ -2081,6 +2112,7 @@ export default function StockGrid({
             {activeFilters.map(([key, value]) => {
               let label;
               if (key === "__sector__") label = "Sector";
+              else if (key === "__symbols__") label = "AI Selection";
               else if (key === "__tag__") label = "Tag";
               else if (key === "__tradable__") label = "Tradable";
               else label = params[key]?.label || key;
@@ -2234,7 +2266,7 @@ export default function StockGrid({
                 {fetchProgress.total > 0 && (
                   <div className={`activity-capsule-item metric-sync ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
                     <div className="pulse-dot green" />
-                    <span className="capsule-label">Metrics</span>
+                    <span className="capsule-label">Fetching Metrics</span>
                     <span className="capsule-percent">{Math.round((fetchProgress.completed / fetchProgress.total) * 100)}%</span>
                     <span className="capsule-count">({fetchProgress.completed}/{fetchProgress.total})</span>
                     <div className="capsule-progress-track">
@@ -2256,8 +2288,8 @@ export default function StockGrid({
                     title={rateLimitWait 
                       ? `Rate limit hit. Resuming in ~${rateLimitWait.waitSeconds}s... (${rateLimitWait.completed}/${rateLimitWait.total} stocks done)`
                       : (aiProgress.startTime && aiProgress.estimatedEndTime 
-                        ? `Triggered: ${new Date(aiProgress.startTime).toLocaleTimeString()}\nEstimated Completion: ${new Date(aiProgress.estimatedEndTime).toLocaleTimeString()}` 
-                        : "AI Analysis in progress...")}
+                        ? `Bulk AI Analysis: Evaluates all stocks in the watchlist & applies tags automatically.\nTriggered: ${new Date(aiProgress.startTime).toLocaleTimeString()}\nEstimated Completion: ${new Date(aiProgress.estimatedEndTime).toLocaleTimeString()}` 
+                        : "Bulk AI Analysis: Evaluates all stocks in the watchlist & applies tags automatically")}
                   >
                     <svg className="ai-sparkle-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
                       <path d="M12 0C12 6.627 6.627 12 0 12C6.627 12 12 17.373 12 24C12 17.373 17.373 12 24 12C17.373 12 12 6.627 12 0Z" />
@@ -3050,6 +3082,12 @@ export default function StockGrid({
                     <td key={key} className={`cw-${key}`}>
                       {key === "movingAverages" && val ? (
                         <MovingAverageRibbon value={val} />
+                      ) : baseKey === "vcp_tightness" && val ? (
+                        <div className="vcp-tightness-badge-cell">
+                          <span className={`vcp-badge ${val.includes("Tight") ? "tight" : val.includes("Moderate") ? "moderate" : "wide"}`}>
+                            {stock.params?.vcp_tightness_display || val}
+                          </span>
+                        </div>
                       ) : (
                         <div className="param-standard-renderer">
                           {p.type === "checkbox" && (

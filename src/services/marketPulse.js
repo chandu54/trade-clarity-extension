@@ -186,6 +186,7 @@ const NSE_SYMBOL_MAP = {
   'NIFTY 50': '^NSEI',
   'NIFTY MIDCAP 100': 'NIFTY_MIDCAP_100.NS',
   'NIFTY SMLCAP 100': '^CNXSC',
+  'NIFTY SMALLCAP 100': '^CNXSC',
   'NIFTY 500': '^CRSLDX',
   'NIFTY BANK': '^NSEBANK',
   'NIFTY IT': '^CNXIT',
@@ -196,57 +197,86 @@ const NSE_SYMBOL_MAP = {
   'NIFTY REALTY': '^CNXREALTY',
   'NIFTY ENERGY': '^CNXENERGY',
   'NIFTY INFRA': '^CNXINFRA',
+  'NIFTY INFRASTRUCTURE': '^CNXINFRA',
   'NIFTY MEDIA': '^CNXMEDIA',
   'NIFTY PSU BANK': '^CNXPSUBANK',
   'NIFTY PVT BANK': 'NIFTY_PVT_BANK.NS',
+  'NIFTY PRIVATE BANK': 'NIFTY_PVT_BANK.NS',
   'NIFTY FIN SERVICE': 'NIFTY_FIN_SERVICE.NS',
+  'NIFTY FINANCIAL SERVICES': 'NIFTY_FIN_SERVICE.NS',
   'NIFTY CONSUMPTION': '^CNXCONSUM',
+  'NIFTY INDIA CONSUMPTION': '^CNXCONSUM',
   'NIFTY PSE': '^CNXPSE',
   'NIFTY SERV SECTOR': '^CNXSERVICE',
+  'NIFTY SERVICES SECTOR': '^CNXSERVICE',
   'NIFTY COMMODITIES': '^CNXCMDT',
   'NIFTY MNC': '^CNXMNC',
   'NIFTY HEALTHCARE': 'HEALTHIETF.NS',
   'NIFTY OIL AND GAS': 'OILIETF.NS',
+  'NIFTY OIL & GAS': 'OILIETF.NS',
   'NIFTY IND DEFENCE': 'DEFENCE.NS',
+  'NIFTY INDIA DEFENCE': 'DEFENCE.NS',
   'NIFTY CPSE': 'CPSEETF.NS',
   'NIFTY CHEMICALS': 'NIFTY_CHEMICALS.NS',
-  'NIFTY EV': 'NIFTY_EV.NS'
+  'NIFTY INDIA CHEMICALS': 'NIFTY_CHEMICALS.NS',
+  'NIFTY EV': 'NIFTY_EV.NS',
+  'NIFTY EV & NEW AGE AUTOMOTIVE': 'NIFTY_EV.NS'
 };
 
 export async function fetchNseAllIndices() {
   const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
-  const baseUrl = isLocalhost ? '/nse-api' : 'https://www.nseindia.com';
-  const url = `${baseUrl}/api/allIndices`;
+  const targetUrl = 'https://www.nseindia.com/api/allIndices';
+  const url = isLocalhost ? '/nse-api/api/allIndices' : targetUrl;
+
+  const tryFetch = async (fetchUrl) => {
+    const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    const timeoutId = controller ? setTimeout(() => controller.abort(), 2000) : null;
+    try {
+      const res = await fetch(fetchUrl, {
+        signal: controller?.signal,
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+          'Accept': 'application/json, text/plain, */*'
+        },
+        cache: 'no-cache'
+      });
+      if (timeoutId) clearTimeout(timeoutId);
+      if (!res.ok) return null;
+      return await res.json();
+    } catch {
+      if (timeoutId) clearTimeout(timeoutId);
+      return null;
+    }
+  };
 
   try {
-    const res = await fetch(url, {
-      headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-        'Accept': 'application/json, text/plain, */*',
-        'Referer': 'https://www.nseindia.com/'
-      },
-      cache: 'no-cache'
-    });
-    if (!res.ok) return null;
-    const data = await res.json();
+    let data = await tryFetch(url).catch(() => null);
+    if (!data || !Array.isArray(data.data)) {
+      data = await tryFetch(`https://api.allorigins.win/raw?url=${encodeURIComponent(targetUrl)}`).catch(() => null);
+    }
     if (!data || !Array.isArray(data.data)) return null;
 
     const nseMap = {};
     for (const item of data.data) {
-      const sym = item.indexSymbol || item.index;
-      const internalSym = NSE_SYMBOL_MAP[sym];
+      const sym1 = (item.indexSymbol || '').trim();
+      const sym2 = (item.index || '').trim();
+      const internalSym = NSE_SYMBOL_MAP[sym1] || NSE_SYMBOL_MAP[sym2];
       if (internalSym) {
+        const adv = parseInt(item.advances, 10);
+        const dec = parseInt(item.declines, 10);
+        const unc = parseInt(item.unchanged, 10);
+
         nseMap[internalSym] = {
-          name: sym,
+          name: sym2 || sym1,
           currentPrice: typeof item.last === 'number' ? item.last : parseFloat(item.last),
           dailyChange: typeof item.variation === 'number' ? item.variation : parseFloat(item.variation),
           dailyChangePct: typeof item.percentChange === 'number' ? item.percentChange : parseFloat(item.percentChange),
           previousClose: typeof item.previousClose === 'number' ? item.previousClose : parseFloat(item.previousClose),
           high52w: typeof item.yearHigh === 'number' ? item.yearHigh : parseFloat(item.yearHigh),
           low52w: typeof item.yearLow === 'number' ? item.yearLow : parseFloat(item.yearLow),
-          advances: parseInt(item.advances) || 0,
-          declines: parseInt(item.declines) || 0,
-          unchanged: parseInt(item.unchanged) || 0,
+          advances: !isNaN(adv) ? adv : null,
+          declines: !isNaN(dec) ? dec : null,
+          unchanged: !isNaN(unc) ? unc : 0,
           pe: parseFloat(item.pe) || null,
           pb: parseFloat(item.pb) || null
         };

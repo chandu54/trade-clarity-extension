@@ -2533,9 +2533,24 @@ export default function EditStockModal({
                   )}
 
                   {aiError && (
-                    <div className="error-display-premium">
-                      <div className="error-icon-v2">⚠️</div>
-                      <h3>{aiError}</h3>
+                    <div className="ai-inline-warning-card">
+                      <div className="ai-inline-warning-header">
+                        <span>⚠️</span>
+                        <span>Gemini API Notice</span>
+                      </div>
+                      <div className="ai-inline-warning-body">
+                        {aiError}
+                      </div>
+                      <div className="ai-inline-warning-actions">
+                        <a 
+                          href="https://aistudio.google.com/" 
+                          target="_blank" 
+                          rel="noopener noreferrer" 
+                          className="ai-limit-link-btn"
+                        >
+                          Check Plan & Quota ↗
+                        </a>
+                      </div>
                     </div>
                   )}
 

@@ -55,7 +55,7 @@ describe('DeepViewAi', () => {
     render(<DeepViewAi {...props} />);
     
     await waitFor(() => {
-      expect(screen.getByText('Institutional Access Interrupted')).toBeDefined();
+      expect(screen.getByText('AI Service Error')).toBeDefined();
       expect(screen.getByText('AI overlap error')).toBeDefined();
     }, { timeout: 3000 });
   });

@@ -126,6 +126,14 @@ export function scrubParamDefinitions(currentData) {
   // Syncing logic: Propagate 'order' from code defaults to storage
   const defaultParams = DEFAULT_DATA.paramDefinitions || {};
 
+  // Hydrate any newly introduced system parameters from seed.js
+  Object.keys(defaultParams).forEach(key => {
+    if (!newParams[key]) {
+      newParams[key] = { ...defaultParams[key] };
+      changed = true;
+    }
+  });
+
   Object.keys(newParams).forEach(key => {
     const p = newParams[key];
     const isMissingCountries = !p.countries || p.countries.length === 0;
@@ -161,7 +169,36 @@ export function scrubParamDefinitions(currentData) {
     }
   });
 
-  return changed ? { ...currentData, paramDefinitions: newParams } : currentData;
+  // D. Ensure new system params like 'vcp_tightness' are included in existing watchlists' visibleParams and visibleFilters
+  let newWatchlists = currentData.watchlists;
+  if (Array.isArray(newWatchlists)) {
+    newWatchlists = newWatchlists.map(w => {
+      let wChanged = false;
+      let visibleParams = w.visibleParams ? [...w.visibleParams] : null;
+      let visibleFilters = w.visibleFilters ? [...w.visibleFilters] : null;
+
+      if (visibleParams && !visibleParams.includes("vcp_tightness")) {
+        visibleParams.push("vcp_tightness");
+        wChanged = true;
+      }
+      if (visibleFilters && !visibleFilters.includes("vcp_tightness")) {
+        visibleFilters.push("vcp_tightness");
+        wChanged = true;
+      }
+
+      if (wChanged) {
+        changed = true;
+        return {
+          ...w,
+          ...(visibleParams ? { visibleParams } : {}),
+          ...(visibleFilters ? { visibleFilters } : {}),
+        };
+      }
+      return w;
+    });
+  }
+
+  return changed ? { ...currentData, paramDefinitions: newParams, watchlists: newWatchlists } : currentData;
 }
 
 /**

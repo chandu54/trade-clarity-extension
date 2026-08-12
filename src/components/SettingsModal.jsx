@@ -238,6 +238,11 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
           <div className={`status-banner ${testResult.success ? "success" : "error"}`}>
             <span className="status-banner-icon">{testResult.success ? "✅" : "❌"}</span>
             <span className="status-banner-text">{testResult.message}</span>
+            {!testResult.success && (
+              <a href="https://aistudio.google.com/" target="_blank" rel="noreferrer" className="ai-limit-link-btn" style={{ marginLeft: '10px' }}>
+                Check Quota ↗
+              </a>
+            )}
           </div>
         )}
 

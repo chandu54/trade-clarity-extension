@@ -18,12 +18,15 @@ export default function AiLimitBanner({ aiSettings, setData }) {
         setTimeLeft(0);
         // Automatically reset failure state when cooldown expires
         setData((prev) => {
-          const newData = { ...prev };
-          if (newData.aiSettings) {
-            newData.aiSettings = {
-              ...newData.aiSettings,
+          const newData = {
+            ...prev,
+            aiSettings: {
+              ...(prev?.aiSettings || {}),
               aiState: { continuousFailures: 0, blockedUntil: 0 }
-            };
+            }
+          };
+          if (typeof chrome !== "undefined" && chrome.storage?.local) {
+            chrome.storage.local.set({ trading_app_data: newData });
           }
           return newData;
         });
@@ -40,13 +43,17 @@ export default function AiLimitBanner({ aiSettings, setData }) {
   if (timeLeft <= 0) return null;
 
   const handleReset = () => {
+    setTimeLeft(0);
     setData((prev) => {
-      const newData = { ...prev };
-      if (newData.aiSettings) {
-        newData.aiSettings = {
-          ...newData.aiSettings,
+      const newData = {
+        ...prev,
+        aiSettings: {
+          ...(prev?.aiSettings || {}),
           aiState: { continuousFailures: 0, blockedUntil: 0 }
-        };
+        }
+      };
+      if (typeof chrome !== "undefined" && chrome.storage?.local) {
+        chrome.storage.local.set({ trading_app_data: newData });
       }
       return newData;
     });
@@ -63,10 +70,19 @@ export default function AiLimitBanner({ aiSettings, setData }) {
       <div className="ai-limit-content">
         <span className="ai-limit-icon">⚠️</span>
         <span className="ai-limit-text">
-          <strong>AI Requests Limit Reached.</strong> Further requests are temporarily paused to prevent repeated errors. Available again in <strong>{formatTime(timeLeft)}</strong>.
+          <strong>Gemini API Quota Limit Reached.</strong> Your AI provider (Google Gemini) has temporarily paused requests due to free-tier quota limits. Available again in <strong>{formatTime(timeLeft)}</strong>.
         </span>
       </div>
       <div className="ai-limit-actions">
+        <a 
+          href="https://aistudio.google.com/" 
+          target="_blank" 
+          rel="noopener noreferrer" 
+          className="ai-limit-link-btn"
+          title="Check your Gemini API quota & plan on Google AI Studio"
+        >
+          Check Plan & Quota ↗
+        </a>
         <button className="ai-limit-btn" onClick={handleReset}>
           Reset Limit & Retry
         </button>

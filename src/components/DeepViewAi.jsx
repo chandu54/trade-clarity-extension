@@ -144,11 +144,27 @@ export default function DeepViewAi({ categoryName, symbols, weekData, aiSettings
   }
 
   if (error) {
+    const isQuota = error.includes("Quota Limit Reached") || error.includes("RESOURCE_EXHAUSTED") || error.includes("429");
     return (
-      <div className="deep-view-container">
-        <div className="deep-view-report deep-view-error">
-          <div className="error-badge">Institutional Access Interrupted</div>
-          <p>{error}</p>
+      <div className="deep-view-container" style={{ padding: '16px' }}>
+        <div className="ai-inline-warning-card">
+          <div className="ai-inline-warning-header">
+            <span>⚠️</span>
+            <span>{isQuota ? "Gemini API Quota Limit Reached" : "AI Service Error"}</span>
+          </div>
+          <div className="ai-inline-warning-body">
+            {error}
+          </div>
+          <div className="ai-inline-warning-actions">
+            <a 
+              href="https://aistudio.google.com/" 
+              target="_blank" 
+              rel="noopener noreferrer" 
+              className="ai-limit-link-btn"
+            >
+              Check Plan & Quota ↗
+            </a>
+          </div>
         </div>
       </div>
     );

@@ -313,6 +313,62 @@ export async function testConnection(apiKey, model) {
 }
 
 /**
+ * Standardized AI Error Parser
+ * Classifies raw API errors into clean user-facing error objects with helpful guidance.
+ */
+export function parseAiError(error) {
+  if (!error) {
+    return {
+      type: "UNKNOWN",
+      message: "An unexpected AI error occurred.",
+      isQuota: false,
+      providerName: "Google Gemini",
+      providerUrl: "https://aistudio.google.com/"
+    };
+  }
+
+  const rawMsg = typeof error === "string" ? error : error.message || "";
+  const isQuota = rawMsg.includes("Quota Limit Reached") || 
+                  rawMsg.includes("RESOURCE_EXHAUSTED") || 
+                  rawMsg.includes("QuotaExceeded") || 
+                  rawMsg.includes("429") ||
+                  rawMsg.includes("AI Request Limit Reached");
+
+  const isInvalidKey = rawMsg.includes("API Key") || 
+                       rawMsg.includes("API_KEY_INVALID") || 
+                       rawMsg.includes("400") || 
+                       rawMsg.includes("403");
+
+  const isUnavailable = rawMsg.includes("500") || 
+                        rawMsg.includes("503") || 
+                        rawMsg.includes("UNAVAILABLE") || 
+                        rawMsg.includes("Overloaded");
+
+  let type = "UNKNOWN";
+  let message = rawMsg;
+
+  if (isQuota) {
+    type = "QUOTA_EXCEEDED";
+    message = "Gemini API Quota Limit Reached. Your AI provider (Google Gemini) has temporarily paused requests due to free-tier quota limits. Please check your plan quota at Google AI Studio or try again later.";
+  } else if (isInvalidKey) {
+    type = "INVALID_KEY";
+    message = "Invalid Gemini API Key. Google Gemini rejected the provided API key. Please check or update your key in Settings.";
+  } else if (isUnavailable) {
+    type = "SERVICE_UNAVAILABLE";
+    message = "Gemini Service Temporarily Unavailable. Google Gemini servers are experiencing high load or maintenance. Please try again in a few minutes.";
+  }
+
+  return {
+    type,
+    message,
+    isQuota,
+    rawMessage: rawMsg,
+    providerName: "Google Gemini",
+    providerUrl: "https://aistudio.google.com/"
+  };
+}
+
+/**
  * Parse the "retry in Xs" seconds value from a Gemini rate-limit error message.
  * Returns the number of milliseconds to wait, or a default fallback.
  */
@@ -442,7 +498,8 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3)
           errMessage.includes("RESOURCE_EXHAUSTED") ||
           errMessage.includes("QuotaExceeded")
         ) {
-          const blockedUntil = Date.now() + 15 * 60 * 1000; // 15 minute circuit breaker
+          const retryMs = parseRetryAfterMs(errMessage, 150000); // Dynamic parse or ~2.5 mins fallback
+          const blockedUntil = Date.now() + retryMs;
           await updateAiState(3, blockedUntil);
           if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
             chrome.runtime.sendMessage({
@@ -450,7 +507,8 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3)
               payload: { blockedUntil }
             }).catch(() => {});
           }
-          throw new Error(`AI Request Limit Reached. Available again in 900s.`);
+          const secs = Math.ceil(retryMs / 1000);
+          throw new Error(`Gemini API Quota Limit Reached. Your AI provider (Google Gemini) has temporarily paused requests due to free-tier quota limits. Available again in ${secs}s.`);
         }
 
         throw new Error(errMessage);
@@ -565,17 +623,60 @@ function generatePrompt(
 
   if (!isCustom) {
     prompt += `
-    Provide a strategic summary in the following JSON structure:
+    Provide a zero-fluff, high-clarity quantitative decision intelligence briefing in the following STRICT JSON structure:
     {
-      "marketBias": "Assess the overall market health based on this watchlist. Is it 'Risk-On' (Bullish), 'Risk-Off' (Bearish), or 'Neutral'? Provide a concise reasoning.",
-      "topSectors": ["List the top 2-3 strongest sectors in this list. Format: 'Sector Name: Brief reason'."],
-      "actionableSetups": [
-        "Identify the top 3-5 high-quality setups. Format: 'SYMBOL: Pattern Name - Trigger/Observation'. Example: 'NVDA: Bull Flag - Watch for breakout above $150 on volume'."
+      "watchlistDiagnosis": {
+        "stance": "Full Position Sizing on Base Breakouts",
+        "score": 84,
+        "percentAbove20EMA": 78,
+        "percentAbove50EMA": 70,
+        "institutionalTone": "Persistent institutional accumulation in defense and capital goods; profit taking evident in IT laggards.",
+        "allocationGuidance": "Focus 70% capital allocation on high-RS base breakouts above 10/21 EMA. Maintain tight stops on extended names."
+      },
+      "sectorMatrix": [
+        {
+          "sector": "Defense & Aerospace",
+          "stockCount": 6,
+          "status": "Leading",
+          "narrativeDriver": "Benefiting from domestic order book expansion and government capex. Heavy institutional accumulation on 10 EMA dips."
+        }
       ],
-      "keyRisks": [
-        "List 1-3 potential risks specific to this watchlist (e.g., 'Earnings approaching for TSLA', 'Sector concentration in Tech', 'Low relative strength')."
+      "focusCandidates": [
+        {
+          "symbol": "SOLARINDS",
+          "rsRank": 94,
+          "pattern": "Minervini 3-Touch VCP near 52-week high",
+          "pivotTrigger": "Decisive cross above 7,150",
+          "volumeRequirement": ">1.5x 20-day average daily volume",
+          "stopLoss": "6,850 (Close below 21 EMA)",
+          "stopPercent": "-4.2%",
+          "targetPrice": "8,800 (+23% upside)",
+          "riskReward": "1:3.8",
+          "thesis": "RS line making new highs before price; volume drying up sharply on contractions (3T tight base)."
+        }
+      ],
+      "actionTriage": {
+        "buyZone": [
+          { "symbol": "SOLARINDS", "notes": "Tight VCP base at 10 EMA" }
+        ],
+        "extended": [
+          { "symbol": "TATAMOTORS", "notes": "Extended +18% above 21 EMA; wait for base" }
+        ],
+        "avoidCut": [
+          { "symbol": "WIPRO", "notes": "50 EMA breakdown with heavy distribution volume" }
+        ]
+      },
+      "watchouts": [
+        "Major sector earnings releases expected in next 14 days",
+        "Watch for broader index divergence at current resistance"
       ]
     }
+
+    Field Rules:
+    - stance MUST be one of: "Full Position Sizing on Base Breakouts", "Half Position Sizing on EMA Pullbacks", "Defensive Cash / Tighten Stops".
+    - status in sectorMatrix MUST be one of: "Leading", "Consolidating", "Lagging".
+    - focusCandidates: Provide 3-5 highest conviction stocks from the watchlist with complete pivot, stop loss, target, and thesis details.
+    - actionTriage: Categorize ALL watchlist stocks into buyZone, extended, or avoidCut.
 
     IMPORTANT: Return ONLY valid JSON. Do not include markdown formatting like \`\`\`json.
     `;

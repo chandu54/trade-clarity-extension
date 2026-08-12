@@ -2,6 +2,7 @@ import { mapAdrBucket, mapLiquidityBucket, mapMovingAverageBucket } from "./util
 import { getActualParamKeyAndDef } from "./utils/paramUtils.js";
 import { calculateStockRsCategory } from "./utils/benchmarkUtils.js";
 import { evaluateStageFromCandles } from "./utils/calculateStageMetric.ts";
+import { evaluateVCPTightnessFromCandles } from "./utils/calculateVcpTightness.ts";
 import { evaluateIPOTag } from "./utils/detectYoungIPO";
 import { getBulkStockVerdicts } from "./services/ai.js";
 import { fetchStockData } from "./utils/yahooFinanceMap.js";
@@ -633,11 +634,17 @@ async function fetchAndCalculateMetrics(
       }
     }
 
+    // --- VCP TIGHTNESS MAPPING ---
+    const vcpResult = evaluateVCPTightnessFromCandles(validDays);
+    const vcpCategory = vcpResult.category;
+    const vcpDisplayText = vcpResult.displayText;
+    const isTightVCP = vcpResult.isTight;
+
     // --- IPO TAG MAPPING ---
     const ipoResult = evaluateIPOTag(symbol, validDays);
     const isYoungIPO = ipoResult.isYoungIPO;
 
-    console.log(`[Sync] Computed for ${symbol}: ADR=${formattedAdr}, Liquidity=${formattedLiquidity}, MAs=${maBucket}, RS=${rsCategory}, Stage=${stageCategory}, YoungIPO=${isYoungIPO}`);
+    console.log(`[Sync] Computed for ${symbol}: ADR=${formattedAdr}, Liquidity=${formattedLiquidity}, MAs=${maBucket}, RS=${rsCategory}, Stage=${stageCategory}, VCP=${vcpDisplayText}, YoungIPO=${isYoungIPO}`);
 
     return {
       adr: formattedAdr,
@@ -645,6 +652,9 @@ async function fetchAndCalculateMetrics(
       movingAverages: maBucket,
       rs: rsCategory,
       stage: stageCategory,
+      vcp_tightness: vcpCategory,
+      vcp_tightness_display: vcpDisplayText,
+      isTightVCP: isTightVCP,
       isYoungIPO: isYoungIPO,
       name: companyName,
       isInvalid: false,
@@ -692,6 +702,15 @@ async function updateStorageWithMetrics(updates) {
             }
           }
 
+          // Auto-apply AI:Tight VCP tag if 10-day tightness is < 4%
+          if (metrics.isTightVCP) {
+            const currentTags = stock.tags || [];
+            if (!currentTags.includes("AI:Tight VCP")) {
+              stock.tags = [...currentTags, "AI:Tight VCP"];
+              dataChanged = true;
+            }
+          }
+
           // Only update if changed
           if (
             stock.params[adrKey] !== metrics.adr ||
@@ -699,6 +718,7 @@ async function updateStorageWithMetrics(updates) {
             stock.params[maKey] !== metrics.movingAverages ||
             stock.params[rsKey] !== metrics.rs ||
             (metrics.stage && stock.params[stageKey] !== metrics.stage) ||
+            stock.params['vcp_tightness'] !== metrics.vcp_tightness ||
             stock.name !== metrics.name ||
             stock.isInvalid !== metrics.isInvalid
           ) {
@@ -722,6 +742,14 @@ async function updateStorageWithMetrics(updates) {
               stock.params['stage'] = metrics.stage;
               stock.params[`${country.toLowerCase()}.stage`] = metrics.stage;
             }
+
+            if (metrics.vcp_tightness) {
+              stock.params['vcp_tightness'] = metrics.vcp_tightness;
+              stock.params['vcpTightness'] = metrics.vcp_tightness;
+              stock.params[`${country.toLowerCase()}.vcp_tightness`] = metrics.vcp_tightness;
+              stock.params['vcp_tightness_display'] = metrics.vcp_tightness_display;
+            }
+
             stock.name = metrics.name;
             stock.isInvalid = metrics.isInvalid;
             dataChanged = true;

@@ -235,8 +235,8 @@ export default function WeekSelector({
                   isAiBlocked
                     ? "AI requests blocked due to rate limit/errors"
                     : isBulkRunning
-                    ? "Background Bulk AI Analysis is running..."
-                    : "Background Bulk AI Analysis"
+                    ? "Background Bulk AI Analysis is running: Evaluating all stocks in the watchlist with AI and applying tags..."
+                    : "Background Bulk AI Analysis: Get AI analysis for all stocks in the watchlist & apply tags automatically"
                 }
                 style={isBulkDisabled ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
               >

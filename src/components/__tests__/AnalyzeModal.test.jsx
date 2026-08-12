@@ -58,8 +58,8 @@ describe('AnalyzeModal', () => {
 
   it('renders correctly when open', () => {
     renderWithContext(<AnalyzeModal {...props} />);
-    expect(screen.getByText('AI Analysis')).toBeDefined();
-    expect(screen.getByText('Ready to generate trading insights.')).toBeDefined();
+    expect(screen.getByText(/AI Watchlist Intelligence Briefing/)).toBeDefined();
+    expect(screen.getByText('Ready to generate zero-fluff decision intelligence briefing.')).toBeDefined();
   });
 
   it('calls getAiAnalysis and updates data on successful generation', async () => {
@@ -71,12 +71,61 @@ describe('AnalyzeModal', () => {
     const generateBtn = screen.getByRole('button', { name: /Run Analysis/i });
     fireEvent.click(generateBtn);
 
-    expect(screen.getByText('Compiling Market Data...')).toBeDefined();
+    expect(screen.getByText('Compiling Decision Intelligence Briefing...')).toBeDefined();
 
     await waitFor(() => {
       expect(aiService.getAiAnalysis).toHaveBeenCalled();
     });
     expect(props.setData).toHaveBeenCalled();
+  });
+
+  it('renders the 5 decision intelligence pillars and opens in-modal thesis drawer', async () => {
+    const mockStructuredAnalysis = {
+      watchlistDiagnosis: {
+        stance: 'Full Position Sizing on Base Breakouts',
+        score: 84,
+        percentAbove20EMA: 78,
+        percentAbove50EMA: 70,
+        institutionalTone: 'Persistent accumulation in defense',
+        allocationGuidance: 'Focus 70% capital allocation on high-RS base breakouts'
+      },
+      sectorMatrix: [{ sector: 'Defense & Aerospace', stockCount: 6, status: 'Leading', narrativeDriver: 'Strong order book expansion' }],
+      focusCandidates: [{ symbol: 'SOLARINDS', rsRank: 94, pattern: 'VCP Breakout', pivotTrigger: 'Cross above 7,150', stopLoss: '6,850', targetPrice: '8,800', riskReward: '1:3.8', thesis: 'RS line making new highs before price' }],
+      actionTriage: {
+        buyZone: [{ symbol: 'SOLARINDS', notes: 'Tight VCP base' }],
+        extended: [],
+        avoidCut: []
+      },
+      watchouts: ['Earnings releases in 14 days']
+    };
+
+    const dataWithAnalysis = {
+      ...mockData,
+      weeks: {
+        US: {
+          '2024-03-17': {
+            stocks: { AAPL: { symbol: 'AAPL' } },
+            analysis: mockStructuredAnalysis
+          }
+        }
+      }
+    };
+
+    renderWithContext(<AnalyzeModal {...props} data={dataWithAnalysis} />);
+
+    expect(screen.getByText('PILLAR 1: MARKET DIAGNOSIS & ALLOCATION STANCE')).toBeDefined();
+    expect(screen.getByText('Full Position Sizing on Base Breakouts')).toBeDefined();
+    expect(screen.getByText('Defense & Aerospace')).toBeDefined();
+    expect(screen.getAllByText('SOLARINDS')[0]).toBeDefined();
+
+    // Click candidate card to open in-modal deep dive thesis drawer
+    fireEvent.click(screen.getByText('Read Thesis →'));
+    expect(screen.getByText('Tactical Setup Thesis: SOLARINDS')).toBeDefined();
+    expect(screen.getAllByText('RS line making new highs before price')[0]).toBeDefined();
+
+    // Close thesis drawer
+    fireEvent.click(screen.getByText('Close Deep Dive'));
+    expect(screen.queryByText('Tactical Setup Thesis: SOLARINDS')).toBeNull();
   });
 
   it('shows error toast if generation fails', async () => {
@@ -103,8 +152,6 @@ describe('AnalyzeModal', () => {
         expect(aiService.getAiAnalysis).toHaveBeenCalled();
     });
 
-    // Verify that the payload passed to getAiAnalysis contained the correct stocks
-    // 3rd argument is weekData (index 2)
     const callArgs = aiService.getAiAnalysis.mock.calls[0][2];
     expect(Object.keys(callArgs.stocks)).toContain('AAPL');
   });

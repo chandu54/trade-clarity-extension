@@ -32,6 +32,16 @@ export const DEFAULT_DATA = {
       order: 45,
     },
 
+    vcp_tightness: {
+      label: "VCP Tightness",
+      type: "select",
+      options: ["Tight (< 4%)", "Moderate (4-7%)", "Wide (> 7%)"],
+      filterable: true,
+      isCheck: true,
+      idealValues: ["Tight (< 4%)"],
+      order: 46,
+    },
+
     rs: {
       label: "Relative Strength",
       type: "select",

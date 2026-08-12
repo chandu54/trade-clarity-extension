@@ -43,6 +43,7 @@ function AppContent() {
   const [selectedWatchlistId, setSelectedWatchlistId] = useState("all");
   const [activeTab, setActiveTab] = useState("watchlists");
   const [quickLogSymbol, setQuickLogSymbol] = useState(null);
+  const [externalFilter, setExternalFilter] = useState(null);
 
   const { theme, toggleTheme } = useTheme(data?.theme, (newTheme) => {
     setData(prev => ({ ...prev, theme: newTheme }));
@@ -162,8 +163,9 @@ function AppContent() {
             }
 
             return {
-              ...currentData,
               ...newData,
+              ...currentData,
+              theme: currentData.theme || newData.theme || "light",
               weeks: mergedWeeks,
             };
           });
@@ -468,6 +470,7 @@ function AppContent() {
             onImportAll={importAllData}
             availableTags={availableTags}
             aiSettings={data.aiSettings}
+            externalFilter={externalFilter}
             onQuickLog={(symbol) => {
               setQuickLogSymbol(symbol);
               setActiveTab("journal");
@@ -567,6 +570,10 @@ function AppContent() {
           country={country}
           weekKey={weekKey}
           selectedWatchlistId={selectedWatchlistId}
+          onApplyFilter={(filter) => {
+            setExternalFilter(filter);
+            modals.setShowAnalyze(false);
+          }}
           onClose={() => modals.setShowAnalyze(false)}
         />
       )}

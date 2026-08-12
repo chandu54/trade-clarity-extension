@@ -1040,24 +1040,48 @@ export default function MarketPulseView({ country, aiSettings }) {
                             </div>
                           </td>
                           <td className="matrix-data-cell text-center">
-                            {idx.advances != null && idx.declines != null ? (() => {
-                              const total = (idx.advances + idx.declines) || 1;
-                              const advPct = Math.round((idx.advances / total) * 100);
+                            {(() => {
+                              let adv = idx.advances;
+                              let dec = idx.declines;
+                              let isEstimated = false;
+
+                              if (adv == null || dec == null) {
+                                const periods = [5, 10, 21, 50, 200];
+                                let aboveCount = 0;
+                                let validCount = 0;
+                                periods.forEach(p => {
+                                  const ma = idx[`sma${p}`];
+                                  if (ma && idx.currentPrice) {
+                                    validCount++;
+                                    if (idx.currentPrice > ma) aboveCount++;
+                                  }
+                                });
+                                if (validCount > 0) {
+                                  adv = aboveCount;
+                                  dec = validCount - aboveCount;
+                                  isEstimated = true;
+                                }
+                              }
+
+                              if (adv == null || dec == null) {
+                                return <span className="matrix-dist-cell dist-null">--</span>;
+                              }
+
+                              const total = (adv + dec) || 1;
+                              const advPct = Math.round((adv / total) * 100);
                               return (
-                                <div className="breadth-cell-container" style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }} title={`Official NSE Breadth: ${idx.advances} Advancing (${advPct}%), ${idx.declines} Declining, ${idx.unchanged || 0} Unchanged`}>
+                                <div className="breadth-cell-container" style={{ display: 'inline-flex', flexDirection: 'column', alignItems: 'center' }} title={isEstimated ? `Trend Alignment Breadth: ${adv} MA Bullish, ${dec} MA Bearish (${advPct}% Bullish)` : `Official Exchange Breadth: ${adv} Advancing (${advPct}%), ${dec} Declining`}>
                                   <div className="breadth-counts" style={{ fontSize: '11px', lineHeight: 1 }}>
-                                    <span style={{ color: '#10b981', fontWeight: 700 }}>{idx.advances}A</span>
+                                    <span style={{ color: '#10b981', fontWeight: 700 }}>{adv}{isEstimated ? '🟢' : 'A'}</span>
                                     <span style={{ opacity: 0.3, margin: '0 3px' }}>/</span>
-                                    <span style={{ color: '#ef4444', fontWeight: 700 }}>{idx.declines}D</span>
+                                    <span style={{ color: '#ef4444', fontWeight: 700 }}>{dec}{isEstimated ? '🔴' : 'D'}</span>
                                   </div>
                                   <div className="breadth-bar-track" style={{ width: '56px', height: '4px', borderRadius: '2px', background: 'rgba(239, 68, 68, 0.4)', overflow: 'hidden', marginTop: '4px', display: 'flex' }}>
                                     <div className="breadth-bar-fill" style={{ width: `${advPct}%`, height: '100%', background: '#10b981', borderRadius: '2px' }} />
                                   </div>
                                 </div>
                               );
-                            })() : (
-                              <span className="matrix-dist-cell dist-null">--</span>
-                            )}
+                            })()}
                           </td>
                           <td className="matrix-data-cell text-center">
                             <span className={`matrix-dist-cell ${rsClass}`}>
