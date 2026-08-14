@@ -671,7 +671,7 @@ function generatePrompt(
     Field Rules:
     - stance MUST be one of: "Full Position Sizing on Base Breakouts", "Half Position Sizing on EMA Pullbacks", "Defensive Cash / Tighten Stops".
     - status in sectorMatrix MUST be one of: "Leading", "Consolidating", "Lagging".
-    - sectorMatrix: Identify the top sectors in this watchlist, and for each sector list ALL buyable / accumulating stocks in that sector under "topLeaders".
+    - sectorMatrix: Identify top-performing sectors in this watchlist. For EACH sector, you MUST generate a dynamic, specific 1-2 sentence narrativeDriver explaining the exact fundamental & technical catalysts driving that specific sector's performance (e.g. margin recovery, order book expansion, credit growth, rate sensitivity). NEVER return generic template text. List top 3-4 buying intent stocks under "topLeaders".
     - focusCandidates: Identify ALL top-conviction setup stocks across the entire watchlist (do NOT limit count artificially to 3 or 5) with specific numeric pivot trigger, volume requirement, stop loss, target price, and full thesis.
     - actionTriage: MUST categorize ALL watchlist stocks into the three buckets (buyZone, extended, avoidCut) with specific notes for each stock.
 

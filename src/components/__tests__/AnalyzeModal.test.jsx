@@ -59,7 +59,7 @@ describe('AnalyzeModal', () => {
   it('renders correctly when open', () => {
     renderWithContext(<AnalyzeModal {...props} />);
     expect(screen.getByText(/AI Watchlist Intelligence Briefing/)).toBeDefined();
-    expect(screen.getByText('Ready to generate decision intelligence briefing.')).toBeDefined();
+    expect(screen.getByText('Ready for Watchlist Analysis')).toBeDefined();
   });
 
   it('calls getAiAnalysis and updates data on successful generation', async () => {

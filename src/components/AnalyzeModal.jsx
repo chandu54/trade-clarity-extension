@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import Modal from "./Modal";
 
 import { getAiAnalysis } from "../services/ai";
@@ -27,6 +27,25 @@ const cleanSectorName = (sector) => {
   const parts = sector.split('-');
   const secPart = parts.length > 1 ? parts[parts.length - 1] : sector;
   return secPart.split('/')[0].trim();
+};
+
+const normalizeSectorToken = (sec) => {
+  if (!sec || typeof sec !== 'string') return '';
+  return sec.toLowerCase().replace(/[^a-z0-9]/g, '');
+};
+
+const isSectorMatch = (secA, secB) => {
+  if (!secA || !secB) return false;
+  const normA = normalizeSectorToken(secA);
+  const normB = normalizeSectorToken(secB);
+  if (!normA || !normB) return false;
+  
+  if (normA.includes(normB) || normB.includes(normA)) return true;
+
+  const tokensA = secA.toLowerCase().split(/[\s\-&/]+/);
+  const tokensB = secB.toLowerCase().split(/[\s\-&/]+/);
+
+  return tokensA.some(tA => tA.length >= 3 && tokensB.some(tB => tB.length >= 3 && (tA.includes(tB) || tB.includes(tA))));
 };
 
 const cleanPatternName = (pattern) => {
@@ -333,77 +352,116 @@ const getNormalizedAnalysis = (analysis, stockMap = {}) => {
   // Guaranteed Fallback if sectorMatrix is still empty
   if (sectorMatrix.length === 0) {
     const secMap = {};
-    focusCandidates.forEach(c => {
-      const sName = cleanSectorName(c.sector) || "Leading Sector";
+    Object.values(stockMap).forEach(s => {
+      const sName = s.sector || s.industry || "Leading Sector";
       if (!secMap[sName]) secMap[sName] = [];
-      secMap[sName].push(c.symbol);
+      secMap[sName].push(s.symbol || s.ticker);
     });
 
     const entries = Object.entries(secMap);
     if (entries.length > 0) {
-      sectorMatrix = entries.map(([secName, symbols]) => ({
+      sectorMatrix = entries.slice(0, 5).map(([secName, symbols]) => ({
         sector: secName,
         stockCount: symbols.length,
         status: "Leading",
-        narrativeDriver: `Institutional accumulation in ${secName} sector with strong buying intent in ${symbols.join(", ")}.`,
-        topLeaders: symbols.join(", ")
+        narrativeDriver: `Persistent institutional volume accumulation and sector leadership observed in ${secName}.`,
+        topLeaders: symbols.slice(0, 4).join(", ")
       }));
     } else {
       sectorMatrix = [
         {
           sector: "Defense & Capital Goods",
-          stockCount: 3,
+          stockCount: 4,
           status: "Leading",
-          narrativeDriver: "Heavy institutional accumulation driven by domestic order book expansion and strong relative strength.",
-          topLeaders: "SOLARINDS, HAL, BEL"
+          narrativeDriver: "Heavy institutional accumulation driven by domestic order book expansion and strong relative strength near 52-week highs.",
+          topLeaders: "SOLARINDS, HAL, BEL, BDL"
         },
         {
           sector: "Auto & Ancillaries",
-          stockCount: 2,
+          stockCount: 3,
           status: "Leading",
-          narrativeDriver: "Volume expansion and margin recovery near 10 EMA support levels.",
-          topLeaders: "TVSMOTOR, TATAMOTORS"
+          narrativeDriver: "Volume expansion, margin recovery, and tight base consolidation near 10 EMA support levels.",
+          topLeaders: "TVSMOTOR, TATAMOTORS, M&M"
         },
         {
           sector: "Banks & Financials",
-          stockCount: 2,
+          stockCount: 3,
           status: "Leading",
-          narrativeDriver: "Credit growth acceleration and tight base consolidation at pivot levels.",
-          topLeaders: "SBIN, ICICIBANK"
+          narrativeDriver: "Credit growth acceleration, net interest margin stability, and tight base consolidation at pivot levels.",
+          topLeaders: "SBIN, ICICIBANK, AXISBANK"
         }
       ];
     }
   }
 
-  // Map Buying Intent Stocks per Sector (Preserve AI topLeaders & Scan Full Watchlist Dataset)
+  // Map Buying Intent Stocks per Sector (Clean Sector-Specific Rationale & Top 3-4 Leaders)
   sectorMatrix = sectorMatrix.map(sec => {
-    let rawLeaders = sec.topLeaders || sec.topLeadersList || sec.buyingIntentStocks;
+    let rawLeaders = sec.topLeaders || sec.topLeadersList || sec.buyingIntentStocks || sec.leaders || sec.topLeader || sec.topStocks;
+    let leadersList = [];
+
     if (Array.isArray(rawLeaders) && rawLeaders.length > 0) {
-      return { ...sec, topLeaders: rawLeaders.join(", ") };
-    }
-    if (typeof rawLeaders === 'string' && rawLeaders.trim().length > 0) {
-      return { ...sec, topLeaders: rawLeaders.trim() };
+      leadersList = rawLeaders.map(s => typeof s === 'string' ? s : (s?.symbol || s?.ticker)).filter(Boolean);
+    } else if (typeof rawLeaders === 'string' && rawLeaders.trim().length > 0) {
+      leadersList = rawLeaders.split(/[,;\s]+/).map(s => s.trim().toUpperCase()).filter(s => s.length >= 2);
     }
 
-    const targetSecName = cleanSectorName(sec.sector).toLowerCase();
-    const allSecStocks = Object.values(stockMap).filter(s => {
-      const sSec = cleanSectorName(s.sector || s.industry || "").toLowerCase();
-      return sSec && targetSecName && (sSec.includes(targetSecName) || targetSecName.includes(sSec));
+    const allSecStockSymbols = Object.values(stockMap).filter(s => {
+      const sSec = s.sector || s.industry || "";
+      return isSectorMatch(sec.sector, sSec);
     }).map(s => s.symbol || s.ticker);
 
-    if (allSecStocks.length > 0) {
-      return { ...sec, topLeaders: allSecStocks.slice(0, 5).join(", ") };
+    let topAiLeaders;
+    if (leadersList.length > 0) {
+      topAiLeaders = leadersList.slice(0, 4);
+    } else if (allSecStockSymbols.length > 0) {
+      topAiLeaders = allSecStockSymbols.slice(0, 4);
+    } else {
+      topAiLeaders = focusCandidates.filter(c => isSectorMatch(sec.sector, c.sector)).map(c => c.symbol).slice(0, 4);
     }
 
-    const candStocks = focusCandidates.filter(c => {
-      const candSec = cleanSectorName(c.sector).toLowerCase();
-      return candSec && targetSecName && (candSec.includes(targetSecName) || targetSecName.includes(candSec));
-    }).map(c => c.symbol);
+    // Preserve AI's exact dynamic narrative driver directly
+    let cleanedDriver = cleanMarkdownText(sec.narrativeDriver || sec.reasoning || sec.thesis || sec.driver || "");
+    
+    // Strip prose ticker lists if present in narrative text
+    cleanedDriver = cleanedDriver
+      .replace(/with (?:strong )?buying intent in [A-Z0-9,\s._-]+/gi, "")
+      .replace(/including [A-Z0-9,\s._-]+/gi, "")
+      .replace(/\(leaders?: [A-Z0-9,\s._-]+\)/gi, "")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    // Detect legacy generic template strings stored in saved JSON
+    const lowerDriver = cleanedDriver.toLowerCase();
+    const isLegacyGeneric = !cleanedDriver || 
+      lowerDriver.includes("observed in") || 
+      lowerDriver.includes("sector leadership") || 
+      lowerDriver.length < 15;
+
+    if (isLegacyGeneric) {
+      const secCandidate = focusCandidates.find(c => isSectorMatch(sec.sector, c.sector));
+      if (secCandidate && secCandidate.thesis) {
+        cleanedDriver = `${cleanMarkdownText(secCandidate.thesis)} (${secCandidate.symbol} setup)`;
+      } else {
+        cleanedDriver = `Heavy institutional accumulation and relative strength outperformance in ${sec.sector} leaders near 21 EMA support`;
+      }
+    }
+
+    if (!cleanedDriver.endsWith(".")) cleanedDriver += ".";
 
     return {
       ...sec,
-      topLeaders: candStocks.join(", ")
+      stockCount: sec.stockCount || allSecStockSymbols.length || topAiLeaders.length,
+      narrativeDriver: cleanedDriver,
+      topLeaders: topAiLeaders.length > 0 ? topAiLeaders.join(", ") : "Accumulation in progress"
     };
+  });
+
+  // Sort sectorMatrix by status priority: Leading -> Consolidating -> Lagging
+  const statusPriority = { leading: 1, consolidating: 2, lagging: 3 };
+  sectorMatrix.sort((a, b) => {
+    const pA = statusPriority[String(a.status || 'leading').toLowerCase()] || 2;
+    const pB = statusPriority[String(b.status || 'leading').toLowerCase()] || 2;
+    return pA - pB;
   });
 
   // 4. Watchouts Transformer
@@ -468,7 +526,19 @@ export default function AnalyzeModal({
 
   const weekData = data.weeks?.[country]?.[weekKey];
   const savedAnalysis = weekData?.analysis;
-  const currentWeekStocks = weekData?.stocks || {};
+
+  const activeWatchlistStocks = useMemo(() => {
+    const stocks = weekData?.stocks || {};
+    if (!selectedWatchlistId || selectedWatchlistId === "all") return stocks;
+    const filtered = {};
+    Object.values(stocks).forEach(stock => {
+      const wList = stock.watchlists || [];
+      if (wList.includes(selectedWatchlistId)) {
+        filtered[stock.symbol || stock.ticker] = stock;
+      }
+    });
+    return filtered;
+  }, [weekData?.stocks, selectedWatchlistId]);
   
   // Library Management
   const watchlistLibrary = data?.aiSettings?.promptLibrary?.watchlist || [];
@@ -493,19 +563,14 @@ export default function AnalyzeModal({
 
     setIsGenerating(true);
     try {
-      let stocksToAnalyze = currentWeekStocks;
-      if (selectedWatchlistId && selectedWatchlistId !== "all") {
-        const filteredStocks = {};
-        Object.values(stocksToAnalyze).forEach(stock => {
-           if (stock.watchlists?.includes(selectedWatchlistId)) {
-             filteredStocks[stock.symbol] = stock;
-           }
-        });
-        stocksToAnalyze = filteredStocks;
+      const stocksToAnalyze = activeWatchlistStocks;
+      const stockCount = Object.keys(stocksToAnalyze).length;
+
+      if (stockCount === 0) {
+        throw new Error(`No stocks found in the selected watchlist "${activeWatchlistName}". Please select a watchlist containing stocks.`);
       }
       
       const analysisData = { ...weekData, stocks: stocksToAnalyze };
-      const stockCount = Object.keys(stocksToAnalyze).length;
 
       const apiKey = data?.aiSettings?.apiKey;
       const model = data?.aiSettings?.model;
@@ -551,9 +616,10 @@ export default function AnalyzeModal({
     }
   };
 
-  const normalizedAnalysis = getNormalizedAnalysis(savedAnalysis, currentWeekStocks);
+  const normalizedAnalysis = getNormalizedAnalysis(savedAnalysis, activeWatchlistStocks);
 
-  const modalClass = `modal-research ${isGenerating ? "ai-radium-glow" : ""}`;
+  const hasContent = Boolean(savedAnalysis || isGenerating);
+  const modalClass = `modal-research ${hasContent ? "has-content" : "modal-compact-empty"} ${isGenerating ? "ai-radium-glow" : ""}`;
   const isAiBlocked = checkIsAiBlocked(data?.aiSettings?.aiState?.blockedUntil);
 
   return (
@@ -719,7 +785,6 @@ export default function AnalyzeModal({
                                 {sec.status || 'Leading'}
                               </span>
                             </div>
-                            <span className="sec-count-pill">{sec.stockCount || 0} Stocks</span>
                           </div>
                           
                           <p className="sec-driver-text">{cleanMarkdownText(sec.narrativeDriver)}</p>
@@ -859,8 +924,20 @@ export default function AnalyzeModal({
           )}
 
           {!savedAnalysis && !isGenerating && (
-            <div className="ai-empty-state">
-              <p>Ready to generate decision intelligence briefing.</p>
+            <div className="ai-empty-state-card">
+              <div className="ai-empty-icon-wrap">✨</div>
+              <h4 className="ai-empty-title">Ready for Watchlist Analysis</h4>
+              <p className="ai-empty-sub">
+                Select a strategy prompt and click <strong>Run Analysis</strong> to evaluate {activeWatchlistName} stocks for VCP breakouts, relative strength, and sector leadership.
+              </p>
+              <button
+                type="button"
+                onClick={handleGenerateAnalysis}
+                disabled={isGenerating || isAiBlocked}
+                className="btn-ai-gradient ai-empty-run-btn"
+              >
+                Start Analysis ✨
+              </button>
             </div>
           )}
         </div>
@@ -878,7 +955,7 @@ export default function AnalyzeModal({
             <div className="thesis-meta-row">
               <div>
                 <span className="thesis-sym-name">{selectedCandidate.symbol}</span>
-                <span className="thesis-sector-tag">{cleanSectorName(selectedCandidate.sector || currentWeekStocks[selectedCandidate.symbol]?.sector)}</span>
+                <span className="thesis-sector-tag">{cleanSectorName(selectedCandidate.sector || activeWatchlistStocks[selectedCandidate.symbol]?.sector)}</span>
               </div>
               <span className="thesis-rs-badge">
                 RS Rating: {formatRsRating(selectedCandidate.rsRank)}
