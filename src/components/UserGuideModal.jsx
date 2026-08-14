@@ -44,7 +44,7 @@ export default function UserGuideModal({
   isOpen,
   onClose,
   onOpenModal,
-  initialTab = "watchlist",
+  initialTab = "onboarding",
 }) {
   const [activeTab, setActiveTab] = useState(initialTab);
 
@@ -68,6 +68,12 @@ export default function UserGuideModal({
       <div className="modal-body user-guide-body user-guide-layout">
         {/* Left Navigation Menu */}
         <div className="guide-left-menu">
+          <button
+            onClick={() => setActiveTab("onboarding")}
+            className={`guide-menu-btn ${activeTab === "onboarding" ? "active" : ""}`}
+          >
+            <span>Quick Start / Onboarding</span>
+          </button>
           <button
             onClick={() => setActiveTab("settings")}
             className={`guide-menu-btn ${activeTab === "settings" ? "active" : ""}`}
@@ -102,6 +108,176 @@ export default function UserGuideModal({
 
         {/* Right Scrollable Content Area */}
         <div className="guide-right-content">
+          {activeTab === "onboarding" && (
+            <>
+              <h2 className="guide-tab-title">Quick Start & Onboarding Guide</h2>
+
+              <div className="guide-intro">
+                <p>
+                  <strong>Welcome to TradeClarity.market!</strong> This step-by-step onboarding guide walks you through setting up your environment, defining your trading parameters, populating your watchlist, and leveraging institutional AI to analyze your setups.
+                </p>
+              </div>
+
+              <Section
+                title="Step 1: Region & Custom Watchlists Setup"
+                actionLabel="Manage Watchlists →"
+                actionKey="watchlists"
+                location="Header > Region Switcher / Settings > Watchlists"
+                onNavigate={handleNavigate}
+              >
+                <p>
+                  TradeClarity operates cleanly across regional markets with independent local storage databases.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Switch Market Region (US / IN):</strong> Click the region indicator in the top header to toggle between US and Indian stock markets. Data, watchlists, and sector settings are maintained separately for each market.
+                  </li>
+                  <li>
+                    <strong>Organize Watchlists:</strong> Create custom watchlists (e.g., "High Tight Flags", "Focus 50", "Earnings Play") to segment your focus. Define unique visible columns and filter sets for each watchlist.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section
+                title="Step 2: Define Trading Parameters, Sectors & Rules"
+                actionLabel="Configure Parameters →"
+                actionKey="params"
+                location="Settings > Parameters / Sectors / Rules"
+                onNavigate={handleNavigate}
+              >
+                <p>
+                  Transform your trading from gut feelings into a disciplined, data-driven process.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Define Parameters:</strong> Create custom criteria (e.g., RSI Alignment, Volume Surge, Pattern Quality, MA Position) and set ideal target values. Enable <em>"Consider as Check"</em> to calculate an objective check score (e.g., <strong>4/5</strong>) for every stock.
+                  </li>
+                  <li>
+                    <strong>Sectors & Tags:</strong> Group stocks into industries under <em>Settings &gt; Sectors</em>, and add ad-hoc tags (e.g., "IPO Base", "Leader") for rapid filtering.
+                  </li>
+                  <li>
+                    <strong>Rules & RS Timeframe:</strong> Lock historical weeks to maintain journal integrity, select your benchmark outperformance timeframe (1M, 3M, 6M, 1Y), and enable auto-fetching for ADR & Liquidity.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section
+                title="Step 3: Add & Import Stocks into Your Watchlist"
+                actionLabel="Add / Import Stocks →"
+                actionKey="add_stock"
+                location="Top Right of Grid (+ Add Stock)"
+                onNavigate={handleNavigate}
+              >
+                <p>
+                  Populate your grid effortlessly using flexible manual entry or batch imports.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Bulk Add Tickers:</strong> Click <em>+ Add Stock</em> and paste comma-separated symbols (e.g., <code>AAPL, NVDA, MSFT</code>) to populate your active week in seconds.
+                  </li>
+                  <li>
+                    <strong>TradingView Watchlist Import:</strong> Switch to the TradingView Import tab in the popup and paste exported watchlist text directly.
+                  </li>
+                  <div className="guide-tip mt-2 mb-2">
+                    <strong>Pro Tip:</strong> Group your TradingView watchlist with section headers like <code>###Technology</code> or <code>###Semiconductors</code>. When imported, TradeClarity automatically assigns matching Sectors to those stocks!
+                  </div>
+                  <li>
+                    <strong>Full Backup Import:</strong> Easily restore full JSON backups from the <em>Data Management</em> tab anytime you import or transfer setups between devices.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section
+                title="Step 4: Evaluate Setup Checks & Metrics in the Interactive Grid"
+                actionLabel="Customize Columns →"
+                actionKey="columns"
+                location="Watchlist Dashboard Grid"
+                onNavigate={handleNavigate}
+              >
+                <p>
+                  Measure every stock candidate against your standard to filter out low-quality noise.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Sort by Checks Passed:</strong> Click the column header to rank top-scoring setups at the top of your grid.
+                  </li>
+                  <li>
+                    <strong>Auto-Fetched Metrics:</strong> View background-calculated ADR (%), Average Daily Turnover (Liquidity), Moving Average alignments (5/10/21/50/200), and 5-tier Relative Strength (RS) outperformance ratings.
+                  </li>
+                  <li>
+                    <strong>Imminent Earnings Countdown:</strong> Tickers with earnings coming up within 5 days are highlighted in red (e.g. <code>AAPL &lt;3d&gt;</code>) with 8-hour dynamic TTL caching.
+                  </li>
+                  <li>
+                    <strong>Daily Trend Filter Badges:</strong> Click the Advances or Declines badges in the header to instantly filter momentum leaders up or down today.
+                  </li>
+                  <li>
+                    <strong>Mark Tradable:</strong> Check the <em>Tradable</em> box on your highest conviction setups to commit them to your execution plan.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section
+                title="Step 5: Set Up AI Keys & Proprietary AI Analysis"
+                actionLabel="AI Integration Settings →"
+                actionKey="settings"
+                location="Settings > AI Integration"
+                onNavigate={handleNavigate}
+              >
+                <p>
+                  Bring institutional AI directly into your trading workflow with zero cloud data sharing.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Add Google Gemini API Key:</strong> Enter your API key in <em>Settings &gt; AI Integration</em>. Your key is stored 100% locally on your browser. Click <strong>Test Connection</strong> to verify API connectivity.
+                  </li>
+                  <li>
+                    <strong>Proprietary Strategy Library:</strong> Customize prompt templates for <em>Watchlist Macro Bias</em>, <em>Sector Phenomena Deep Research</em>, and <em>Single Stock Micro Analysis</em>. Use dynamic variables like <code>{"{stocks}"}</code>, <code>{"{sectors}"}</code>, and <code>{"{symbol}"}</code> to feed live grid data into prompts.
+                  </li>
+                  <li>
+                    <strong>Generate AI Insights:</strong> Click the AI Insights button in the header toolbar to receive a complete institutional market bias analysis, leading sector breakdown, and risk assessment.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section
+                title="Step 6: Execute & Audit Trades in the Trading Journal"
+                location="Main Menu > Trading Journal"
+              >
+                <p>
+                  Treat your trading as a business by auditing executions and risk metrics.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Position Ledger & Sizing:</strong> Log open, closed, and planned trades. Use the built-in <strong>Position Sizing Calculator</strong> to determine exact share quantities based on your account risk percentage and stop-loss distance.
+                  </li>
+                  <li>
+                    <strong>Auto-Import Executions:</strong> Drag and drop Zerodha Tradebook or Tax P&L files (.xlsx, .csv) to auto-import trades with FIFO matching and Liquid ETF filtering.
+                  </li>
+                  <li>
+                    <strong>Performance Edge Analytics:</strong> Audit Win Rate, Profit Factor, R-Multiple distributions, and equity curves compared against market index benchmarks.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section
+                title="Step 7: Live TradingView Overlay & Hands-Free Dictation"
+                location="TradingView.com Extension Widget"
+              >
+                <p>
+                  Seamlessly sync your charting and journaling directly on TradingView.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Injected TradingView Widget:</strong> Open any ticker on TradingView to see the TradeClarity floating widget automatically. Add notes, checks, and tags without leaving your chart.
+                  </li>
+                  <li>
+                    <strong>Voice Dictation (Ctrl+Shift+S):</strong> Press <code>Ctrl+Shift+S</code> on TradingView to dictate setups hands-free (e.g. <em>"Set target to 150"</em>, <em>"Add tag IPO Base"</em>, <em>"Tradable Yes"</em>, <em>"Save setup"</em>).
+                  </li>
+                </ul>
+              </Section>
+            </>
+          )}
+
           {activeTab === "settings" && (
             <>
               <h2 className="guide-tab-title">Settings & Configurations</h2>

@@ -2408,17 +2408,19 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
             </kbd>
           </div>
 
-          {/* Import Trades Custom Button */}
-          <div
-            role="button"
-            className="flex items-center gap-1.5 cursor-pointer border border-blue-200 dark:border-blue-800/60 bg-blue-50/80 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900 px-3 py-1.5 rounded-md text-xs font-extrabold text-blue-600 dark:text-blue-400 shadow-sm transition-all"
-            onClick={() => setShowImportModal(true)}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-3.5 h-3.5">
-              <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
-            </svg>
-            <span>Import Trades (Beta)</span>
-          </div>
+          {/* Import Trades Custom Button (India IN Region Only) */}
+          {country === 'IN' && (
+            <div
+              role="button"
+              className="flex items-center gap-1.5 cursor-pointer border border-blue-200 dark:border-blue-800/60 bg-blue-50/80 dark:bg-blue-950/40 hover:bg-blue-100 dark:hover:bg-blue-900 px-3 py-1.5 rounded-md text-xs font-extrabold text-blue-600 dark:text-blue-400 shadow-sm transition-all"
+              onClick={() => setShowImportModal(true)}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-3.5 h-3.5">
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M12 3v13.5m0 0-4.5-4.5M12 16.5l4.5-4.5" />
+              </svg>
+              <span>Import Trades (Beta)</span>
+            </div>
+          )}
 
           {/* Log Position Custom Div Button */}
           <div 

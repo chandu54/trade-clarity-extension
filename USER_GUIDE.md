@@ -6,23 +6,43 @@ TradeClarity is more than just a stock list; it is a **process enforcer**. It is
 
 ---
 
-## 1. Getting Started
+## 1. Quick Start & Onboarding Steps
 
-### 🌍 Select Your Region
+Follow this 7-step sequence to set up TradeClarity.market for your trading workflow:
 
-TradeClarity supports isolated environments for different markets.
+1. **Step 1: Region & Watchlist Setup**
+   - Click the region indicator in the header to switch between **US** and **Indian** markets.
+   - Go to *Settings > Watchlists* to create custom watchlists (e.g., "Focus 50", "High Tight Flags") with custom column visibility.
 
-- **Locate the Flag Icon** in the top header.
-- Click to switch between **United States (US)** 🇺🇸 and **India (IN)** 🇮🇳.
-- _Note: Your watchlists, sectors, and settings are saved separately for each region._
+2. **Step 2: Define Criteria & Scoring Parameters**
+   - Go to *Settings > Parameters* to define setup criteria (e.g. RSI, Pattern, Volume Surge). Toggle **"Consider as Check"** and set target ideal values to generate an objective score (e.g. 4/5).
+   - Configure *Sectors*, *Tags*, and *Rules* (RS timeframe, benchmark index).
 
-### 🌗 Set Your Theme
+3. **Step 3: Add & Import Stocks**
+   - Click **+ Add Stock** to bulk-paste tickers (e.g. `AAPL, NVDA, MSFT`).
+   - Use **TradingView Watchlist Import** with section headers (e.g. `###Technology`) to automatically assign sectors.
 
-- Toggle the **Sun/Moon icon** in the header to switch between Light and Dark modes based on your preference.
+4. **Step 4: Evaluate Setups in the Interactive Grid**
+   - Sort grid by **Checks Passed** to rank top setups.
+   - Monitor auto-fetched metrics (ADR %, Liquidity, Moving Averages, Relative Strength ratings), **Earnings Countdown (<5d)**, and daily trend badges (Advances/Declines).
+   - Check **Tradable** on high conviction setups.
+
+5. **Step 5: Set Up Gemini AI Keys & Custom Strategies**
+   - Go to *Settings > AI Integration*, enter your Google Gemini API Key (stored 100% locally), and test connection.
+   - Customize strategy templates in the **Proprietary Strategy Library** using dynamic variables (`{stocks}`, `{sectors}`).
+   - Click the **AI Insights** button for macro watchlist bias summaries, phenomena sector analysis, or single stock deep dives.
+
+6. **Step 6: Execute & Log Trades in the Trading Journal**
+   - Record open/closed trades, calculate position risk with the **Position Sizing Calculator**, and auto-import Zerodha/broker executions (.csv/.xlsx).
+   - Audit Win Rates, Profit Factors, and R-Multiple performance edge curves.
+
+7. **Step 7: Live TradingView Overlay & Hands-Free Dictation**
+   - Use the injected TradeClarity widget directly on TradingView charts.
+   - Dictate setups hands-free using `Ctrl+Shift+S`.
 
 ---
 
-## 2. Defining Your Strategy (Crucial Step)
+## 2. Environment & General Settings
 
 Before adding stocks, you must define _what_ you are looking for. This is how you enforce discipline.
 

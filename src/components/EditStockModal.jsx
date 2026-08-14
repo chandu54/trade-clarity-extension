@@ -182,6 +182,7 @@ export default function EditStockModal({
   onQuickLog = null,
   onDeleteStock = null,
   position = null,
+  journals = null,
   initialActiveRightTab = 'position'
 }) {
   const [formData, setFormData] = useState(() => stock ? structuredClone(stock) : null);
@@ -412,6 +413,7 @@ export default function EditStockModal({
   const [prevTabProp, setPrevTabProp] = useState(initialActiveRightTab);
   const [prevSymbolProp, setPrevSymbolProp] = useState(formData?.symbol);
   const [summaryData, setSummaryData] = useState(null);
+  const [sidebarStockData, setSidebarStockData] = useState({});
 
   if (initialActiveRightTab !== prevTabProp || formData?.symbol !== prevSymbolProp) {
     setPrevTabProp(initialActiveRightTab);
@@ -430,69 +432,201 @@ export default function EditStockModal({
     return () => { isMounted = false; };
   }, [isOpen, formData?.symbol, country]);
 
-  const positionMetrics = useMemo(() => {
-    if (!position || !position.transactions || position.transactions.length === 0) return null;
-    let totalQty = 0;
-    let totalCost = 0;
-    position.transactions.forEach((tx) => {
-      if (tx.type === 'Buy' || tx.type === 'buy') {
-        totalQty += (Number(tx.qty) || 0);
-        totalCost += (Number(tx.price) || 0) * (Number(tx.qty) || 0);
-      } else if (tx.type === 'Sell' || tx.type === 'sell') {
-        totalQty -= (Number(tx.qty) || 0);
+  const [fetchedJournals, setFetchedJournals] = useState([]);
+
+  const allJournals = useMemo(() => {
+    return (Array.isArray(journals) && journals.length > 0) ? journals : fetchedJournals;
+  }, [journals, fetchedJournals]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    let isMounted = true;
+
+    const fetchJournals = () => {
+      if (typeof chrome !== 'undefined' && chrome.storage?.local) {
+        chrome.storage.local.get(['journals'], (result) => {
+          if (!isMounted) return;
+          if (result && result.journals) {
+            const list = result.journals[country] || result.journals['IN'] || result.journals['US'] || [];
+            setFetchedJournals(list);
+          }
+        });
+      } else {
+        try {
+          const raw = localStorage.getItem('trade_clarity_journals');
+          if (raw) {
+            const parsed = JSON.parse(raw);
+            const list = parsed[country] || parsed['IN'] || parsed['US'] || [];
+            if (isMounted) setFetchedJournals(list);
+          }
+        } catch (_e) {
+          // ignore fallback retrieval error
+        }
       }
-    });
-    if (totalQty <= 0) return null;
-    const avgPrice = totalCost / totalQty;
-    const currentPrice = Number(formData?.close || formData?.price || stock?.close || stock?.price || avgPrice);
-    const currentVal = totalQty * currentPrice;
-    const unrealizedPnL = currentVal - totalCost;
-    const unrealizedPnLPercent = totalCost > 0 ? (unrealizedPnL / totalCost) * 100 : 0;
+    };
+
+    fetchJournals();
+    return () => { isMounted = false; };
+  }, [isOpen, country]);
+
+  const activeTrade = useMemo(() => {
+    if (!formData?.symbol) return null;
+
+    const normTarget = (formData.symbol || '').replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
+
+    // 1. Check if position prop is provided AND matches the current target symbol
+    if (position && position.symbol) {
+      const normPosSym = (position.symbol || '').replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
+      if (normPosSym === normTarget) {
+        return position;
+      }
+    }
+
+    // 2. Lookup in allJournals by normalized symbol
+    if (allJournals && allJournals.length > 0) {
+      const matches = allJournals.filter(t => {
+        if (!t || !t.symbol) return false;
+        const normTSym = t.symbol.replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
+        return normTSym === normTarget;
+      });
+
+      if (matches.length > 0) {
+        const openTrade = matches.find(t => {
+          const txs = Array.isArray(t.transactions) ? t.transactions : [];
+          const buys = txs.filter(tx => tx.type === 'Buy' || tx.type === 'buy');
+          const sells = txs.filter(tx => tx.type === 'Sell' || tx.type === 'sell');
+          const totalB = buys.reduce((acc, tx) => acc + Number(tx.qty || 0), 0);
+          const totalS = sells.reduce((acc, tx) => acc + Number(tx.qty || 0), 0);
+          return (totalB - totalS) > 0 && !t.isClosed;
+        });
+
+        return openTrade || matches[0];
+      }
+    }
+
+    return null;
+  }, [formData?.symbol, position, allJournals]);
+
+  const positionCurrencySymbol = useMemo(() => {
+    if (country === 'IN' || formData?.symbol?.endsWith('.NS') || formData?.symbol?.endsWith('.BO')) return '₹';
+    return '$';
+  }, [country, formData?.symbol]);
+
+  const positionMetrics = useMemo(() => {
+    if (!activeTrade) return null;
+
+    let transactions = Array.isArray(activeTrade.transactions) ? [...activeTrade.transactions] : [];
+    if (transactions.length === 0 && (activeTrade.entryPrice || activeTrade.qty)) {
+      const initialBuy = {
+        id: `tx-init-${activeTrade.id || '1'}`,
+        type: 'Buy',
+        price: Number(activeTrade.entryPrice || 0),
+        qty: Number(activeTrade.qty || 0),
+        date: activeTrade.entryDate || new Date().toISOString().split('T')[0],
+        reason: 'Initial Entry'
+      };
+      transactions.push(initialBuy);
+      if (activeTrade.exitPrice && Number(activeTrade.exitPrice) > 0) {
+        transactions.push({
+          id: `tx-exit-${activeTrade.id || '1'}`,
+          type: 'Sell',
+          price: Number(activeTrade.exitPrice),
+          qty: Number(activeTrade.qty || 0),
+          date: activeTrade.exitDate || activeTrade.entryDate || new Date().toISOString().split('T')[0],
+          reason: 'Exit'
+        });
+      }
+    }
+
+    if (transactions.length === 0) return null;
+
+    const buys = transactions.filter(t => t && (t.type === 'Buy' || t.type === 'buy'));
+    const sells = transactions.filter(t => t && (t.type === 'Sell' || t.type === 'sell'));
+
+    const totalBought = buys.reduce((acc, t) => acc + Number(t.qty || 0), 0);
+    const totalSold = sells.reduce((acc, t) => acc + Number(t.qty || 0), 0);
+    const openQty = Math.max(0, totalBought - totalSold);
+
+    const totalBuyCost = buys.reduce((acc, t) => acc + (Number(t.price || 0) * Number(t.qty || 0)), 0);
+    const avgEntryPrice = totalBought > 0 ? totalBuyCost / totalBought : 0;
+
+    const totalSellProceeds = sells.reduce((acc, t) => acc + (Number(t.price || 0) * Number(t.qty || 0)), 0);
+    const avgExitPrice = totalSold > 0 ? totalSellProceeds / totalSold : 0;
+
+    const isClosed = openQty <= 0 || activeTrade.isClosed === true;
+    const isOpen = !isClosed && openQty > 0;
+
+    const currentPrice = Number(
+      (sidebarStockData[formData?.symbol]?.currentPrice !== undefined && sidebarStockData[formData?.symbol]?.currentPrice > 0)
+        ? sidebarStockData[formData?.symbol]?.currentPrice
+        : ((formData?.currentPrice !== undefined && formData?.currentPrice > 0)
+            ? formData?.currentPrice
+            : ((stock?.currentPrice !== undefined && stock?.currentPrice > 0)
+                ? stock?.currentPrice
+                : ((summaryData?.price !== undefined && summaryData?.price > 0)
+                    ? summaryData?.price
+                    : ((summaryData?.close !== undefined && summaryData?.close > 0)
+                        ? summaryData?.close
+                        : ((formData?.close !== undefined && formData?.close > 0)
+                            ? formData.close
+                            : ((stock?.close !== undefined && stock?.close > 0)
+                                ? stock.close
+                                : ((formData?.price !== undefined && formData?.price > 0)
+                                    ? formData.price
+                                    : ((stock?.price !== undefined && stock?.price > 0)
+                                        ? stock.price
+                                        : avgEntryPrice))))))))
+    );
+
+    const activeCostBasis = openQty * avgEntryPrice;
+    const currentVal = openQty * currentPrice;
+    const unrealizedPnL = currentVal - activeCostBasis;
+    const unrealizedPnLPercent = activeCostBasis > 0 ? (unrealizedPnL / activeCostBasis) * 100 : 0;
+
+    const realizedPnL = totalSold > 0 ? totalSellProceeds - (avgEntryPrice * totalSold) : 0;
+    const totalCostBasis = totalBought * avgEntryPrice;
+    const realizedPnLPercent = totalCostBasis > 0 ? (realizedPnL / totalCostBasis) * 100 : 0;
+
+    const totalPnL = isOpen ? realizedPnL + unrealizedPnL : realizedPnL;
+    const totalPnLPercent = isOpen
+      ? (activeCostBasis > 0 ? (totalPnL / (activeCostBasis + (totalSold * avgEntryPrice))) * 100 : 0)
+      : realizedPnLPercent;
+
+    const winStatus = realizedPnL > 0 ? 'WIN' : realizedPnL < 0 ? 'LOSS' : 'EVEN';
+
     return {
-      totalQty,
-      avgPrice,
+      trade: activeTrade,
+      transactions,
+      buys,
+      sells,
+      totalBought,
+      totalSold,
+      openQty,
+      avgEntryPrice,
+      avgExitPrice,
+      isOpen,
+      isClosed,
+      currentPrice,
+      activeCostBasis,
       currentVal,
       unrealizedPnL,
-      unrealizedPnLPercent
+      unrealizedPnLPercent,
+      realizedPnL,
+      realizedPnLPercent,
+      totalPnL,
+      totalPnLPercent,
+      winStatus,
+      initialStopLoss: Number(activeTrade.initialStopLoss || activeTrade.stopLoss || 0),
+      currentStopLoss: Number(activeTrade.currentStopLoss || activeTrade.stopLoss || 0),
+      targetPrice: Number(activeTrade.targetPrice || activeTrade.target || 0),
+      strategy: activeTrade.strategy || activeTrade.setup || ''
     };
-  }, [position, formData, stock]);
+  }, [activeTrade, formData, stock, sidebarStockData, summaryData]);
 
   const renderPositionTabContent = () => {
-    return (
-      <div className="position-tab-container themed-scroll">
-        {position ? (
-          <div className="position-ledger-card">
-            <h4 className="position-section-header">
-              Transaction Ledger ({position.transactions?.length || 0})
-            </h4>
-            <div className="transaction-list">
-              {position.transactions?.map((tx, idx) => (
-                <div key={tx.id || idx} className="transaction-item">
-                  <span className="transaction-subtext">
-                    {tx.qty} shares @ ${Number(tx.price).toFixed(2)}
-                  </span>
-                  <span className={tx.type === 'Buy' ? 'transaction-type-buy' : 'transaction-type-sell'}>
-                    {tx.type}
-                  </span>
-                </div>
-              ))}
-            </div>
-            {positionMetrics && (
-              <div className="position-summary-grid">
-                <div>
-                  <span style={{ opacity: 0.7 }}>Avg Cost: </span>
-                  <strong>${positionMetrics.avgPrice.toFixed(2)}</strong>
-                </div>
-                <div>
-                  <span style={{ opacity: 0.7 }}>Unrealized P&L: </span>
-                  <strong className={positionMetrics.unrealizedPnL >= 0 ? 'transaction-type-buy' : 'transaction-type-sell'}>
-                    {positionMetrics.unrealizedPnL >= 0 ? '+' : ''}${positionMetrics.unrealizedPnL.toFixed(2)} ({positionMetrics.unrealizedPnLPercent.toFixed(1)}%)
-                  </strong>
-                </div>
-              </div>
-            )}
-          </div>
-        ) : (
+    if (!positionMetrics) {
+      return (
+        <div className="position-tab-container themed-scroll">
           <div className="no-position-placeholder">
             <p className="no-pos-txt">No active position logged for {formData?.symbol}.</p>
             {onQuickLog && (
@@ -508,6 +642,192 @@ export default function EditStockModal({
               </button>
             )}
           </div>
+        </div>
+      );
+    }
+
+    const {
+      transactions,
+      openQty,
+      avgEntryPrice,
+      avgExitPrice,
+      isOpen,
+      isClosed,
+      currentPrice,
+      currentVal,
+      unrealizedPnL,
+      unrealizedPnLPercent,
+      realizedPnL,
+      realizedPnLPercent,
+      winStatus,
+      initialStopLoss,
+      currentStopLoss,
+      targetPrice,
+      strategy
+    } = positionMetrics;
+
+    return (
+      <div className="position-tab-container themed-scroll" style={{ padding: '16px', display: 'flex', flexDirection: 'column', gap: '14px' }}>
+        {/* Header Status Card */}
+        <div className="position-header-card" style={{ background: 'var(--bg-card, rgba(255,255,255,0.03))', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px 14px' }}>
+          <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '8px' }}>
+            <span style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: isOpen ? '#10b981' : '#94a3b8', display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: isOpen ? '#10b981' : '#94a3b8' }} />
+              {isOpen ? 'Open Position' : 'Closed Trade'}
+            </span>
+            {strategy && (
+              <span style={{ fontSize: '10px', background: 'rgba(59, 130, 246, 0.1)', color: '#60a5fa', padding: '2px 8px', borderRadius: '12px', fontWeight: 600 }}>
+                {strategy}
+              </span>
+            )}
+            {isClosed && (
+              <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 8px', borderRadius: '4px', background: winStatus === 'WIN' ? 'rgba(16, 185, 129, 0.15)' : winStatus === 'LOSS' ? 'rgba(239, 68, 68, 0.15)' : 'rgba(148, 163, 184, 0.15)', color: winStatus === 'WIN' ? '#10b981' : winStatus === 'LOSS' ? '#ef4444' : '#94a3b8' }}>
+                {winStatus} ({realizedPnLPercent >= 0 ? '+' : ''}{realizedPnLPercent.toFixed(1)}%)
+              </span>
+            )}
+          </div>
+
+          {/* Primary P&L Summary Highlight */}
+          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between' }}>
+            <div>
+              <span style={{ fontSize: '11px', color: 'var(--muted)', display: 'block', marginBottom: '2px' }}>
+                {isOpen ? 'Unrealized P&L' : 'Total Realized P&L'}
+              </span>
+              {isOpen ? (
+                <div style={{ fontSize: '18px', fontWeight: 800, color: unrealizedPnL >= 0 ? '#10b981' : '#ef4444', lineHeight: 1.2 }}>
+                  {unrealizedPnL >= 0 ? '+' : ''}{positionCurrencySymbol}{Math.abs(unrealizedPnL).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span style={{ fontSize: '13px', marginLeft: '6px', fontWeight: 700 }}>
+                    ({unrealizedPnLPercent >= 0 ? '+' : ''}{unrealizedPnLPercent.toFixed(2)}%)
+                  </span>
+                </div>
+              ) : (
+                <div style={{ fontSize: '18px', fontWeight: 800, color: realizedPnL >= 0 ? '#10b981' : '#ef4444', lineHeight: 1.2 }}>
+                  {realizedPnL >= 0 ? '+' : ''}{positionCurrencySymbol}{Math.abs(realizedPnL).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                  <span style={{ fontSize: '13px', marginLeft: '6px', fontWeight: 700 }}>
+                    ({realizedPnLPercent >= 0 ? '+' : ''}{realizedPnLPercent.toFixed(2)}%)
+                  </span>
+                </div>
+              )}
+            </div>
+
+            {isOpen && (
+              <div style={{ textAlign: 'right' }}>
+                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Market Value</span>
+                <span style={{ fontSize: '13px', fontWeight: 700, color: 'var(--text)' }}>
+                  {positionCurrencySymbol}{currentVal.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                </span>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Position Detail Grid */}
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(2, 1fr)', gap: '8px' }}>
+          {isOpen ? (
+            <>
+              <div style={{ background: 'var(--bg-card, rgba(255,255,255,0.02))', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Held Qty</span>
+                <strong style={{ fontSize: '13px', color: 'var(--text)' }}>{openQty} shares</strong>
+              </div>
+              <div style={{ background: 'var(--bg-card, rgba(255,255,255,0.02))', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Avg Entry Price</span>
+                <strong style={{ fontSize: '13px', color: 'var(--text)' }}>{positionCurrencySymbol}{avgEntryPrice.toFixed(2)}</strong>
+              </div>
+              <div style={{ background: 'var(--bg-card, rgba(255,255,255,0.02))', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Current Price</span>
+                <strong style={{ fontSize: '13px', color: 'var(--text)' }}>{positionCurrencySymbol}{currentPrice.toFixed(2)}</strong>
+              </div>
+              <div style={{ background: 'var(--bg-card, rgba(255,255,255,0.02))', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Realized P&L</span>
+                <strong style={{ fontSize: '13px', color: realizedPnL >= 0 ? '#10b981' : '#ef4444' }}>
+                  {realizedPnL >= 0 ? '+' : ''}{positionCurrencySymbol}{realizedPnL.toFixed(2)}
+                </strong>
+              </div>
+            </>
+          ) : (
+            <>
+              <div style={{ background: 'var(--bg-card, rgba(255,255,255,0.02))', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Shares Traded</span>
+                <strong style={{ fontSize: '13px', color: 'var(--text)' }}>{positionMetrics.totalBought} shares</strong>
+              </div>
+              <div style={{ background: 'var(--bg-card, rgba(255,255,255,0.02))', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Avg Entry</span>
+                <strong style={{ fontSize: '13px', color: 'var(--text)' }}>{positionCurrencySymbol}{avgEntryPrice.toFixed(2)}</strong>
+              </div>
+              <div style={{ background: 'var(--bg-card, rgba(255,255,255,0.02))', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Avg Exit</span>
+                <strong style={{ fontSize: '13px', color: 'var(--text)' }}>{positionCurrencySymbol}{avgExitPrice.toFixed(2)}</strong>
+              </div>
+              <div style={{ background: 'var(--bg-card, rgba(255,255,255,0.02))', padding: '8px 10px', borderRadius: '6px', border: '1px solid var(--border)' }}>
+                <span style={{ fontSize: '10px', color: 'var(--muted)', display: 'block' }}>Trade Outcome</span>
+                <strong style={{ fontSize: '13px', color: winStatus === 'WIN' ? '#10b981' : winStatus === 'LOSS' ? '#ef4444' : '#94a3b8' }}>
+                  {winStatus}
+                </strong>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Risk & Target metrics if configured */}
+        {((currentStopLoss || initialStopLoss) > 0 || targetPrice > 0) && (
+          <div style={{ display: 'flex', gap: '8px' }}>
+            {(currentStopLoss || initialStopLoss) > 0 && (
+              <div style={{ flex: 1, background: 'rgba(239, 68, 68, 0.05)', border: '1px solid rgba(239, 68, 68, 0.2)', padding: '8px 10px', borderRadius: '6px' }}>
+                <span style={{ fontSize: '10px', color: '#f87171', display: 'block' }}>Stop Loss</span>
+                <strong style={{ fontSize: '12px', color: '#ef4444' }}>{positionCurrencySymbol}{(currentStopLoss || initialStopLoss).toFixed(2)}</strong>
+              </div>
+            )}
+            {targetPrice > 0 && (
+              <div style={{ flex: 1, background: 'rgba(16, 185, 129, 0.05)', border: '1px solid rgba(16, 185, 129, 0.2)', padding: '8px 10px', borderRadius: '6px' }}>
+                <span style={{ fontSize: '10px', color: '#34d399', display: 'block' }}>Target</span>
+                <strong style={{ fontSize: '12px', color: '#10b981' }}>{positionCurrencySymbol}{targetPrice.toFixed(2)}</strong>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Transaction Ledger */}
+        <div className="position-ledger-card" style={{ background: 'var(--bg-card, rgba(255,255,255,0.02))', border: '1px solid var(--border)', borderRadius: '8px', padding: '12px' }}>
+          <h4 className="position-section-header" style={{ fontSize: '11px', fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--muted)', marginBottom: '8px' }}>
+            Transaction Ledger ({transactions.length})
+          </h4>
+          <div className="transaction-list" style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+            {transactions.map((tx, idx) => {
+              const isBuy = tx.type === 'Buy' || tx.type === 'buy';
+              return (
+                <div key={tx.id || idx} className="transaction-item" style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '6px 8px', background: 'rgba(255,255,255,0.02)', borderRadius: '4px', border: '1px solid var(--border)' }}>
+                  <div>
+                    <div style={{ fontSize: '11px', fontWeight: 600, color: 'var(--text)' }}>
+                      {tx.qty} shares @ {positionCurrencySymbol}{Number(tx.price || 0).toFixed(2)}
+                    </div>
+                    {tx.date && (
+                      <div style={{ fontSize: '10px', color: 'var(--muted)' }}>
+                        {tx.date} {tx.reason ? `• ${tx.reason}` : ''}
+                      </div>
+                    )}
+                  </div>
+                  <span style={{ fontSize: '10px', fontWeight: 800, padding: '2px 6px', borderRadius: '4px', background: isBuy ? 'rgba(16, 185, 129, 0.15)' : 'rgba(239, 68, 68, 0.15)', color: isBuy ? '#10b981' : '#ef4444' }}>
+                    {isBuy ? 'BUY' : 'SELL'}
+                  </span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+
+        {/* Quick Log Action */}
+        {onQuickLog && (
+          <button
+            type="button"
+            className="btn-premium-primary position-log-action-btn"
+            style={{ width: '100%', marginTop: '4px' }}
+            onClick={() => {
+              onClose();
+              onQuickLog(formData.symbol);
+            }}
+          >
+            Manage Journal Trades
+          </button>
         )}
       </div>
     );
@@ -517,7 +837,6 @@ export default function EditStockModal({
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [navSearchQuery, setNavSearchQuery] = useState("");
   const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
-  const [sidebarStockData, setSidebarStockData] = useState({});
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const searchRef = useRef(null);
   const searchInputRef = useRef(null);
@@ -2473,17 +2792,22 @@ export default function EditStockModal({
                     >
                       <span>Position</span>
                       {positionMetrics && (
-                        <span className={`dock-tab-badge ${positionMetrics.unrealizedPnLPercent >= 0 ? 'badge-green' : 'badge-red'}`}>
-                          {positionMetrics.unrealizedPnLPercent >= 0 ? '+' : ''}{positionMetrics.unrealizedPnLPercent.toFixed(1)}%
+                        <span className={`dock-tab-badge ${(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent) >= 0 ? 'badge-green' : 'badge-red'}`}>
+                          {(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent) >= 0 ? '+' : ''}{(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent).toFixed(1)}%
                         </span>
                       )}
                     </button>
                     <button
                       type="button"
-                      className={`dock-tab-btn ${activeRightTab === 'ai' ? 'active' : ''}`}
+                      className={`dock-tab-btn ai-tab-btn ${activeRightTab === 'ai' ? 'active' : ''}`}
                       onClick={() => setActiveRightTab('ai')}
                       title="Run AI analysis on this stock"
                     >
+                      <span className="ai-tab-icon">
+                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                        </svg>
+                      </span>
                       <span>AI Analysis</span>
                     </button>
                   </div>

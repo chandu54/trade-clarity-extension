@@ -324,8 +324,8 @@ function AppContent() {
 
     setData(prev => {
       const newData = structuredClone(prev);
-      const weekStocks = newData.weeks[country][weekKey].stocks;
-      if (weekStocks[updatedStock.symbol]) {
+      const weekStocks = newData.weeks?.[country]?.[weekKey]?.stocks;
+      if (weekStocks && weekStocks[updatedStock.symbol]) {
         weekStocks[updatedStock.symbol] = updatedStock;
         
         if (updatedStock.sector) {

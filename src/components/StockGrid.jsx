@@ -407,9 +407,9 @@ export default function StockGrid({
           sectors: newSectorsList,
         },
         weeks: {
-          ...prev.weeks,
+          ...(prev?.weeks || {}),
           [country]: {
-            ...prev.weeks[country],
+            ...(prev?.weeks?.[country] || {}),
             [weekKey]: {
               ...prevWeek,
               stocks: newStocks,
@@ -639,9 +639,9 @@ export default function StockGrid({
         return {
           ...prev,
           weeks: {
-            ...prev.weeks,
+            ...(prev?.weeks || {}),
             [country]: {
-              ...prev.weeks[country],
+              ...(prev?.weeks?.[country] || {}),
               [weekKey]: {
                 ...prevWeek,
                 stocks: mergedStocks
@@ -780,9 +780,9 @@ export default function StockGrid({
       }
 
       newData.weeks = {
-        ...prev.weeks,
+        ...(prev?.weeks || {}),
         [country]: {
-          ...prev.weeks[country],
+          ...(prev?.weeks?.[country] || {}),
           [weekKey]: {
             ...prevWeek,
             stocks: newStocks,
@@ -810,9 +810,9 @@ export default function StockGrid({
       return {
         ...prev,
         weeks: {
-          ...prev.weeks,
+          ...(prev?.weeks || {}),
           [country]: {
-            ...prev.weeks[country],
+            ...(prev?.weeks?.[country] || {}),
             [weekKey]: {
               ...prevWeek,
               stocks: newStocks,
@@ -904,7 +904,7 @@ export default function StockGrid({
     if (!data || !weekKey || !data.weeks?.[country]?.[weekKey]) return;
 
     const todayStr = getLocalDateString(new Date());
-    const weekData = data.weeks[country][weekKey];
+    const weekData = data.weeks?.[country]?.[weekKey] || { stocks: {} };
     
     // Check setting and date
     const autoRefreshEnabled = autoRefreshMetrics !== false;
@@ -922,9 +922,9 @@ export default function StockGrid({
         return {
           ...prev,
           weeks: {
-            ...prev.weeks,
+            ...(prev?.weeks || {}),
             [country]: {
-              ...prev.weeks[country],
+              ...(prev?.weeks?.[country] || {}),
               [weekKey]: {
                 ...prevWeek,
                 lastSyncDate: todayStr
@@ -1518,8 +1518,8 @@ export default function StockGrid({
     const newSymbolsAdded = symbols.filter((symbol) => !currentStocks[symbol]);
 
     setData((prev) => {
-      const prevWeek = prev.weeks[country][weekKey];
-      const newStocks = { ...prevWeek.stocks };
+      const prevWeek = prev.weeks?.[country]?.[weekKey] || { stocks: {} };
+      const newStocks = { ...(prevWeek.stocks || {}) };
       const newCache = { ...(prev.stockSectorCache || {}) };
       const newSectorsList = [...(prev.uiConfig?.sectors || prev.sectors || [])];
 
@@ -1571,9 +1571,9 @@ export default function StockGrid({
           sectors: newSectorsList,
         },
         weeks: {
-          ...prev.weeks,
+          ...(prev?.weeks || {}),
           [country]: {
-            ...prev.weeks[country],
+            ...(prev?.weeks?.[country] || {}),
             [weekKey]: {
               ...prevWeek,
               stocks: newStocks,
@@ -1608,16 +1608,16 @@ export default function StockGrid({
 
   function handleUpdateStock(updatedStock) {
     setData((prev) => {
-      const prevWeek = prev.weeks[country][weekKey];
-      const newStocks = { ...prevWeek.stocks };
+      const prevWeek = prev.weeks?.[country]?.[weekKey] || { stocks: {} };
+      const newStocks = { ...(prevWeek.stocks || {}) };
       newStocks[updatedStock.symbol] = updatedStock;
 
       return {
         ...prev,
         weeks: {
-          ...prev.weeks,
+          ...(prev?.weeks || {}),
           [country]: {
-            ...prev.weeks[country],
+            ...(prev?.weeks?.[country] || {}),
             [weekKey]: {
               ...prevWeek,
               stocks: newStocks,
@@ -1638,8 +1638,8 @@ export default function StockGrid({
     if (!(await confirm(confirmMessage, { confirmSettingsKey: 'skipDeleteConfirm' }))) return false;
 
     setData((prev) => {
-      const prevWeek = prev.weeks[country][weekKey];
-      const newStocks = { ...prevWeek.stocks };
+      const prevWeek = prev.weeks?.[country]?.[weekKey] || { stocks: {} };
+      const newStocks = { ...(prevWeek.stocks || {}) };
 
       if (isWatchlistSpecific) {
         const stock = newStocks[symbol];
@@ -1657,9 +1657,9 @@ export default function StockGrid({
       return {
         ...prev,
         weeks: {
-          ...prev.weeks,
+          ...(prev?.weeks || {}),
           [country]: {
-            ...prev.weeks[country],
+            ...(prev?.weeks?.[country] || {}),
             [weekKey]: {
               ...prevWeek,
               stocks: newStocks,
@@ -2014,9 +2014,9 @@ export default function StockGrid({
           sectors: newSectorsList,
         },
         weeks: {
-          ...prev.weeks,
+          ...(prev?.weeks || {}),
           [country]: {
-            ...prev.weeks[country],
+            ...(prev?.weeks?.[country] || {}),
             [weekKey]: {
               ...prevWeekData,
               stocks: newStocks,
@@ -2561,6 +2561,7 @@ export default function StockGrid({
           onSelectStock={setEditingStock}
           watchlistName={selectedWatchlistId === "all" ? "All Stocks" : (activeWatchlist?.name || "Watchlist")}
           onQuickLog={onQuickLog}
+          journals={data?.journals?.[country] || []}
         />
       )}
 

@@ -215,7 +215,7 @@ export default function WeekSelector({
           return (
             <>
               <button
-                className={`nav-icon-btn-v2 ${isAiBlocked ? 'disabled' : ''}`}
+                className={`nav-icon-btn-v2 ai-btn-glow ${isAiBlocked ? 'disabled' : ''}`}
                 onClick={isAiBlocked ? undefined : onAnalyze}
                 disabled={isAiBlocked}
                 title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : "AI market insights (Alt + I)"}
@@ -228,7 +228,7 @@ export default function WeekSelector({
               </button>
 
               <button
-                className={`nav-icon-btn-v2 ${isBulkDisabled ? 'disabled' : ''}`}
+                className={`nav-icon-btn-v2 ai-btn-glow ${isBulkDisabled ? 'disabled' : ''}`}
                 onClick={isBulkDisabled ? undefined : handleBulkAnalyzeClick}
                 disabled={isBulkDisabled}
                 title={

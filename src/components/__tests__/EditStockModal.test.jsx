@@ -724,6 +724,52 @@ describe('EditStockModal', () => {
       fireEvent.click(screen.getByText('AI Analysis'));
       expect(screen.getByRole('button', { name: 'Analyze' })).toBeDefined();
     });
+
+    it('renders closed trade fallback metrics and outcome badge correctly', () => {
+      const closedPosition = {
+        id: 'trade-closed-1',
+        symbol: 'AAPL',
+        isClosed: true,
+        transactions: [
+          { id: 'tx-1', type: 'Buy', price: 100, qty: 10, date: '2026-06-01' },
+          { id: 'tx-2', type: 'Sell', price: 120, qty: 10, date: '2026-06-15' }
+        ]
+      };
+
+      const customProps = {
+        ...props,
+        position: closedPosition,
+        initialActiveRightTab: 'position'
+      };
+
+      render(<EditStockModal {...customProps} isDeepView={true} />);
+
+      expect(screen.getByText('Closed Trade')).toBeDefined();
+      expect(screen.getByText('WIN (+20.0%)')).toBeDefined();
+      expect(screen.getByText('Shares Traded')).toBeDefined();
+    });
+
+    it('formats currency symbol as ₹ for Indian stocks', () => {
+      const indianPosition = {
+        id: 'trade-in-1',
+        symbol: 'RELIANCE',
+        transactions: [
+          { id: 'tx-1', type: 'Buy', price: 2500, qty: 5, date: '2026-07-01' }
+        ]
+      };
+
+      const customProps = {
+        ...props,
+        country: 'IN',
+        stock: { ...mockStock, symbol: 'RELIANCE' },
+        position: indianPosition,
+        initialActiveRightTab: 'position'
+      };
+
+      render(<EditStockModal {...customProps} isDeepView={true} />);
+
+      expect(screen.getByText('5 shares @ ₹2500.00')).toBeDefined();
+    });
   });
 });
 

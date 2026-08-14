@@ -543,28 +543,20 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3)
   throw new Error("Gemini API request failed after all retries.");
 }
 
-function parseResponse(text, isCustom = false) {
-  if (isCustom) {
-    return { isCustom: true, rawText: text };
-  }
-
+function parseResponse(text, _isCustom = false) {
   try {
-    // Robust extraction: Look for the first '{' and the last '}' across the entire response
-    // capturing everything in between. This handles markdown blocks (```json) gracefully.
-    // The [\s\S]* pattern ensures we match across multiple lines (including newlines).
     const jsonMatch = text.match(/\{[\s\S]*\}/);
-    if (!jsonMatch) {
-      throw new Error("No valid JSON structure found in the AI response.");
+    if (jsonMatch) {
+      const parsed = JSON.parse(jsonMatch[0]);
+      if (parsed && typeof parsed === "object") {
+        return parsed;
+      }
     }
-
-    const jsonString = jsonMatch[0];
-    return JSON.parse(jsonString);
-  } catch (error) {
-    throw new Error(
-      "The AI model returned an invalid response format. Please try again or refine your prompt.",
-      { cause: error }
-    );
+  } catch {
+    // If JSON parsing fails, fallback to rawText object
   }
+
+  return { isCustom: true, rawText: text };
 }
 
 function generatePrompt(
@@ -577,7 +569,10 @@ function generatePrompt(
   // Simplify data to save tokens and focus on symbols
   const simplifiedStocks = stocks.map((s) => ({
     symbol: s.symbol,
-    sector: s.sector || "Unknown",
+    sector: s.sector || s.industry || "Unknown",
+    rsRating: s.rsRating || s.rs || s.relativeStrength || undefined,
+    pattern: s.vcpPattern || s.pattern || undefined,
+    notes: s.notes || undefined
   }));
 
   // Include extra metrics if they are passed (e.g. from CategoryAnalysis)
@@ -638,7 +633,8 @@ function generatePrompt(
           "sector": "Defense & Aerospace",
           "stockCount": 6,
           "status": "Leading",
-          "narrativeDriver": "Benefiting from domestic order book expansion and government capex. Heavy institutional accumulation on 10 EMA dips."
+          "narrativeDriver": "Benefiting from domestic order book expansion and government capex. Heavy institutional accumulation on 10 EMA dips.",
+          "topLeaders": ["SOLARINDS", "HAL", "BEL"]
         }
       ],
       "focusCandidates": [
@@ -651,7 +647,7 @@ function generatePrompt(
           "stopLoss": "6,850 (Close below 21 EMA)",
           "stopPercent": "-4.2%",
           "targetPrice": "8,800 (+23% upside)",
-          "riskReward": "1:3.8",
+          "riskReward": "1:3.5",
           "thesis": "RS line making new highs before price; volume drying up sharply on contractions (3T tight base)."
         }
       ],
@@ -675,8 +671,9 @@ function generatePrompt(
     Field Rules:
     - stance MUST be one of: "Full Position Sizing on Base Breakouts", "Half Position Sizing on EMA Pullbacks", "Defensive Cash / Tighten Stops".
     - status in sectorMatrix MUST be one of: "Leading", "Consolidating", "Lagging".
-    - focusCandidates: Provide 3-5 highest conviction stocks from the watchlist with complete pivot, stop loss, target, and thesis details.
-    - actionTriage: Categorize ALL watchlist stocks into buyZone, extended, or avoidCut.
+    - sectorMatrix: Identify the top sectors in this watchlist, and for each sector list ALL buyable / accumulating stocks in that sector under "topLeaders".
+    - focusCandidates: Identify ALL top-conviction setup stocks across the entire watchlist (do NOT limit count artificially to 3 or 5) with specific numeric pivot trigger, volume requirement, stop loss, target price, and full thesis.
+    - actionTriage: MUST categorize ALL watchlist stocks into the three buckets (buyZone, extended, avoidCut) with specific notes for each stock.
 
     IMPORTANT: Return ONLY valid JSON. Do not include markdown formatting like \`\`\`json.
     `;

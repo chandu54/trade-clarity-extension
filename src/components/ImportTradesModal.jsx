@@ -352,10 +352,10 @@ export default function ImportTradesModal({
 
   return (
     <Modal isOpen={isOpen} onClose={handleClose} title="Import Trades (Beta) — India (IN)" maxWidth="modal-research !max-w-[1280px] !w-[94vw]">
-      <div className="flex flex-col gap-5 p-1 text-slate-800 dark:text-slate-100">
+      <div className="flex flex-col gap-5 p-5 sm:p-6 text-slate-800 dark:text-slate-100 overflow-y-auto flex-1">
 
         {/* Top Mode Selector & Settings Bar */}
-        <div className="bg-slate-50 dark:bg-slate-900/70 p-4 rounded-xl border border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-4">
+        <div className="bg-slate-50 dark:bg-slate-900/70 p-4.5 sm:p-5 rounded-xl border border-slate-200 dark:border-slate-800/80 flex flex-wrap items-center justify-between gap-4">
           <div className="flex items-center gap-4 flex-wrap flex-1">
             <div className="flex flex-col gap-1 min-w-[220px]">
               <label className="text-xs font-semibold text-slate-700 dark:text-slate-200">Import Mode</label>
@@ -399,7 +399,7 @@ export default function ImportTradesModal({
               />
             </div>
 
-            <div className="flex items-center gap-2 pt-5">
+            <div className="flex items-center gap-2 self-end mb-1 py-1">
               <input
                 type="checkbox"
                 id="excludeEtfs"
@@ -407,7 +407,7 @@ export default function ImportTradesModal({
                 onChange={(e) => handleSettingsChange(defaultRiskPct, defaultSetup, e.target.checked)}
                 className="w-4 h-4 rounded text-blue-600 focus:ring-blue-500 cursor-pointer"
               />
-              <label htmlFor="excludeEtfs" className="text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer select-none">
+              <label htmlFor="excludeEtfs" className="text-xs font-semibold text-slate-700 dark:text-slate-200 cursor-pointer select-none whitespace-nowrap">
                 Exclude Liquid ETFs (<code className="text-[11px] font-mono text-blue-600 dark:text-blue-400 font-semibold">LIQUIDCASE</code>)
               </label>
             </div>
@@ -438,11 +438,11 @@ export default function ImportTradesModal({
               isDragOver ? 'bg-blue-600 text-white shadow-blue-500/50' : 'bg-blue-100 dark:bg-blue-950 text-blue-600 dark:text-blue-400'
             }`}>
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" strokeWidth="2" stroke="currentColor" className="w-7 h-7">
-                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 005.25 21h13.5A2.25 2.25 0 0021 18.75V16.5m-13.5-9L12 3m0 0l4.5 4.5M12 3v13.5" />
+                <path strokeLinecap="round" strokeLinejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M12 3v13.5m0 0-4.5-4.5M12 16.5l4.5-4.5" />
               </svg>
             </div>
             <p className="text-base font-bold text-slate-800 dark:text-slate-100">
-              {isDragOver ? 'Drop file here to upload' : 'Click to upload or drag & drop Excel / CSV file'}
+              {isDragOver ? 'Drop file here to import' : 'Click to select or drag & drop Excel / CSV file'}
             </p>
             <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
               Supports Zerodha Tradebooks, Zerodha Tax P&L Statements, and broker exports (.xlsx, .xls, .csv, .txt)

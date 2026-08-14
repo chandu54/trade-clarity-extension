@@ -59,7 +59,7 @@ describe('AnalyzeModal', () => {
   it('renders correctly when open', () => {
     renderWithContext(<AnalyzeModal {...props} />);
     expect(screen.getByText(/AI Watchlist Intelligence Briefing/)).toBeDefined();
-    expect(screen.getByText('Ready to generate zero-fluff decision intelligence briefing.')).toBeDefined();
+    expect(screen.getByText('Ready to generate decision intelligence briefing.')).toBeDefined();
   });
 
   it('calls getAiAnalysis and updates data on successful generation', async () => {
@@ -113,13 +113,13 @@ describe('AnalyzeModal', () => {
 
     renderWithContext(<AnalyzeModal {...props} data={dataWithAnalysis} />);
 
-    expect(screen.getByText('PILLAR 1: MARKET DIAGNOSIS & ALLOCATION STANCE')).toBeDefined();
+    expect(screen.getByText('Market Breadth & Allocation Stance')).toBeDefined();
     expect(screen.getByText('Full Position Sizing on Base Breakouts')).toBeDefined();
     expect(screen.getByText('Defense & Aerospace')).toBeDefined();
     expect(screen.getAllByText('SOLARINDS')[0]).toBeDefined();
 
     // Click candidate card to open in-modal deep dive thesis drawer
-    fireEvent.click(screen.getByText('Read Thesis →'));
+    fireEvent.click(screen.getByText('Deep Dive Thesis →'));
     expect(screen.getByText('Tactical Setup Thesis: SOLARINDS')).toBeDefined();
     expect(screen.getAllByText('RS line making new highs before price')[0]).toBeDefined();
 
@@ -159,7 +159,7 @@ describe('AnalyzeModal', () => {
   it('allows viewing and closing the prompt instructions', () => {
     renderWithContext(<AnalyzeModal {...props} />);
     
-    fireEvent.click(screen.getByText('View Prompt'));
+    fireEvent.click(screen.getByTitle('View Strategy Prompt Instructions'));
     expect(screen.getByText('Strategy Instructions')).toBeDefined();
     
     fireEvent.click(screen.getByText('Close'));

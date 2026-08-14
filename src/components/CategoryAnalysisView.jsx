@@ -68,8 +68,12 @@ export default function CategoryAnalysisView({
     });
   };
 
+  const initialDataRef = useRef(initialStockData);
+  const isInitialMount = useRef(true);
+
   useEffect(() => {
     let isMounted = true;
+    const controller = new AbortController();
 
     async function loadData() {
       if (!symbols || symbols.length === 0) {
@@ -77,18 +81,50 @@ export default function CategoryAnalysisView({
         return;
       }
 
-      setLoading(true);
-      const results = await fetchStockData(symbols, country, timeframe);
-
-      if (isMounted) {
-        setStockData(results);
+      // Skip duplicate initial fetch on mount if initial stock data is already provided for 3mo
+      if (isInitialMount.current && initialDataRef.current && initialDataRef.current.length > 0 && timeframe === '3mo') {
+        isInitialMount.current = false;
         setLoading(false);
+        return;
+      }
+      isInitialMount.current = false;
+
+      setLoading(true);
+
+      const onBatch = (batchResults) => {
+        if (!isMounted) return;
+        setStockData(prev => {
+          const map = new Map(prev.map(item => [item.symbol, item]));
+          batchResults.forEach(item => {
+            if (item && item.symbol) map.set(item.symbol, item);
+          });
+          return Array.from(map.values());
+        });
+      };
+
+      try {
+        const results = await fetchStockData(symbols, country, timeframe, null, controller.signal, false, onBatch);
+
+        if (isMounted) {
+          if (results && results.length > 0) {
+            setStockData(results);
+          }
+          setLoading(false);
+        }
+      } catch (err) {
+        if (err.name !== 'AbortError' && isMounted) {
+          console.warn("Category analysis fetch failed:", err);
+          setLoading(false);
+        }
       }
     }
 
     loadData();
 
-    return () => { isMounted = false; };
+    return () => {
+      isMounted = false;
+      controller.abort();
+    };
   }, [symbols, country, timeframe]);
 
   const mergedStockData = useMemo(() => {
@@ -220,7 +256,7 @@ export default function CategoryAnalysisView({
           {loading && <div className="ca-loading-pill">Updating charts…</div>}
 
           {activeTab === 'birdsEye' && (
-            <div className={loading ? 'ca-grid-loading' : ''}>
+            <div className={loading && mergedStockData.length === 0 ? 'ca-grid-loading' : ''}>
               <BirdsEyeGrid
                 stocksCount={symbols.length}
                 timeframe={timeframe}

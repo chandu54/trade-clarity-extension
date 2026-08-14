@@ -37,9 +37,9 @@ export default function ManageWatchlistsModal({ data, setData, isOpen, onClose }
     };
 
     // Remove from stocks as well
-    Object.keys(newData.weeks).forEach(country => {
-       Object.keys(newData.weeks[country]).forEach(weekKey => {
-         const stocks = newData.weeks[country][weekKey].stocks;
+    Object.keys(newData.weeks || {}).forEach(country => {
+       Object.keys(newData.weeks[country] || {}).forEach(weekKey => {
+         const stocks = newData.weeks[country][weekKey]?.stocks || {};
          Object.values(stocks).forEach(stock => {
            if (stock.watchlists && stock.watchlists.includes(id)) {
               stock.watchlists = stock.watchlists.filter(wlId => wlId !== id);
