@@ -2479,6 +2479,44 @@ tr:hover .sticky-col {
   color: #ffffff !important;
 }
 
+/* Remove radium border specifically in EditStockModal's right panel (Deep View) */
+.deep-view-right-panel .dock-tab-btn.ai-tab-btn {
+  border: none !important;
+  background: transparent !important;
+  background-size: auto !important;
+}
+
+[data-theme="dark"] .deep-view-right-panel .dock-tab-btn.ai-tab-btn {
+  color: #94a3b8 !important;
+}
+
+.deep-view-right-panel .dock-tab-btn.ai-tab-btn:hover {
+  background: rgba(255, 255, 255, 0.05) !important;
+  color: #f8fafc !important;
+}
+
+[data-theme="dark"] .deep-view-right-panel .dock-tab-btn.ai-tab-btn.active {
+  background: #1e293b !important;
+  border: 1px solid rgba(255, 255, 255, 0.12) !important;
+  color: #ffffff !important;
+}
+
+:root:not([data-theme=dark]) .deep-view-right-panel .dock-tab-btn.ai-tab-btn {
+  color: #475569 !important;
+}
+
+:root:not([data-theme=dark]) .deep-view-right-panel .dock-tab-btn.ai-tab-btn:hover {
+  color: #0f172a !important;
+  background: rgba(255, 255, 255, 0.6) !important;
+}
+
+:root:not([data-theme=dark]) .deep-view-right-panel .dock-tab-btn.ai-tab-btn.active {
+  color: #1e40af !important;
+  background: #ffffff !important;
+  border: 1px solid #cbd5e1 !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
 .ai-tab-icon {
   display: inline-flex;
   align-items: center;
