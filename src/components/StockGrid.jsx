@@ -363,6 +363,7 @@ export default function StockGrid({
   const [quotes, setQuotes] = useState({});
   const [loadingQuotes, setLoadingQuotes] = useState(false);
   const [detectingSectors, setDetectingSectors] = useState(false);
+  const [sectorProgress, setSectorProgress] = useState({ completed: 0, total: 0 });
   const fetchQuotesCountRef = useRef(0);
   const fetchAbortControllerRef = useRef(null);
 
@@ -439,7 +440,10 @@ export default function StockGrid({
       return;
     }
 
+    const totalToResolve = stocksToResolve.length;
     setDetectingSectors(true);
+    setSectorProgress({ completed: 0, total: totalToResolve });
+
     if (aiAbortControllerRef.current) {
       aiAbortControllerRef.current.abort();
     }
@@ -464,19 +468,23 @@ export default function StockGrid({
         }
       });
 
+      const localResolvedCount = Object.keys(resolvedMappings).length;
+      setSectorProgress({ completed: localResolvedCount, total: totalToResolve });
+
       // 2. AI Fallback if needed
       if (remainingForAi.length > 0) {
         const apiKey = aiSettings?.apiKey;
         const model = aiSettings?.model || "gemini-2.5-flash";
 
         if (!apiKey || !apiKey.trim()) {
-          if (Object.keys(resolvedMappings).length > 0) {
+          if (localResolvedCount > 0) {
             applySectorMappings(resolvedMappings);
-            showToast(`Resolved ${Object.keys(resolvedMappings).length} sectors locally. Please configure Gemini API Key for the remaining ${remainingForAi.length} stocks.`, "warning");
+            showToast(`Resolved ${localResolvedCount} sectors locally. Please configure Gemini API Key for the remaining ${remainingForAi.length} stocks.`, "warning");
           } else {
             showToast("Gemini API Key is missing. Please configure it in Settings.", "error");
           }
           setDetectingSectors(false);
+          setSectorProgress({ completed: 0, total: 0 });
           return;
         }
 
@@ -489,7 +497,13 @@ export default function StockGrid({
           remainingForAi.map((s) => ({ symbol: s.symbol, companyName: s.name || "" })),
           country,
           availableSectors,
-          aiAbortControllerRef.current.signal
+          aiAbortControllerRef.current.signal,
+          ({ completed, total: _aiTotal }) => {
+            setSectorProgress({
+              completed: Math.min(totalToResolve, localResolvedCount + completed),
+              total: totalToResolve
+            });
+          }
         );
 
         Object.entries(aiMappings).forEach(([sym, valObj]) => {
@@ -499,12 +513,19 @@ export default function StockGrid({
         });
       }
 
+      setSectorProgress({ completed: totalToResolve, total: totalToResolve });
+
       if (Object.keys(resolvedMappings).length > 0) {
         applySectorMappings(resolvedMappings);
         showToast(`Successfully resolved sectors for ${Object.keys(resolvedMappings).length} stocks!`, "success");
       } else {
         showToast("No sectors could be resolved for the stocks.", "warning");
       }
+      
+      setTimeout(() => {
+        setSectorProgress({ completed: 0, total: 0 });
+      }, 1200);
+
     } catch (err) {
       if (err.name === 'AbortError' || err.message?.includes('aborted')) {
         console.log("Sector detection aborted by user.");
@@ -514,11 +535,11 @@ export default function StockGrid({
         console.error("Manual sector detection failed:", err);
         showToast(`Sector detection failed: ${err.message || err}`, "error");
       }
+      setSectorProgress({ completed: 0, total: 0 });
     } finally {
       setDetectingSectors(false);
     }
-  }, [allStocks, selectedWatchlistId, data.stockSectorCache, data.uiConfig?.sectors, country, aiSettings, showToast, applySectorMappings]);
-
+  }, [allStocks, selectedWatchlistId, data.stockSectorCache, data.uiConfig?.sectors, country, aiSettings, applySectorMappings, showToast]);
 
   const fetchQuotesForGrid = useCallback(async (forceRefresh = false) => {
     const symbols = symbolsSerialized ? symbolsSerialized.split(",") : [];
@@ -1030,16 +1051,32 @@ export default function StockGrid({
         setAiProgress({ total: 0, completed: 0 });
         setRateLimitWait(null);
         showToast(`Background Bulk AI Analysis completed for ${req.payload.updatedCount} stocks!`, "success");
-      } else if (req.action === "BULK_AI_ANALYSIS_FAILED") {
+      } else if (req.action === "BULK_AI_ANALYSIS_FAILED" || req.action === "AI_LIMIT_REACHED") {
         setAiProgress({ total: 0, completed: 0 });
         setRateLimitWait(null);
-        showToast(`AI Analysis Failed: ${req.payload.error}`, "error");
+        const errText = req.payload?.error || "AI Request Limit Reached. Available again shortly.";
+        showToast(`AI Analysis Stopped: ${errText}`, "error");
       }
     };
 
     chrome.runtime.onMessage.addListener(msgListener);
     return () => chrome.runtime.onMessage.removeListener(msgListener);
   }, [showToast]);
+
+  useEffect(() => {
+    if (typeof chrome === "undefined" || !chrome.storage?.local) return;
+    chrome.storage.local.get(["active_bulk_ai_task"], (res) => {
+      const task = res?.active_bulk_ai_task;
+      if (task && task.total > 0 && task.status !== "stopped") {
+        setAiProgress({
+          completed: task.currentIndex || 0,
+          total: task.total,
+          startTime: task.startTime,
+          estimatedEndTime: task.estimatedEndTime
+        });
+      }
+    });
+  }, []);
 
   /* =====================
      BASE DATASET
@@ -2229,7 +2266,7 @@ export default function StockGrid({
                   })()}
 
                   <button
-                    className={`force-sync-btn ${detectingSectors ? 'is-syncing' : ''}`}
+                    className={`force-sync-btn radium-style ${detectingSectors ? 'is-syncing' : ''}`}
                     onClick={handleDetectSectors}
                     title="Detect missing sectors using Cache & AI"
                     disabled={detectingSectors}
@@ -2260,9 +2297,9 @@ export default function StockGrid({
         </div>
 
         <div className="command-right">
-          {(fetchProgress.total > 0 || aiProgress.total > 0) && (
+          {(fetchProgress.total > 0 || aiProgress.total > 0 || sectorProgress.total > 0) && (
             <div className="sync-badges-container">
-              <div className={`dual-activity-capsule-hub ${aiProgress.total > 0 ? "has-ai" : ""}`}>
+              <div className={`dual-activity-capsule-hub ${(aiProgress.total > 0 || sectorProgress.total > 0) ? "has-ai" : ""}`}>
                 {fetchProgress.total > 0 && (
                   <div className={`activity-capsule-item metric-sync ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
                     <div className="pulse-dot green" />
@@ -2278,19 +2315,52 @@ export default function StockGrid({
                   </div>
                 )}
 
-                {fetchProgress.total > 0 && aiProgress.total > 0 && (
-                  <div className="activity-capsule-divider" />
+                {sectorProgress.total > 0 && (
+                  <>
+                    {fetchProgress.total > 0 && <div className="activity-capsule-divider" />}
+                    <div 
+                      className={`activity-capsule-item sector-analysis ${sectorProgress.completed >= sectorProgress.total ? "sync-finished" : ""}`}
+                      title={`Auto-Identifying Sectors: Resolving missing stock sectors via Cache & Gemini AI (${sectorProgress.completed}/${sectorProgress.total})`}
+                    >
+                      <svg className="sector-capsule-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#06b6d4' }}>
+                        <rect x="3" y="3" width="7" height="9" rx="1.5" />
+                        <rect x="14" y="3" width="7" height="5" rx="1.5" />
+                        <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                        <rect x="3" y="16" width="7" height="5" rx="1.5" />
+                      </svg>
+                      <span className="capsule-label">Sector AI</span>
+                      <span className="capsule-percent">{Math.round((sectorProgress.completed / sectorProgress.total) * 100)}%</span>
+                      <span className="capsule-count">({sectorProgress.completed}/{sectorProgress.total})</span>
+                      <div className="capsule-progress-track">
+                        <div 
+                          className="capsule-progress-bar cyan-bar" 
+                          style={{ width: `${Math.round((sectorProgress.completed / sectorProgress.total) * 100)}%` }} 
+                        />
+                      </div>
+                    </div>
+                  </>
                 )}
 
                 {aiProgress.total > 0 && (
-                  <div 
-                    className={`activity-capsule-item ai-analysis ${aiProgress.completed >= aiProgress.total ? "sync-finished" : ""} ${rateLimitWait ? "is-waiting" : ""}`}
-                    title={rateLimitWait 
-                      ? `Rate limit hit. Resuming in ~${rateLimitWait.waitSeconds}s... (${rateLimitWait.completed}/${rateLimitWait.total} stocks done)`
-                      : (aiProgress.startTime && aiProgress.estimatedEndTime 
-                        ? `Bulk AI Analysis: Evaluates all stocks in the watchlist & applies tags automatically.\nTriggered: ${new Date(aiProgress.startTime).toLocaleTimeString()}\nEstimated Completion: ${new Date(aiProgress.estimatedEndTime).toLocaleTimeString()}` 
-                        : "Bulk AI Analysis: Evaluates all stocks in the watchlist & applies tags automatically")}
-                  >
+                  <>
+                    {(fetchProgress.total > 0 || sectorProgress.total > 0) && (
+                      <div className="activity-capsule-divider" />
+                    )}
+                    <div 
+                      className={`activity-capsule-item ai-analysis ${aiProgress.completed >= aiProgress.total ? "sync-finished" : ""} ${rateLimitWait ? "is-waiting" : ""}`}
+                      title={rateLimitWait 
+                        ? `Rate limit hit. Resuming in ~${rateLimitWait.waitSeconds}s... (${rateLimitWait.completed}/${rateLimitWait.total} stocks done)`
+                        : (aiProgress.startTime && aiProgress.estimatedEndTime 
+                          ? (() => {
+                              const remMs = Math.max(0, aiProgress.estimatedEndTime - aiProgress.startTime);
+                              const remMins = Math.ceil(remMs / 60000);
+                              const triggerStr = new Date(aiProgress.startTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                              const estStr = new Date(aiProgress.estimatedEndTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                              const remText = remMins > 0 ? ` (~${remMins} min remaining)` : " (Finishing...)";
+                              return `Bulk AI Analysis: Evaluates all stocks in the watchlist & applies tags automatically.\nTriggered: ${triggerStr}\nEstimated Completion: ${estStr}${remText}`;
+                            })()
+                          : "Bulk AI Analysis: Evaluates all stocks in the watchlist & applies tags automatically")}
+                    >
                     <svg className="ai-sparkle-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
                       <path d="M12 0C12 6.627 6.627 12 0 12C6.627 12 12 17.373 12 24C12 17.373 17.373 12 24 12C17.373 12 12 6.627 12 0Z" />
                     </svg>
@@ -2314,7 +2384,8 @@ export default function StockGrid({
                       />
                     </div>
                   </div>
-                )}
+                </>
+              )}
               </div>
             </div>
           )}

@@ -283,6 +283,44 @@ export default function EditStockModal({
   const [collapsedGroups, setCollapsedGroups] = useState({}); // { [groupKey]: boolean }
   const maSettingsRef = useRef(null);
   const groupingPopoverRef = useRef(null);
+  const leftPanelRef = useRef(null);
+  const fundamentalsRef = useRef(null);
+  const [isScrolledToFundamentals, setIsScrolledToFundamentals] = useState(false);
+
+  const handleLeftPanelScroll = useCallback(() => {
+    if (leftPanelRef.current) {
+      const scrollTop = leftPanelRef.current.scrollTop;
+      setIsScrolledToFundamentals(scrollTop > 100);
+    }
+  }, []);
+
+  const handleToggleFundamentalsScroll = useCallback((e) => {
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+    const container = leftPanelRef.current;
+    if (!container) return;
+
+    const scrollToPos = (targetY) => {
+      try {
+        container.scrollTo({ top: targetY, behavior: 'smooth' });
+      } catch (_err) {
+        container.scrollTop = targetY;
+      }
+    };
+
+    if (isScrolledToFundamentals) {
+      scrollToPos(0);
+    } else {
+      if (fundamentalsRef.current) {
+        const targetTop = fundamentalsRef.current.offsetTop - 44;
+        scrollToPos(Math.max(0, targetTop));
+      } else {
+        scrollToPos(container.scrollHeight);
+      }
+    }
+  }, [isScrolledToFundamentals]);
   const handleSetSidebarGrouping = useCallback((mode) => {
     setSidebarGrouping(mode);
     setActiveGroupKey(null);
@@ -1140,7 +1178,8 @@ export default function EditStockModal({
       const finalData = {
         ...formData,
         aiAnalysis,
-        aiAnalysisDate
+        aiAnalysisDate,
+        aiTaggedAt: formData?.aiTaggedAt || stock?.aiTaggedAt || (aiAnalysisDate ? new Date().toISOString() : null)
       };
       if (hasUserModified(stock, finalData, paramDefinitions)) {
         if (onUpdateStock) {
@@ -1234,7 +1273,8 @@ export default function EditStockModal({
     const finalData = {
       ...formData,
       aiAnalysis,
-      aiAnalysisDate
+      aiAnalysisDate,
+      aiTaggedAt: formData?.aiTaggedAt || stock?.aiTaggedAt || (aiAnalysisDate ? new Date().toISOString() : null)
     };
 
     if (onUpdateStock) {
@@ -1328,8 +1368,28 @@ export default function EditStockModal({
         timeframe,
         strategy.text
       );
-      setAiAnalysis(result.rawText);
-      setAiAnalysisDate(new Date().toLocaleString());
+      const rawText = result.rawText || result.text || result.content || "";
+      setAiAnalysis(rawText);
+      const nowStr = new Date().toLocaleString();
+      const isoStr = new Date().toISOString();
+      setAiAnalysisDate(nowStr);
+
+      // Extract verdict if present in analysis markdown (STRONG BUY, BUY, WAIT, SELL)
+      const verdictMatch = rawText.match(/\[?(STRONG BUY|BUY|WAIT|SELL)\]?/i);
+      let updatedTags = [...(formData?.tags || [])];
+      if (verdictMatch) {
+        const verdictStr = verdictMatch[1].toUpperCase();
+        updatedTags = updatedTags.filter(t => !t.startsWith("AI: "));
+        updatedTags.push(`AI: ${verdictStr}`);
+      }
+
+      setFormData((prev) => ({
+        ...prev,
+        tags: updatedTags,
+        aiAnalysis: rawText,
+        aiAnalysisDate: nowStr,
+        aiTaggedAt: isoStr
+      }));
     } catch (err) {
       setAiError(err.message);
     } finally {
@@ -2410,7 +2470,7 @@ export default function EditStockModal({
             <div
               className="deep-view-bottom"
             >
-              <div className="deep-view-left-panel">
+              <div className="deep-view-left-panel" ref={leftPanelRef} onScroll={handleLeftPanelScroll}>
                 <div className="panel-header">
                   <div className="chart-header-controls">
                     <div className="chart-header-left">
@@ -2594,8 +2654,47 @@ export default function EditStockModal({
                   />
                 </div>
 
+                {/* Dedicated Scroll Bar at Chart Bottom Border */}
+                <div className="chart-fundamentals-scroll-bar">
+                  <button
+                    type="button"
+                    className={`chart-fundamentals-scroll-btn ${isScrolledToFundamentals ? 'scrolled' : ''}`}
+                    onClick={handleToggleFundamentalsScroll}
+                    title={isScrolledToFundamentals ? "Scroll up to Chart" : "Scroll down to Fundamentals & Financials"}
+                    aria-label={isScrolledToFundamentals ? "Scroll up to Chart" : "Scroll down to Fundamentals & Financials"}
+                  >
+                    <span className="scroll-btn-text">
+                      {isScrolledToFundamentals ? "Back to Chart" : "Fundamentals"}
+                    </span>
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      width="14"
+                      height="14"
+                      viewBox="0 0 24 24"
+                      fill="none"
+                      stroke="currentColor"
+                      strokeWidth="2.5"
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      className={`scroll-double-arrow ${isScrolledToFundamentals ? 'up' : 'down'}`}
+                    >
+                      {isScrolledToFundamentals ? (
+                        <>
+                          <polyline points="17 11 12 6 7 11" />
+                          <polyline points="17 18 12 13 7 18" />
+                        </>
+                      ) : (
+                        <>
+                          <polyline points="7 13 12 18 17 13" />
+                          <polyline points="7 6 12 11 17 6" />
+                        </>
+                      )}
+                    </svg>
+                  </button>
+                </div>
+
                 {/* Fundamentals Info & Quarterly Performance Section below chart */}
-                <div className="fundamentals-below-chart-section">
+                <div className="fundamentals-below-chart-section" ref={fundamentalsRef}>
                   <div className="fundamentals-wide-below-chart">
                     <div className="wide-metrics-grid-4col">
                       <div className="property-row-item fundamental-card-enterprise">

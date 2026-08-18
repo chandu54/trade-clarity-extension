@@ -2644,6 +2644,8 @@ tr:hover .sticky-col {
   display: flex;
   align-items: center;
   justify-content: center;
+  padding: 16px;
+  box-sizing: border-box;
   z-index: 9999;
 }
 
@@ -2699,13 +2701,14 @@ tr:hover .sticky-col {
   overflow: hidden !important;
   padding: 0 !important;
   border-radius: 12px !important;
-  transition: height 0.25s ease, min-height 0.25s ease !important;
+  transition: height 0.25s ease, max-height 0.25s ease !important;
+  box-sizing: border-box !important;
 }
 
 .modal-box.modal-research.has-content {
-  height: 85vh !important;
-  min-height: 680px !important;
-  max-height: 90vh !important;
+  height: 86vh !important;
+  max-height: 88vh !important;
+  min-height: 0 !important;
 }
 
 .modal-box.modal-research.modal-compact-empty {
@@ -10715,16 +10718,150 @@ input[type="date"].input-with-clear {
 }
 
 .chart-wrapper-large {
-  flex: 0 0 calc(100% - 44px) !important;
-  height: calc(100% - 44px) !important;
-  min-height: calc(100% - 44px) !important;
+  flex: 0 0 calc(100% - 44px - 30px) !important;
+  height: calc(100% - 44px - 30px) !important;
+  min-height: calc(100% - 44px - 30px) !important;
   display: flex !important;
   flex-direction: column !important;
   background: var(--bg) !important;
   position: relative !important;
   overflow: hidden !important;
   box-sizing: border-box !important;
-  padding-bottom: 4px !important;
+  padding-bottom: 0 !important;
+}
+
+/* Dedicated Sticky Border Bar for Fundamentals Scroll Button */
+.chart-fundamentals-scroll-bar {
+  flex: 0 0 30px !important;
+  height: 30px !important;
+  min-height: 30px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  background: var(--table-header-bg, #f8fafc) !important;
+  border-top: 1px solid var(--border, #e2e8f0) !important;
+  border-bottom: 1px solid var(--border, #e2e8f0) !important;
+  position: sticky !important;
+  top: 44px !important;
+  z-index: 30 !important;
+  pointer-events: auto !important;
+}
+
+/* Down Double Arrow / Fundamentals Scroll Indicator Button */
+.chart-fundamentals-scroll-btn {
+  position: relative !important;
+  bottom: auto !important;
+  left: auto !important;
+  transform: none !important;
+  z-index: 35 !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  gap: 6px !important;
+  padding: 2px 14px !important;
+  height: 22px !important;
+  background: #ffffff !important;
+  backdrop-filter: blur(8px) !important;
+  -webkit-backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(2, 132, 199, 0.35) !important;
+  border-radius: 12px !important;
+  color: #0284c7 !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  letter-spacing: 0.03em !important;
+  cursor: pointer !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.06), 0 0 6px rgba(2, 132, 199, 0.1) !important;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  user-select: none !important;
+}
+
+.chart-fundamentals-scroll-btn:hover {
+  background: #f0f9ff !important;
+  border-color: #0284c7 !important;
+  color: #0369a1 !important;
+  transform: translateY(-1px) !important;
+  box-shadow: 0 4px 12px rgba(2, 132, 199, 0.2) !important;
+}
+
+.chart-fundamentals-scroll-btn:active {
+  transform: translateY(0) !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1) !important;
+}
+
+.chart-fundamentals-scroll-btn.scrolled {
+  background: #f1f5f9 !important;
+  border-color: #cbd5e1 !important;
+  color: #475569 !important;
+}
+
+.chart-fundamentals-scroll-btn.scrolled:hover {
+  background: #f0f9ff !important;
+  border-color: #0284c7 !important;
+  color: #0284c7 !important;
+}
+
+/* Dark Theme Overrides for Scroll Bar & Button */
+[data-theme="dark"] .chart-fundamentals-scroll-bar {
+  background: var(--table-header-bg, #0f172a) !important;
+  border-top-color: var(--border, rgba(255, 255, 255, 0.1)) !important;
+  border-bottom-color: var(--border, rgba(255, 255, 255, 0.1)) !important;
+}
+
+[data-theme="dark"] .chart-fundamentals-scroll-btn {
+  background: rgba(15, 23, 42, 0.9) !important;
+  border-color: rgba(59, 130, 246, 0.4) !important;
+  color: #38bdf8 !important;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 8px rgba(56, 189, 248, 0.15) !important;
+}
+
+[data-theme="dark"] .chart-fundamentals-scroll-btn:hover {
+  background: rgba(30, 41, 59, 1) !important;
+  border-color: #38bdf8 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4), 0 0 12px rgba(56, 189, 248, 0.3) !important;
+}
+
+[data-theme="dark"] .chart-fundamentals-scroll-btn.scrolled {
+  background: rgba(30, 41, 59, 0.9) !important;
+  border-color: rgba(148, 163, 184, 0.4) !important;
+  color: #cbd5e1 !important;
+}
+
+[data-theme="dark"] .chart-fundamentals-scroll-btn.scrolled:hover {
+  background: rgba(30, 41, 59, 1) !important;
+  border-color: #38bdf8 !important;
+  color: #ffffff !important;
+}
+
+.scroll-double-arrow {
+  display: inline-block !important;
+  transition: transform 0.25s ease !important;
+}
+
+.scroll-double-arrow.down {
+  animation: bounce-double-down 1.8s infinite ease-in-out !important;
+}
+
+.scroll-double-arrow.up {
+  animation: bounce-double-up 1.8s infinite ease-in-out !important;
+}
+
+@keyframes bounce-double-down {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(3px);
+  }
+}
+
+@keyframes bounce-double-up {
+  0%, 100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
 }
 
 .section-title {
@@ -12624,6 +12761,55 @@ input[type="date"].input-with-clear {
   background: #eff6ff;
   border-color: #bfdbfe;
   color: #2563eb;
+}
+
+/* --- RADIUM STYLE FOR SECTOR IDENTIFICATION BUTTON --- */
+.force-sync-btn.radium-style {
+  position: relative !important;
+  border-color: transparent !important;
+  background: var(--panel) !important;
+  box-shadow: 0 0 10px rgba(6, 182, 212, 0.25) !important;
+  transition: all 0.25s cubic-bezier(0.4, 0, 0.2, 1) !important;
+  overflow: hidden !important;
+}
+
+.force-sync-btn.radium-style::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: -1px !important;
+  border-radius: 6px !important;
+  padding: 1px !important;
+  background: linear-gradient(
+    90deg,
+    #06b6d4,
+    #8b5cf6,
+    #ec4899,
+    #10b981,
+    #06b6d4
+  ) !important;
+  background-size: 300% 300% !important;
+  -webkit-mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0) !important;
+  mask: linear-gradient(#fff 0 0) content-box, linear-gradient(#fff 0 0) !important;
+  -webkit-mask-composite: xor !important;
+  mask-composite: exclude !important;
+  animation: ai-gradient-flow 3s linear infinite !important;
+  pointer-events: none !important;
+}
+
+.force-sync-btn.radium-style:hover:not(:disabled) {
+  background: var(--panel) !important;
+  border-color: transparent !important;
+  box-shadow: 0 0 14px rgba(6, 182, 212, 0.5), 0 0 8px rgba(139, 92, 246, 0.4) !important;
+  color: #06b6d4 !important;
+  transform: translateY(-1px) !important;
+}
+
+.activity-capsule-item.sector-analysis {
+  color: #06b6d4 !important;
+}
+
+.capsule-progress-bar.cyan-bar {
+  background: linear-gradient(90deg, #06b6d4, #3b82f6) !important;
 }
 
 /* Moving Average Popover Filter Styles */

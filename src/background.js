@@ -20,8 +20,33 @@ let isProcessing = false;
 let totalJobs = 0;
 let completedJobs = 0;
 
-let bulkAiQueue = [];
 let isAiProcessing = false;
+
+// Helper functions for persistent MV3 Bulk AI queue state
+async function saveActiveBulkAiTask(taskData) {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) return;
+  if (!taskData) {
+    await new Promise(r => chrome.storage.local.remove(["active_bulk_ai_task"], r));
+  } else {
+    await new Promise(r => chrome.storage.local.set({ active_bulk_ai_task: taskData }, r));
+  }
+}
+
+async function getActiveBulkAiTask() {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) return null;
+  const res = await new Promise(r => chrome.storage.local.get(["active_bulk_ai_task"], r));
+  return res?.active_bulk_ai_task || null;
+}
+
+function calculateEstimatedEndTime(completed, total) {
+  const remaining = Math.max(0, total - completed);
+  if (remaining === 0) return Date.now();
+  const chunkSize = 7;
+  const remainingChunks = Math.ceil(remaining / chunkSize);
+  // ~10s per API call/data fetch + 65s wait between chunks
+  const remainingSecs = (remainingChunks * 10) + Math.max(0, (remainingChunks - 1) * 65);
+  return Date.now() + (remainingSecs * 1000);
+}
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "OPEN_DASHBOARD") {
@@ -78,16 +103,40 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === "RUN_BULK_AI_ANALYSIS") {
-    bulkAiQueue.push(message.payload);
-    if (!isAiProcessing) {
-      processAiQueue();
-    }
+    const total = message.payload.stocks?.length || 0;
+    const startTime = Date.now();
+    const estimatedEndTime = calculateEstimatedEndTime(0, total);
+
+    const newTaskState = {
+      payload: message.payload,
+      currentIndex: 0,
+      total,
+      startTime,
+      estimatedEndTime,
+      status: "processing",
+      results: {}
+    };
+
+    saveActiveBulkAiTask(newTaskState).then(() => {
+      chrome.runtime.sendMessage({
+        action: "BULK_AI_PROGRESS",
+        payload: { completed: 0, total, startTime, estimatedEndTime }
+      }).catch(() => {});
+
+      if (!isAiProcessing) {
+        processAiQueue();
+      }
+    });
+    
     sendResponse({ status: "started" });
   }
 
   if (message.action === "STOP_BULK_AI") {
-    bulkAiQueue = [];
     isAiProcessing = false;
+    saveActiveBulkAiTask(null);
+    if (typeof chrome !== "undefined" && chrome.alarms) {
+      chrome.alarms.clear("BULK_AI_ALARM").catch(() => {});
+    }
     chrome.runtime.sendMessage({
       action: "BULK_AI_PROGRESS",
       payload: { total: 0, completed: 0 }
@@ -100,6 +149,33 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
   return true;
 });
+
+// Chrome MV3 Alarm Listener to wake up service worker if terminated during countdown delay
+if (typeof chrome !== "undefined" && chrome.alarms?.onAlarm) {
+  chrome.alarms.onAlarm.addListener(async (alarm) => {
+    if (alarm.name === "BULK_AI_ALARM") {
+      console.log("[BG] BULK_AI_ALARM triggered. Checking persistent queue...");
+      const task = await getActiveBulkAiTask();
+      if (task && task.status !== "stopped") {
+        if (!isAiProcessing) {
+          processAiQueue();
+        }
+      }
+    }
+  });
+}
+
+// Restore active task when Service Worker starts up after being terminated by MV3 lifecycle
+if (typeof chrome !== "undefined") {
+  getActiveBulkAiTask().then(task => {
+    if (task && task.status !== "stopped" && task.total > 0) {
+      console.log("[BG] Restoring active Bulk AI task on startup:", task);
+      if (!isAiProcessing) {
+        processAiQueue();
+      }
+    }
+  }).catch(() => {});
+}
 
 /**
  * Parse the "retry in Xs" wait from a Gemini rate-limit error message.
@@ -115,6 +191,10 @@ function parseRetryAfterMs(errorMessage, fallbackMs = 65000) {
 }
 
 async function waitWithCountdown(seconds, completed, total) {
+  if (typeof chrome !== "undefined" && chrome.alarms) {
+    chrome.alarms.create("BULK_AI_ALARM", { when: Date.now() + (seconds * 1000) });
+  }
+
   for (let s = seconds; s > 0; s--) {
     if (!isAiProcessing) {
       console.log("[BG] AI processing was cancelled. Stopping wait countdown.");
@@ -126,35 +206,50 @@ async function waitWithCountdown(seconds, completed, total) {
     }).catch(() => {});
     await new Promise(r => setTimeout(r, 1000));
   }
+
+  if (typeof chrome !== "undefined" && chrome.alarms) {
+    chrome.alarms.clear("BULK_AI_ALARM").catch(() => {});
+  }
 }
 
 async function processAiQueue() {
-  if (bulkAiQueue.length === 0) {
-    isAiProcessing = false;
+  if (isAiProcessing) {
+    console.log("[BG] processAiQueue already active. Skipping duplicate invocation.");
     return;
   }
-  
-  // Check if AI is currently blocked
-  const db = await _getStorageData();
-  const blockedUntil = db.aiSettings?.aiState?.blockedUntil || 0;
-  if (blockedUntil > Date.now()) {
-    console.warn("[BG] AI is currently blocked. Clearing bulk AI queue.");
-    bulkAiQueue = [];
-    isAiProcessing = false;
-    chrome.runtime.sendMessage({
-      action: "BULK_AI_ANALYSIS_FAILED",
-      payload: { error: "AI requests blocked due to rate limit/errors." }
-    }).catch(() => {});
-    return;
-  }
-
   isAiProcessing = true;
-  const payload = bulkAiQueue.shift();
-  
+
+  try {
+    const taskState = await getActiveBulkAiTask();
+    if (!taskState || taskState.status === "stopped") {
+      return;
+    }
+    
+    // Check if AI is currently blocked
+    const db = await _getStorageData();
+    const blockedUntil = db.aiSettings?.aiState?.blockedUntil || 0;
+    if (blockedUntil > Date.now()) {
+      console.warn("[BG] AI is currently blocked. Clearing bulk AI task.");
+      await saveActiveBulkAiTask(null);
+      chrome.runtime.sendMessage({
+        action: "BULK_AI_ANALYSIS_FAILED",
+        payload: { error: "AI requests blocked due to rate limit/errors." }
+      }).catch(() => {});
+      return;
+    }
+
+    const { payload, currentIndex = 0, results = {} } = taskState;
   const { stocks, apiKey, model, country, weekKey, watchlistName } = payload;
-  const total = stocks.length;
+  const total = stocks ? stocks.length : 0;
   const chunkSize = 7;
-  const results = {};
+  const startTime = taskState.startTime || Date.now();
+  const estimatedEndTime = taskState.estimatedEndTime || (startTime + (total * 60 * 1000));
+
+  // Broadcast immediate progress so UI capsule shows instantly before network pre-fetch!
+  chrome.runtime.sendMessage({
+    action: "BULK_AI_PROGRESS",
+    payload: { completed: currentIndex, total, startTime, estimatedEndTime }
+  }).catch(() => {});
 
   // Pre-fetch 3mo market data (price, daily & period change pcts) so Gemini has full technical metrics
   let enrichedStocks = stocks;
@@ -183,9 +278,6 @@ async function processAiQueue() {
   } catch (mErr) {
     console.warn("[BG] Pre-fetching market data for bulk AI failed, falling back to basic data:", mErr);
   }
-  
-  const startTime = Date.now();
-  const estimatedEndTime = startTime + (total * 60 * 1000);
 
   // Resolve custom active bulk prompt from promptLibrary if configured
   let activeBulkPrompt = payload.bulkPromptText || null;
@@ -203,16 +295,31 @@ async function processAiQueue() {
     }
   }
 
-  try {
-    for (let i = 0; i < total; i += chunkSize) {
-      if (!isAiProcessing) {
+  for (let i = currentIndex; i < total; i += chunkSize) {
+      const liveCheck = await getActiveBulkAiTask();
+      if (!isAiProcessing || !liveCheck || liveCheck.status === "stopped") {
         console.log("[BG] AI processing was cancelled. Stopping queue execution.");
         break;
       }
 
+      await saveActiveBulkAiTask({
+        ...taskState,
+        currentIndex: i,
+        results,
+        status: "processing"
+      });
+
+      const currentEstEnd = calculateEstimatedEndTime(i, total);
+
+      // Clear rate-limit wait pill state in UI when fetching starts
+      chrome.runtime.sendMessage({
+        action: "BULK_AI_RATE_LIMIT_WAIT",
+        payload: null
+      }).catch(() => {});
+
       chrome.runtime.sendMessage({
         action: "BULK_AI_PROGRESS",
-        payload: { completed: i, total, startTime, estimatedEndTime }
+        payload: { completed: i, total, startTime, estimatedEndTime: currentEstEnd }
       }).catch(() => {});
 
       const chunk = enrichedStocks.slice(i, i + chunkSize);
@@ -238,8 +345,17 @@ async function processAiQueue() {
             throw chunkErr; // non-rate-limit error, or exhausted retries
           }
         }
-      }      if (chunkResults) {
+      }
+
+      if (chunkResults) {
         Object.assign(results, chunkResults);
+
+        await saveActiveBulkAiTask({
+          ...taskState,
+          currentIndex: i + chunk.length,
+          results,
+          status: "processing"
+        });
 
         // Write this chunk's results to chrome.storage.local immediately so they populate UI right away
         await new Promise((resolve) => {
@@ -254,6 +370,9 @@ async function processAiQueue() {
             const newStocksData = { ...currentWeekData.stocks };
             const summary = { BUY: 0, WAIT: 0, SELL: 0, "STRONG BUY": 0 };
             let updatedCount = 0;
+
+            const nowStr = new Date().toLocaleString();
+            const isoStr = new Date().toISOString();
 
             Object.entries(results).forEach(([symbol, analysisData]) => {
               if (newStocksData[symbol] && analysisData && analysisData.verdict) {
@@ -272,7 +391,8 @@ async function processAiQueue() {
                   ...newStocksData[symbol],
                   tags: currentTags,
                   aiAnalysis: `**Verdict:** ${verdict}\n\n**Reasoning:** ${analysisData.reasoning || ""}`,
-                  aiAnalysisDate: new Date().toLocaleString()
+                  aiAnalysisDate: nowStr,
+                  aiTaggedAt: isoStr
                 };
                 updatedCount++;
               }
@@ -280,7 +400,7 @@ async function processAiQueue() {
 
             const enrichedBulkAnalysis = {
               summary,
-              timestamp: new Date().toISOString(),
+              timestamp: isoStr,
               stockCount: total,
               updatedCount,
               watchlistName: watchlistName
@@ -307,9 +427,18 @@ async function processAiQueue() {
       // Respect free-tier 20 RPM limit: wait ~65s between chunks so we never
       // exceed 1 request/minute (each chunk = 1 Gemini API call).
       if (i + chunkSize < total) {
+        await saveActiveBulkAiTask({
+          ...taskState,
+          currentIndex: i + chunkSize,
+          results,
+          status: "waiting"
+        });
         await waitWithCountdown(65, i + chunkSize, total);
       }
     }
+
+    isAiProcessing = false;
+    await saveActiveBulkAiTask(null);
 
     chrome.runtime.sendMessage({
       action: "BULK_AI_PROGRESS",
@@ -329,14 +458,14 @@ async function processAiQueue() {
 
   } catch (error) {
     console.error("Background AI Analysis Failed:", error);
+    await saveActiveBulkAiTask(null);
     chrome.runtime.sendMessage({
       action: "BULK_AI_ANALYSIS_FAILED",
       payload: { error: error.message || String(error) }
     }).catch(() => {});
+  } finally {
+    isAiProcessing = false;
   }
-
-  // Continue queue
-  setTimeout(processAiQueue, 1000);
 }
 
 async function processQueue() {

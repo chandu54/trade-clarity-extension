@@ -163,8 +163,9 @@ function AppContent() {
             }
 
             return {
-              ...newData,
               ...currentData,
+              ...newData,
+              aiSettings: newData.aiSettings || currentData.aiSettings,
               theme: currentData.theme || newData.theme || "light",
               weeks: mergedWeeks,
             };
@@ -173,8 +174,32 @@ function AppContent() {
       }
     };
 
+    const handleRuntimeMessage = (msg) => {
+      if (msg && msg.action === "AI_LIMIT_REACHED" && msg.payload?.blockedUntil) {
+        setData(prev => {
+          if (!prev) return prev;
+          const nextSettings = {
+            ...(prev.aiSettings || {}),
+            aiState: {
+              ...(prev.aiSettings?.aiState || {}),
+              blockedUntil: msg.payload.blockedUntil
+            }
+          };
+          return { ...prev, aiSettings: nextSettings };
+        });
+      }
+    };
+
     chrome.storage.onChanged.addListener(handleStorageChange);
-    return () => chrome.storage.onChanged.removeListener(handleStorageChange);
+    if (chrome.runtime?.onMessage) {
+      chrome.runtime.onMessage.addListener(handleRuntimeMessage);
+    }
+    return () => {
+      chrome.storage.onChanged.removeListener(handleStorageChange);
+      if (chrome.runtime?.onMessage) {
+        chrome.runtime.onMessage.removeListener(handleRuntimeMessage);
+      }
+    };
   }, []);
 
   useEffect(() => {
@@ -339,7 +364,25 @@ function AppContent() {
     });
   };
 
-  const handleBulkAnalyze = () => {
+  function isStockAnalyzedToday(stock) {
+    if (!stock) return false;
+    if (stock.aiTaggedAt) {
+      const taggedDate = new Date(stock.aiTaggedAt);
+      if (!isNaN(taggedDate.getTime())) {
+        return taggedDate.toDateString() === new Date().toDateString();
+      }
+    }
+    if (stock.aiAnalysisDate) {
+      const analysisDate = new Date(stock.aiAnalysisDate);
+      if (!isNaN(analysisDate.getTime())) {
+        return analysisDate.toDateString() === new Date().toDateString();
+      }
+    }
+    const hasAiTag = Array.isArray(stock.tags) && stock.tags.some(t => typeof t === 'string' && t.startsWith("AI: "));
+    return hasAiTag && !!stock.aiAnalysis;
+  }
+
+  const handleBulkAnalyze = (forceAll = false) => {
     const isBlocked = data?.aiSettings?.aiState?.blockedUntil && data.aiSettings.aiState.blockedUntil > Date.now();
     if (isBlocked) {
       const remainingSecs = Math.ceil((data.aiSettings.aiState.blockedUntil - Date.now()) / 1000);
@@ -371,12 +414,27 @@ function AppContent() {
       return;
     }
 
-    showToast(`Background Analysis started for ${stockArray.length} stocks. This may take a while. You can close this window.`, "info");
+    // Smart Skip Logic: Filter out stocks analyzed today unless forceAll is explicitly set
+    const unanalyzedStocks = stockArray.filter(s => !isStockAnalyzedToday(s));
+    const alreadyAnalyzedCount = stockArray.length - unanalyzedStocks.length;
+
+    if (!forceAll && unanalyzedStocks.length === 0) {
+      showToast(`All ${stockArray.length} stocks in this list were already analyzed today.`, "info");
+      return;
+    }
+
+    const targetStocks = forceAll ? stockArray : unanalyzedStocks;
+
+    if (alreadyAnalyzedCount > 0 && !forceAll) {
+      showToast(`Resuming Bulk AI: Skipping ${alreadyAnalyzedCount} stocks analyzed today, analyzing remaining ${targetStocks.length} stocks.`, "info");
+    } else {
+      showToast(`Background Analysis started for ${targetStocks.length} stocks. This may take a while. You can close this window.`, "info");
+    }
 
     chrome.runtime.sendMessage({
       action: "RUN_BULK_AI_ANALYSIS",
       payload: {
-        stocks: stockArray,
+        stocks: targetStocks,
         apiKey: data.aiSettings.apiKey,
         model: data.aiSettings.model,
         country,

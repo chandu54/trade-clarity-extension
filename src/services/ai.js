@@ -284,8 +284,8 @@ export async function getBulkStockVerdicts(
 
   try {
     let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
-    // Use isCustom=false so it automatically parses the JSON
-    return await fetchGemini(apiKey, prompt, modelToUse, false);
+    // Pass skipCircuitBreaker=true so transient 429s trigger 65s wait countdown without showing yellow block banner prematurely
+    return await fetchGemini(apiKey, prompt, modelToUse, false, 3, true);
   } catch (error) {
     const errorMsg = error.message || "Unknown error";
     const safeErrorMsg =
@@ -439,7 +439,7 @@ async function incrementAiFailureCount(errMsg) {
   await updateAiState(newFailures, blockedUntil);
 }
 
-async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3) {
+async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3, skipCircuitBreaker = false) {
   // Check if AI is currently blocked
   const state = await getAiState();
   if (state.blockedUntil && state.blockedUntil > Date.now()) {
@@ -498,17 +498,19 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3)
           errMessage.includes("RESOURCE_EXHAUSTED") ||
           errMessage.includes("QuotaExceeded")
         ) {
-          const retryMs = parseRetryAfterMs(errMessage, 150000); // Dynamic parse or ~2.5 mins fallback
-          const blockedUntil = Date.now() + retryMs;
-          await updateAiState(3, blockedUntil);
-          if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
-            chrome.runtime.sendMessage({
-              action: "AI_LIMIT_REACHED",
-              payload: { blockedUntil }
-            }).catch(() => {});
+          const retryMs = parseRetryAfterMs(errMessage, 65000);
+          if (!skipCircuitBreaker) {
+            const blockedUntil = Date.now() + retryMs;
+            await updateAiState(3, blockedUntil);
+            if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+              chrome.runtime.sendMessage({
+                action: "AI_LIMIT_REACHED",
+                payload: { blockedUntil }
+              }).catch(() => {});
+            }
           }
           const secs = Math.ceil(retryMs / 1000);
-          throw new Error(`Gemini API Quota Limit Reached. Your AI provider (Google Gemini) has temporarily paused requests due to free-tier quota limits. Available again in ${secs}s.`);
+          throw new Error(`RESOURCE_EXHAUSTED: Gemini API Quota Limit. Retry in ${secs}s.`);
         }
 
         throw new Error(errMessage);
@@ -868,7 +870,8 @@ export async function classifySectorsInBulk(
   stocks,
   country,
   availableSectors = [],
-  signal = null
+  signal = null,
+  onProgress = null
 ) {
   if (!apiKey || !stocks || stocks.length === 0) {
     return {};
@@ -877,45 +880,67 @@ export async function classifySectorsInBulk(
     throw new Error("Bulk AI sector classification aborted.");
   }
   
-  const sectorsList = availableSectors.map(s => s.name || s).join(", ");
-  const stocksJson = JSON.stringify(stocks);
+  const chunkSize = 15;
+  const total = stocks.length;
+  const combinedResults = {};
 
-  const prompt = `
-  You are an expert financial classification assistant.
-  Task: Classify the following list of stocks in market "${country}" into one of the user's defined sector categories.
-  
-  Stocks to Classify (JSON format):
-  ${stocksJson}
-  
-  User's Defined Sector Categories:
-  [${sectorsList}]
-  
-  Classification Rules:
-  1. Map each stock to the MOST appropriate category from the User's Defined Sector Categories list.
-  2. If none of the defined categories are a close or reasonable fit, suggest a new, concise, professionally standard sector name (e.g., "Defense", "Infrastructure", "Textiles", "Green Energy").
-  3. Ensure the sector names are clean, capitalized properly (Title Case), and concise.
-  
-  You MUST respond with a valid JSON object where the keys are the stock symbols and the values are objects containing the resolved sector.
-  Example output format:
-  {
-    "TCS": { "sector": "IT" },
-    "ADANIPORTS": { "sector": "Infrastructure" }
-  }
-  
-  Respond ONLY with the raw JSON string, do not wrap in markdown or include any other text.
-  `;
-
-  let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
-  try {
-    const res = await fetchGemini(apiKey, prompt, modelToUse, false);
-    return res || {};
-  } catch (error) {
-    console.error("[AI Bulk Sector Classification Failed]:", error);
-    if (error?.message && error.message.includes("AI Request Limit Reached")) {
-      throw error;
+  for (let i = 0; i < total; i += chunkSize) {
+    if (signal?.aborted) {
+      throw new Error("Bulk AI sector classification aborted.");
     }
-    return {};
+
+    if (onProgress) {
+      onProgress({ completed: i, total });
+    }
+
+    const chunk = stocks.slice(i, i + chunkSize);
+    const sectorsList = availableSectors.map(s => s.name || s).join(", ");
+    const stocksJson = JSON.stringify(chunk);
+
+    const prompt = `
+    You are an expert financial classification assistant.
+    Task: Classify the following list of stocks in market "${country}" into one of the user's defined sector categories.
+    
+    Stocks to Classify (JSON format):
+    ${stocksJson}
+    
+    User's Defined Sector Categories:
+    [${sectorsList}]
+    
+    Classification Rules:
+    1. Map each stock to the MOST appropriate category from the User's Defined Sector Categories list.
+    2. If none of the defined categories are a close or reasonable fit, suggest a new, concise, professionally standard sector name (e.g., "Defense", "Infrastructure", "Textiles", "Green Energy").
+    3. Ensure the sector names are clean, capitalized properly (Title Case), and concise.
+    
+    You MUST respond with a valid JSON object where the keys are the stock symbols and the values are objects containing the resolved sector.
+    Example output format:
+    {
+      "TCS": { "sector": "IT" },
+      "ADANIPORTS": { "sector": "Infrastructure" }
+    }
+    
+    Respond ONLY with the raw JSON string, do not wrap in markdown or include any other text.
+    `;
+
+    let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
+    try {
+      const res = await fetchGemini(apiKey, prompt, modelToUse, false);
+      if (res && typeof res === 'object') {
+        Object.assign(combinedResults, res);
+      }
+    } catch (error) {
+      console.error("[AI Bulk Sector Classification Failed]:", error);
+      if (error?.message && error.message.includes("AI Request Limit Reached")) {
+        throw error;
+      }
+    }
+
+    if (onProgress) {
+      onProgress({ completed: Math.min(i + chunkSize, total), total });
+    }
   }
+
+  return combinedResults;
 }
 
 
