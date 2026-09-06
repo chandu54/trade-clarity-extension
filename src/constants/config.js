@@ -11,10 +11,13 @@ export const CONFIG = {
   // Model Options (Verified via Diagnostics)
   MODELS: [
     { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", isPremium: false },
-    { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", isPremium: true },
+    { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash", isPremium: false },
     { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash", isPremium: false },
+    { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash", isPremium: false },
+    { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", isPremium: true },
     { value: "gemini-flash-latest", label: "Gemini 3 Flash (Preview)", isPremium: false },
   ],
+  FALLBACK_MODELS: ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
 
   // API Endpoints
   YAHOO_FINANCE_URL: "https://query1.finance.yahoo.com/v8/finance/chart/",

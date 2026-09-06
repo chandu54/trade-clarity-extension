@@ -1,5 +1,5 @@
 import { describe, it, vi, beforeEach } from 'vitest';
-import { fetchStockData, fetchStockQuotes, isMarketOpenFromMeta, clearQuoteCache } from '../yahooFinanceMap';
+import { fetchStockData, fetchStockQuotes, fetchStockDataByRange, isMarketOpenFromMeta, clearQuoteCache } from '../yahooFinanceMap';
 
 // Mock fetch
 global.fetch = vi.fn();
@@ -473,4 +473,28 @@ describe('fetchStockQuotes', () => {
     expect(result[0].dailyChangePct).toBe(-1.03);  // -1.03%, NOT 0.00%
     expect(result[0].isAdvancing).toBe(false);
   });
+
+  it('should fetch stock data by custom timestamp range using period1 and period2', async () => {
+    const mockRangeData = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 150 },
+          indicators: { quote: [{ close: [140, 145, 150] }] },
+          timestamp: [1600000000, 1600086400, 1600172800]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, mockRangeData));
+
+    const result = await fetchStockDataByRange('AAPL', 'US', 1600000000, 1600172800, '1d');
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+    expect(fetch.mock.calls[0][0]).toContain('period1=1600000000');
+    expect(fetch.mock.calls[0][0]).toContain('period2=1600172800');
+    expect(result.symbol).toBe('AAPL');
+    expect(result.candlesticks.length).toBe(3);
+    expect(result.candlesticks[0].close).toBe(140);
+  });
 });
+

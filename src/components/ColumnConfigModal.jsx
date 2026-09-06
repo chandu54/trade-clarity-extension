@@ -10,7 +10,7 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
   const visibility = data.uiConfig.columnVisibility;
 
   function toggle(key) {
-    if (isGlobal || key === "__livePrice__" || key === "__notes__") {
+    if (isGlobal || key === "__livePrice__" || key === "__notes__" || key === "__businessScope__" || key === "__dependentIndustries__") {
       const nextValue = !getValue(key);
       const newVisibility = { ...visibility, [key]: nextValue };
       const newData = {
@@ -34,7 +34,7 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
   }
 
   function getValue(key) {
-    if (isGlobal || key === "__livePrice__" || key === "__notes__") return visibility[key] ?? true;
+    if (isGlobal || key === "__livePrice__" || key === "__notes__" || key === "__businessScope__" || key === "__dependentIndustries__") return visibility[key] ?? true;
     return activeWatchlist?.visibleParams.includes(key) ?? false;
   }
 
@@ -76,8 +76,6 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
           <span>Tradable</span>
           <span className="muted small">Always visible</span>
         </div>
-
-        <hr />
 
         {/* Parameter Columns */}
         {Object.entries(data.paramDefinitions)
@@ -129,6 +127,38 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
               type="checkbox"
               checked={getValue("__notes__")}
               onChange={() => toggle("__notes__")}
+            />
+            <span className="slider" />
+          </label>
+        </div>
+
+        {/* Business Scope */}
+        <div className="filter-config-row">
+          <div>
+            <strong>Business Scope</strong>
+            <div className="muted small">Product & Business Segments</div>
+          </div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={getValue("__businessScope__")}
+              onChange={() => toggle("__businessScope__")}
+            />
+            <span className="slider" />
+          </label>
+        </div>
+
+        {/* Dependent Themes */}
+        <div className="filter-config-row">
+          <div>
+            <strong>Dependent Themes</strong>
+            <div className="muted small">Macro Beneficiary Drivers</div>
+          </div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={getValue("__dependentIndustries__")}
+              onChange={() => toggle("__dependentIndustries__")}
             />
             <span className="slider" />
           </label>

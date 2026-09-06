@@ -77,9 +77,20 @@ const PrintStockList = ({ stocks, label = "Stocks" }) => {
   );
 };
 
-const SimplePieChart = ({ data, onSliceClick, isExpanded }) => {
-  const total = data.reduce((sum, item) => sum + item.value, 0);
-  if (total === 0) return <div className="chart-empty">No data available</div>;
+const SimplePieChart = ({ data, onSliceClick, isExpanded, emptyMessage }) => {
+  const total = (data || []).reduce((sum, item) => sum + item.value, 0);
+  if (!data || data.length === 0 || total === 0) {
+    return (
+      <div className="chart-empty-container">
+        <svg className="chart-empty-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+        </svg>
+        <span className="chart-empty-text">
+          {emptyMessage || "No data available"}
+        </span>
+      </div>
+    );
+  }
 
   const size = 200;
   const radius = size / 2;
@@ -200,9 +211,20 @@ const SimplePieChart = ({ data, onSliceClick, isExpanded }) => {
   );
 };
 
-const SimpleBarChart = ({ data, onBarClick, isExpanded }) => {
-  const max = Math.max(...data.map((d) => d.value));
-  if (max === 0) return <div className="chart-empty">No data available</div>;
+const SimpleBarChart = ({ data, onBarClick, isExpanded, emptyMessage }) => {
+  const max = (data || []).length > 0 ? Math.max(...data.map((d) => d.value)) : 0;
+  if (!data || data.length === 0 || max === 0) {
+    return (
+      <div className="chart-empty-container">
+        <svg className="chart-empty-icon" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth="1.5">
+          <path strokeLinecap="round" strokeLinejoin="round" d="M11.25 11.25l.041-.02a.75.75 0 011.063.852l-.708 2.836a.75.75 0 001.063.853l.041-.021M21 12a9 9 0 11-18 0 9 9 0 0118 0zm-9-3.75h.008v.008H12V8.25z" />
+        </svg>
+        <span className="chart-empty-text">
+          {emptyMessage || "No data available"}
+        </span>
+      </div>
+    );
+  }
 
   return (
     <div className="chart-container bar-chart-container">
@@ -240,6 +262,87 @@ const SimpleBarChart = ({ data, onBarClick, isExpanded }) => {
               label={item.name}
             />
           ))}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const AIScopeDistributionWidget = ({ item, onTagClick, isExpanded }) => {
+  const data = item?.data || [];
+  const totalOccurrences = data.reduce((sum, d) => sum + (d.value || 0), 0);
+
+  if (data.length === 0 || totalOccurrences === 0) {
+    return (
+      <div className="ai-scope-empty-widget">
+        <div className="ai-scope-empty-header">
+          <div className="ai-scope-sparkle-avatar">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2" />
+            </svg>
+          </div>
+          <div className="ai-scope-empty-title">
+            {item.id === "sys_businessScope" ? "AI Business Scope" : "AI Macro Themes"}
+          </div>
+        </div>
+        <p className="ai-scope-empty-desc">
+          {item.emptyMessage || "No AI Scope data detected yet. Auto-classify primary revenue drivers and macro market themes using AI."}
+        </p>
+        <div className="ai-scope-cta-pill">
+          <span className="sparkle-icon">✨</span>
+          <span>Run <strong>'✨ AI Scope'</strong> in Stock Grid to auto-detect</span>
+        </div>
+      </div>
+    );
+  }
+
+  const maxItems = isExpanded ? data.length : 8;
+  const displayList = data.slice(0, maxItems);
+  const maxCount = Math.max(...data.map((d) => d.value), 1);
+
+  return (
+    <div className="ai-scope-widget-container">
+      <div className="ai-scope-metrics-bar">
+        <span className="ai-scope-total-badge">
+          ✨ {data.length} {item.id === "sys_businessScope" ? "Scopes" : "Themes"} Identified
+        </span>
+        <span className="ai-scope-occurrences">
+          {totalOccurrences} total mentions
+        </span>
+      </div>
+
+      <div className="ai-scope-tags-list themed-scroll">
+        {displayList.map((tagItem, idx) => {
+          const pct = Math.round((tagItem.value / maxCount) * 100);
+          return (
+            <div
+              key={tagItem.name}
+              className="ai-scope-tag-row"
+              onClick={(e) => onTagClick && onTagClick(tagItem, e)}
+              title={`${tagItem.name}: ${tagItem.value} stocks\nClick to view stocks`}
+            >
+              <div className="ai-scope-tag-info">
+                <span className={`ai-scope-tag-pill idx-${idx % 6}`}>
+                  {tagItem.name}
+                </span>
+                <span className="ai-scope-stock-count font-mono">
+                  {tagItem.value} {tagItem.value === 1 ? "stock" : "stocks"}
+                </span>
+              </div>
+              <div className="ai-scope-bar-track">
+                <div
+                  className={`ai-scope-bar-fill idx-${idx % 6}`}
+                  style={{ width: `${Math.max(pct, 4)}%` }}
+                />
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {!isExpanded && data.length > maxItems && (
+        <div className="ai-scope-more-hint">
+          + {data.length - maxItems} more categories (expand ⤢ to view all)
         </div>
       )}
     </div>
@@ -773,7 +876,210 @@ const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
 
 
 
+const AIScopeExpandedExplorer = ({ param, onClose, onChartClick }) => {
+  const [searchTerm, setSearchTerm] = useState("");
+  const [sortBy, setSortBy] = useState("count"); // "count" | "name"
+  const rawData = param.data || [];
+
+  const filteredData = useMemo(() => {
+    let result = rawData;
+    if (searchTerm.trim()) {
+      const q = searchTerm.toLowerCase().trim();
+      result = result.filter(
+        (item) =>
+          item.name.toLowerCase().includes(q) ||
+          (item.stocks && item.stocks.some((s) => s.toLowerCase().includes(q)))
+      );
+    }
+    if (sortBy === "count") {
+      result = [...result].sort((a, b) => b.value - a.value);
+    } else {
+      result = [...result].sort((a, b) => a.name.localeCompare(b.name));
+    }
+    return result;
+  }, [rawData, searchTerm, sortBy]);
+
+  const maxCount = useMemo(() => {
+    return rawData.length > 0 ? Math.max(...rawData.map((d) => d.value)) : 1;
+  }, [rawData]);
+
+  const totalMentions = useMemo(() => {
+    return rawData.reduce((sum, d) => sum + (d.value || 0), 0);
+  }, [rawData]);
+
+  return (
+    <div className="ai-scope-expanded-explorer">
+      {/* Expanded Header */}
+      <div className="ai-scope-exp-header">
+        <div className="ai-scope-exp-title-block">
+          <h3 className="ai-scope-exp-title">
+            <span>✨</span> {param.label} Breakdown
+          </h3>
+          <p className="ai-scope-exp-subtitle">
+            {rawData.length} Categories identified across portfolio • {totalMentions} total mentions
+          </p>
+        </div>
+
+        <div className="ai-scope-exp-controls">
+          {/* Search Input */}
+          <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
+            {/* Icon — absolutely centred, pointer-events off so it never blocks typing */}
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              style={{
+                position: "absolute",
+                left: "10px",
+                top: "50%",
+                transform: "translateY(-50%)",
+                width: "14px",
+                height: "14px",
+                color: "var(--muted, #64748b)",
+                pointerEvents: "none",
+                flexShrink: 0,
+                zIndex: 1,
+              }}
+            >
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z" />
+            </svg>
+            <input
+              type="text"
+              placeholder={`Search ${rawData.length} categories...`}
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              style={{
+                height: "32px",
+                width: "240px",
+                paddingLeft: "34px",
+                paddingRight: searchTerm ? "28px" : "10px",
+                paddingTop: 0,
+                paddingBottom: 0,
+                background: "var(--bg, #1e293b)",
+                border: "1px solid var(--border, #334155)",
+                borderRadius: "8px",
+                color: "var(--text, #f1f5f9)",
+                fontSize: "12px",
+                outline: "none",
+                boxSizing: "border-box",
+              }}
+            />
+            {searchTerm && (
+              <button
+                onClick={() => setSearchTerm("")}
+                title="Clear search"
+                style={{
+                  position: "absolute",
+                  right: "7px",
+                  top: "50%",
+                  transform: "translateY(-50%)",
+                  background: "transparent",
+                  border: "none",
+                  color: "var(--muted, #64748b)",
+                  fontSize: "15px",
+                  lineHeight: 1,
+                  cursor: "pointer",
+                  padding: "2px 3px",
+                  borderRadius: "4px",
+                }}
+              >
+                ×
+              </button>
+            )}
+          </div>
+
+          {/* Sort Control */}
+          <div className="ai-scope-exp-sort-group">
+            <button
+              onClick={() => setSortBy("count")}
+              className={`ai-scope-exp-sort-btn${sortBy === "count" ? " active" : ""}`}
+            >
+              Most Stocks
+            </button>
+            <button
+              onClick={() => setSortBy("name")}
+              className={`ai-scope-exp-sort-btn${sortBy === "name" ? " active" : ""}`}
+            >
+              Name (A-Z)
+            </button>
+          </div>
+
+          <button
+            className="expand-btn"
+            onClick={onClose}
+            title="Close expanded view"
+            style={{ fontSize: "20px" }}
+          >
+            ×
+          </button>
+        </div>
+      </div>
+
+      {/* Main Grid Content */}
+      <div className="ai-scope-exp-body flex-1 overflow-y-auto pt-4 themed-scroll">
+        {filteredData.length === 0 ? (
+          <div className="py-16 text-center text-slate-400 text-sm italic">
+            No categories matching "{searchTerm}"
+          </div>
+        ) : (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pb-6">
+            {filteredData.map((group, idx) => {
+              const pct = Math.round((group.value / maxCount) * 100);
+              return (
+                <div
+                  key={group.name}
+                  className="ai-scope-exp-card p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-800/40 hover:border-blue-500/50 dark:hover:border-blue-400/50 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+                  onClick={(e) => onChartClick(group, e)}
+                  title="Click to view full category stock details"
+                >
+                  <div>
+                    {/* Card Top Row */}
+                    <div className="flex items-start justify-between gap-2 mb-2">
+                      <span className={`ai-scope-tag-pill idx-${idx % 6} text-xs font-bold px-2 py-1 rounded-md`}>
+                        {group.name}
+                      </span>
+                      <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded-md whitespace-nowrap">
+                        {group.value} {group.value === 1 ? "stock" : "stocks"}
+                      </span>
+                    </div>
+
+                    {/* Progress Bar Track */}
+                    <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden mb-3">
+                      <div
+                        className={`h-full ai-scope-bar-fill idx-${idx % 6}`}
+                        style={{ width: `${Math.max(pct, 5)}%` }}
+                      />
+                    </div>
+                  </div>
+
+                  {/* Stock Tickers Pills */}
+                  {group.stocks && group.stocks.length > 0 && (
+                    <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/50">
+                      {group.stocks.map((stockSymbol) => (
+                        <span
+                          key={stockSymbol}
+                          className="font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
+                        >
+                          {stockSymbol}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const ExpandedView = ({ param, onClose, onChartClick }) => {
+  if (param.id === "sys_businessScope" || param.id === "sys_dependentThemes" || param.type === "ai-scope") {
+    return <AIScopeExpandedExplorer param={param} onClose={onClose} onChartClick={onChartClick} />;
+  }
+
   const renderChart = () => {
     // This logic determines the best chart for the expanded view.
     // For categorical data, a pie chart gives a great overview of proportions.
@@ -799,7 +1105,6 @@ const ExpandedView = ({ param, onClose, onChartClick }) => {
             isExpanded={true} 
             totalStocks={param.totalStocksCount}
           />
-
         ) : param.chartType === "bar" ? (
           <SimpleBarChart data={param.data} onBarClick={onChartClick} isExpanded={true} />
         ) : (
@@ -1259,6 +1564,66 @@ const AnalyticsDashboard = ({
           .sort((a, b) => b.value - a.value),
       });
     }
+
+    // 4. Business Scope Distribution
+    const scopeCounts = {};
+    filteredStocks.forEach((stock) => {
+      const rawScope = stock.businessScope;
+      const scopeArray = Array.isArray(rawScope)
+        ? rawScope
+        : typeof rawScope === "string"
+        ? rawScope.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+      if (scopeArray.length > 0) {
+        scopeArray.forEach((scope) => {
+          if (scope && scope.trim()) {
+            if (!scopeCounts[scope]) scopeCounts[scope] = { value: 0, stocks: [] };
+            scopeCounts[scope].value++;
+            scopeCounts[scope].stocks.push(stock.symbol || stock.ticker || "Unknown");
+          }
+        });
+      }
+    });
+
+    systemMetrics.push({
+      id: "sys_businessScope",
+      label: "Business Scope Distribution",
+      type: "select",
+      emptyMessage: "No Business Scope detected yet. Run '✨ AI Scope' in Stock Grid to auto-detect business scope for your stocks.",
+      data: Object.keys(scopeCounts)
+        .map((k) => ({ name: k, paramLabel: "Business Scope", ...scopeCounts[k] }))
+        .sort((a, b) => b.value - a.value),
+    });
+
+    // 5. Macro Themes / Dependent Industries Distribution
+    const themeCounts = {};
+    filteredStocks.forEach((stock) => {
+      const rawTheme = stock.dependentIndustries || stock.dependentThemes;
+      const themeArray = Array.isArray(rawTheme)
+        ? rawTheme
+        : typeof rawTheme === "string"
+        ? rawTheme.split(",").map((s) => s.trim()).filter(Boolean)
+        : [];
+      if (themeArray.length > 0) {
+        themeArray.forEach((theme) => {
+          if (theme && theme.trim()) {
+            if (!themeCounts[theme]) themeCounts[theme] = { value: 0, stocks: [] };
+            themeCounts[theme].value++;
+            themeCounts[theme].stocks.push(stock.symbol || stock.ticker || "Unknown");
+          }
+        });
+      }
+    });
+
+    systemMetrics.push({
+      id: "sys_dependentThemes",
+      label: "Macro Theme Distribution",
+      type: "select",
+      emptyMessage: "No Macro Theme data detected yet. Run '✨ AI Scope' in Stock Grid to auto-detect dependent industries for your stocks.",
+      data: Object.keys(themeCounts)
+        .map((k) => ({ name: k, paramLabel: "Macro Theme", ...themeCounts[k] }))
+        .sort((a, b) => b.value - a.value),
+    });
 
     // 4. Custom Parameters
     const paramMetrics = parameters.map((param) => {
@@ -1765,15 +2130,21 @@ const AnalyticsDashboard = ({
                           onBarClick={(data, e) => handleChartClick(data, e, item)}
                           totalStocks={stocks.length}
                         />
-
+                      ) : item.id === "sys_businessScope" || item.id === "sys_dependentThemes" || item.type === "ai-scope" ? (
+                        <AIScopeDistributionWidget
+                          item={item}
+                          onTagClick={(data, e) => handleChartClick(data, e, item)}
+                        />
                       ) : item.chartType === "pie" ? (
                         <SimplePieChart
                           data={item.data}
+                          emptyMessage={item.emptyMessage}
                           onSliceClick={(data, e) => handleChartClick(data, e, item)}
                         />
                       ) : (
                         <SimpleBarChart
                           data={item.data}
+                          emptyMessage={item.emptyMessage}
                           onBarClick={(data, e) => handleChartClick(data, e, item)}
                         />
                       )}

@@ -689,7 +689,10 @@ export default function UserGuideModal({
                     list.
                   </li>
                   <li>
-                    <strong>Live Syncing:</strong> When adding stocks or switching weeks, the app automatically fetches ADR and Liquidity in the background. A progress bar in the header tracks this status.
+                    <strong>Live Syncing:</strong> When adding stocks or switching weeks, the app automatically fetches ADR and Liquidity in the background. A progress capsule in the header tracks both technical metrics sync and AI processing simultaneously — hover it to see exact progress.
+                  </li>
+                  <li>
+                    <strong>VCP Tightness Badges:</strong> Volatility Contraction Pattern tightness is displayed as inline badges (<em>Tight</em>, <em>Moderate</em>, <em>Wide</em>) directly in the grid, letting you spot stage 2 base quality at a glance without opening each stock.
                   </li>
                 </ul>
               </Section>
@@ -723,6 +726,9 @@ export default function UserGuideModal({
                     on quality.
                   </li>
                   <li>
+                    <strong>Multi-Select Dropdown Search:</strong> Filter dropdowns for Sectors, Tags, Patterns and other multi-value criteria include an embedded live search bar — type to instantly narrow long option lists without scrolling.
+                  </li>
+                  <li>
                     <strong>Interactive Daily Trend Filters:</strong> Click the
                     Advances (▲) or Declines (▼) count badges in the grid header
                     to filter the list instantly for stocks that are UP or DOWN
@@ -748,8 +754,16 @@ export default function UserGuideModal({
                     date picker to see a snapshot of the week's health.
                   </li>
                   <li>
-                    <strong>Analytics (Chart Icon):</strong> Visualize distributions
-                    of Sectors, Tags, and Parameters to spot concentration risks. Use the <strong>Download</strong> button to save a professional PDF report.
+                    <strong>Analytics Dashboard (Chart Icon):</strong> Visualize distributions of Sectors, Tags, Parameters, and AI Scope to spot concentration risks. Use the <strong>Download</strong> button to save a professional PDF report.
+                  </li>
+                  <li>
+                    <strong>AI Business Scope & Macro Theme Detector (✨ AI Scope):</strong> Click <strong>AI Scope</strong> in the Stock Grid header or use <em>Bulk Categorization</em> to automatically classify each stock's primary revenue drivers, business scopes, and dependent macro market themes using Gemini AI. Results populate the <strong>Business Scope</strong> and <strong>Macro Theme</strong> columns in the grid.
+                  </li>
+                  <li>
+                    <strong>AI Scope Breakdown Widgets:</strong> The Analytics Dashboard includes dedicated tag-pill breakdown widgets for Business Scope Distribution and Macro Theme Distribution — replacing generic bar charts with richer intelligence-driven layouts. Each widget shows category pills, stock counts, and color-coded mini progress bars.
+                  </li>
+                  <li>
+                    <strong>Expanded Explorer (⤢ Expand):</strong> Click the expand icon on any AI Scope widget to open a full-width 3-column explorer. Use the built-in <strong>search bar</strong> to filter categories in real time, and toggle between <strong>Most Stocks</strong> and <strong>Name (A-Z)</strong> sort modes. Each category card shows all stocks assigned to it.
                   </li>
                   <li>
                     <strong>AI Analysis (✨):</strong> Sends anonymized data to Google
@@ -839,6 +853,9 @@ export default function UserGuideModal({
                     <strong>Moving Average settings (MAs):</strong> Click the <em>Gear Icon (MAs)</em> next to the timeframe selector to toggle which SMAs are displayed on the chart, customize line colors, and adjust thicknesses (1px to 4px).
                   </li>
                   <li>
+                    <strong>Infinity Chart Data Loading:</strong> Charts in Deep View Workspace support continuous historical price backfilling. Scroll left on the chart to dynamically load older price bars on demand — seamlessly browse years of price action without hitting a data cutoff.
+                  </li>
+                  <li>
                     <strong>Navigation:</strong> Use <code>ArrowUp</code> / <code>ArrowDown</code> and <code>ArrowLeft</code> / <code>ArrowRight</code> keys to browse watchlist stocks. Switch symbols quickly via the <em>Search (Ctrl+K)</em> bar.
                   </li>
                 </ul>
@@ -876,7 +893,7 @@ export default function UserGuideModal({
                 </p>
                 <ul className="guide-list">
                   <li>
-                    <strong>Mini Candlestick Charts:</strong> Small charts displaying the historical price action of each index. Hover or check the fullscreen layout for details.
+                    <strong>Mini Candlestick Charts:</strong> Small charts displaying the historical price action of each index. Click the fullscreen expand icon for an interactive chart view. Charts support <strong>continuous historical backfilling</strong> — scroll left to load older bars on demand, giving you seamless access to years of price data.
                   </li>
                   <li>
                     <strong>52-Week Range Bar:</strong> Shows the current position of the index between its yearly low (L) and yearly high (H). A fill ratio near 100% signifies it is trading at or near new yearly highs, indicating potential breakouts.

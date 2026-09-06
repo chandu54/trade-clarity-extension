@@ -1,30 +1,76 @@
 {
   "IN": {
     "RELIANCE": {
-      "sector": "Energy"
+      "sector": "Energy",
+      "businessScope": ["Oil Refining", "Petrochemicals", "Retail", "5G Telecom", "Green Energy"],
+      "dependentIndustries": ["Energy Transition", "Consumer Retail", "Digital Services"]
     },
     "TCS": {
-      "sector": "IT"
+      "sector": "IT",
+      "businessScope": ["IT Consulting", "Cloud Services", "AI Enterprise Solutions", "Cybersecurity"],
+      "dependentIndustries": ["Enterprise AI", "Cloud Computing", "Digital Transformation"]
     },
     "HDFCBANK": {
-      "sector": "Banks"
+      "sector": "Banks",
+      "businessScope": ["Retail Banking", "Corporate Credit", "Housing Loans", "Digital Payments"],
+      "dependentIndustries": ["Financial Services", "Consumer Credit", "Real Estate"]
     },
     "INFY": {
-      "sector": "IT"
+      "sector": "IT",
+      "businessScope": ["Software Development", "AI Automation", "Cloud Platforms", "Fintech Systems"],
+      "dependentIndustries": ["Enterprise AI", "Cloud Infrastructure"]
+    },
+    "ITC": {
+      "sector": "FMCG",
+      "businessScope": ["Cigarettes", "Packaged Foods", "Paper & Packaging", "Hotels", "Agri-Business"],
+      "dependentIndustries": ["Consumer Staples", "Hospitality", "Agri-Tech"]
+    },
+    "STLTECH": {
+      "sector": "Telecom",
+      "businessScope": ["Optical Fiber Cables", "AI Data Center Interconnects", "5G Connectivity"],
+      "dependentIndustries": ["AI Infrastructure", "Data Centers", "5G Networks"]
+    },
+    "FINCABLES": {
+      "sector": "Electricals",
+      "businessScope": ["Power Cables", "Fiber Optic Cables", "Copper Conductors", "Home Appliances"],
+      "dependentIndustries": ["AI Infrastructure", "Data Centers", "Power Grid", "Construction"]
     },
     "ADANIPORTS": {
-      "sector": "Infrastructure"
+      "sector": "Infrastructure",
+      "businessScope": ["Port Management", "Logistics Parks", "Special Economic Zones", "Marine Services"],
+      "dependentIndustries": ["Global Trade", "Logistics & Freight"]
     }
   },
   "US": {
     "AAPL": {
-      "sector": "Technology"
+      "sector": "Technology",
+      "businessScope": ["Smartphones", "Personal Computers", "Wearables", "Services & Subscriptions"],
+      "dependentIndustries": ["Consumer Electronics", "Digital Ecosystems"]
     },
     "MSFT": {
-      "sector": "Technology"
+      "sector": "Technology",
+      "businessScope": ["Azure Cloud", "Enterprise AI (Copilot)", "Windows OS", "Gaming (Xbox)"],
+      "dependentIndustries": ["AI Infrastructure", "Cloud Computing", "Enterprise Software"]
     },
     "GOOGL": {
-      "sector": "Technology"
+      "sector": "Technology",
+      "businessScope": ["Google Search", "YouTube", "Google Cloud", "Gemini AI", "Android"],
+      "dependentIndustries": ["AI Infrastructure", "Digital Advertising", "Cloud Computing"]
+    },
+    "NVDA": {
+      "sector": "Technology",
+      "businessScope": ["AI GPUs", "Data Center Accelerators", "CUDA Platform", "Networking Chips"],
+      "dependentIndustries": ["AI Infrastructure", "Data Centers", "High Performance Computing"]
+    },
+    "AMZN": {
+      "sector": "Technology",
+      "businessScope": ["E-commerce", "AWS Cloud", "Digital Advertising", "Logistics"],
+      "dependentIndustries": ["Cloud Infrastructure", "E-commerce", "AI Services"]
+    },
+    "TSLA": {
+      "sector": "Auto",
+      "businessScope": ["Electric Vehicles", "Energy Storage", "Full Self Driving AI", "Solar Panels"],
+      "dependentIndustries": ["EV Supply Chain", "Clean Energy", "Autonomous Tech"]
     }
   }
 }

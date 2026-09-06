@@ -15,6 +15,8 @@ export default function WatchlistFilterDrawer({
   sectors = [],
   isTagFilterable,
   availableTags = [],
+  availableScopes = [],
+  availableThemes = [],
   filterableParams = [],
   isTradableFilterable,
   country = "IN",
@@ -188,6 +190,68 @@ export default function WatchlistFilterDrawer({
                         : filters.__tag__ !== "") && (
                         <ClearButton
                           onClick={() => setFilter("__tag__", [])}
+                          isSelect
+                        />
+                      )}
+                  </div>
+                </div>
+              )}
+
+              {/* Business Scope Filter */}
+              {(availableScopes || []).length > 0 && (
+                <div className="drawer-filter-item">
+                  <label htmlFor="drawer-scope-filter">Business Scope</label>
+                  <div className="filter-input-wrapper">
+                    <MultiSelectDropdown
+                      id="drawer-scope-filter"
+                      options={availableScopes}
+                      value={
+                        Array.isArray(filters.__businessScope__)
+                          ? filters.__businessScope__
+                          : filters.__businessScope__
+                            ? [filters.__businessScope__]
+                            : []
+                      }
+                      onChange={(val) => setFilter("__businessScope__", val)}
+                      placeholder="All Business Scopes"
+                    />
+                    {filters.__businessScope__ &&
+                      (Array.isArray(filters.__businessScope__)
+                        ? filters.__businessScope__.length > 0
+                        : filters.__businessScope__ !== "") && (
+                        <ClearButton
+                          onClick={() => setFilter("__businessScope__", [])}
+                          isSelect
+                        />
+                      )}
+                  </div>
+                </div>
+              )}
+
+              {/* Dependent Themes Filter */}
+              {(availableThemes || []).length > 0 && (
+                <div className="drawer-filter-item">
+                  <label htmlFor="drawer-theme-filter">Dependent Themes</label>
+                  <div className="filter-input-wrapper">
+                    <MultiSelectDropdown
+                      id="drawer-theme-filter"
+                      options={availableThemes}
+                      value={
+                        Array.isArray(filters.__dependentIndustries__)
+                          ? filters.__dependentIndustries__
+                          : filters.__dependentIndustries__
+                            ? [filters.__dependentIndustries__]
+                            : []
+                      }
+                      onChange={(val) => setFilter("__dependentIndustries__", val)}
+                      placeholder="All Macro Themes"
+                    />
+                    {filters.__dependentIndustries__ &&
+                      (Array.isArray(filters.__dependentIndustries__)
+                        ? filters.__dependentIndustries__.length > 0
+                        : filters.__dependentIndustries__ !== "") && (
+                        <ClearButton
+                          onClick={() => setFilter("__dependentIndustries__", [])}
                           isSelect
                         />
                       )}

@@ -52,6 +52,15 @@ export async function loadData() {
     needsSave = true;
   }
 
+  if (!("__businessScope__" in data.uiConfig.columnVisibility)) {
+    data.uiConfig.columnVisibility.__businessScope__ = true;
+    needsSave = true;
+  }
+  if (!("__dependentIndustries__" in data.uiConfig.columnVisibility)) {
+    data.uiConfig.columnVisibility.__dependentIndustries__ = true;
+    needsSave = true;
+  }
+
   Object.keys(data.paramDefinitions).forEach((key) => {
     if (!(key in data.uiConfig.columnVisibility)) {
       data.uiConfig.columnVisibility[key] = true;
@@ -155,8 +164,19 @@ export async function loadData() {
     } catch { /* ignore silently */ }
   }
 
-  if (needsSave && isChromeStorage()) {
-    chrome.storage.local.remove([AI_KEY_STORE, AI_MODEL_STORE, "ai_prompt", CUSTOM_PROMPTS_STORE]);
+  const safeRemove = (key) => {
+    if (isChromeStorage() && typeof chrome.storage.local.remove === 'function') {
+      chrome.storage.local.remove(key);
+    } else if (typeof window !== 'undefined' && window.localStorage && typeof window.localStorage.removeItem === 'function') {
+      const keysToClear = Array.isArray(key) ? key : [key];
+      keysToClear.forEach(k => {
+        try { localStorage.removeItem(k); } catch (_e) { /* ignore */ }
+      });
+    }
+  };
+
+  if (needsSave) {
+    safeRemove([AI_KEY_STORE, AI_MODEL_STORE, "ai_prompt", CUSTOM_PROMPTS_STORE]);
   }
 
   // --- NEW: Pro Status Migration ---
@@ -168,11 +188,7 @@ export async function loadData() {
   if (legacyPro !== null) {
     data.isPro = legacyPro === "true" || legacyPro === true;
     needsSave = true;
-    if (isChromeStorage()) {
-      chrome.storage.local.remove(PRO_KEY);
-    } else {
-      localStorage.removeItem(PRO_KEY);
-    }
+    safeRemove(PRO_KEY);
   }
 
   // --- NEW: Theme Migration ---
@@ -184,11 +200,7 @@ export async function loadData() {
   if (legacyTheme) {
     data.theme = legacyTheme;
     needsSave = true;
-    if (isChromeStorage()) {
-      chrome.storage.local.remove(THEME_KEY);
-    } else {
-      localStorage.removeItem(THEME_KEY);
-    }
+    safeRemove(THEME_KEY);
   }
 
   // --- NEW: Analytics Layout Migration ---
@@ -203,11 +215,7 @@ export async function loadData() {
         ? JSON.parse(legacyAnalytics) 
         : legacyAnalytics;
       needsSave = true;
-      if (isChromeStorage()) {
-        chrome.storage.local.remove(ANALYTICS_KEY);
-      } else {
-        localStorage.removeItem(ANALYTICS_KEY);
-      }
+      safeRemove(ANALYTICS_KEY);
     } catch {
       // Ignore corrupted layout
     }
@@ -280,6 +288,11 @@ export async function loadData() {
     needsSave = true;
   }
 
+  if (!data.drawings) {
+    data.drawings = {};
+    needsSave = true;
+  }
+
   /* =========================
      SAVE BACK ONLY IF CHANGED
   ========================= */
@@ -298,4 +311,57 @@ export async function saveData(data) {
   } else {
     localStorage.setItem(KEY, JSON.stringify(data));
   }
+}
+
+function normalizeSymbolKey(symbol) {
+  if (!symbol) return '';
+  return String(symbol).replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
+}
+
+export async function getDrawingsForSymbol(symbol) {
+  const key = normalizeSymbolKey(symbol);
+  if (!key) return [];
+  const data = await loadData();
+  const drawings = data.drawings || {};
+  return drawings[key] || [];
+}
+
+export async function saveDrawingForSymbol(symbol, drawing) {
+  const key = normalizeSymbolKey(symbol);
+  if (!key || !drawing) return [];
+  const data = await loadData();
+  data.drawings = data.drawings || {};
+  const current = data.drawings[key] || [];
+  
+  const idx = current.findIndex(d => d.id === drawing.id);
+  if (idx >= 0) {
+    current[idx] = drawing;
+  } else {
+    current.push(drawing);
+  }
+  
+  data.drawings[key] = current;
+  await saveData(data);
+  return current;
+}
+
+export async function deleteDrawingForSymbol(symbol, drawingId) {
+  const key = normalizeSymbolKey(symbol);
+  if (!key || !drawingId) return [];
+  const data = await loadData();
+  data.drawings = data.drawings || {};
+  const current = data.drawings[key] || [];
+  data.drawings[key] = current.filter(d => d.id !== drawingId);
+  await saveData(data);
+  return data.drawings[key];
+}
+
+export async function clearDrawingsForSymbol(symbol) {
+  const key = normalizeSymbolKey(symbol);
+  if (!key) return [];
+  const data = await loadData();
+  data.drawings = data.drawings || {};
+  data.drawings[key] = [];
+  await saveData(data);
+  return [];
 }

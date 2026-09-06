@@ -49,6 +49,18 @@ Return ONLY a strict JSON object mapping each ticker symbol to its object contai
     label: "Daily Price Action & Sentiment Analysis",
     text: "Act as a senior institutional technical analyst.\nConduct a structured daily momentum report for: {symbol} ({name}).\n\nAnalyze the price action today (Change: {dailyChangePct}%) within the broader trend context ({timeframe} Change: {periodChangePct}%).\nYour goal is to explain the driving force behind this daily move (e.g., potential Circuit Limit breakouts, volume spikes, or trend reversals).\n\nCurrent Quote Context:\n- Price: {price}\n- Day Change: {dailyChangePct}%\n- Period ({timeframe}) Change: {periodChangePct}%\n- Sector: {sector}\n- Tags: {tags}\n- Notes: {notes}\n\nOutput MUST follow this EXACT structure:\n\n### CATALYST & MOVE ANALYSIS\n- **Move Type**: [Specify if UC (Upper Circuit), LC (Lower Circuit), High Volume Breakout, or Standard Range]\n- **Key Driver**: [Identify the likely technical/narrative reason for today's price behavior]\n- **Volume Profile**: [Assess today's volume relative to typical liquidity]\n\n### MOMENTUM & METRIC ANALYSIS\n- **Trend Alignment**: [Is today's move aligning with or counter to the broader trend?]\n- **Relative Strength vs. Sector**: [How did the stock perform relative to the {sector} sector today?]\n\n### CRITICAL LEVELS\n- **Support Levels**: [Key support levels where buyers are expected to stand]\n- **Resistance Levels**: [Immediate resistance levels or target boundaries]\n\n### OUTLOOK & ACTION PLAN\n- **Next-Day Expectation**: [What is the expected follow-through price action tomorrow?]\n- **Invalidation Level**: [The price level where today's move is technically invalidated]\n\n### VERDICT\n[BUY/WAIT/SELL] - [Brief decision-driven summary based on today's move]",
   },
+  {
+    value: "business_scope",
+    label: "Business Scope & Dependent Industry Discovery",
+    text: `Act as a senior equity research analyst.
+Extract the core Business Scope (key product lines/services, min 3, max 8 items) and Dependent/Beneficiary Industries & Macro Themes (top Themes - Min 3, Max 10), e.g. "AI Infrastructure", "Data Centers", "EV Supply Chain", "Defense Localization") for stock symbol: {symbol} ({name}).
+
+Return ONLY a strict JSON object:
+{
+  "businessScope": ["Segment 1", "Segment 2", "Segment 3"],
+  "dependentIndustries": ["Theme 1", "Theme 2"]
+}`,
+  },
 ];
 
 export async function getAiAnalysis(
@@ -188,7 +200,7 @@ export async function getBulkStockVerdicts(
   model,
   stocks,
   timeframe = "3mo",
-  customPromptText = null
+  customPromptText = null,
 ) {
   if (!apiKey)
     throw new Error("API Key is missing. Please add it in Settings.");
@@ -196,16 +208,21 @@ export async function getBulkStockVerdicts(
   if (!stocks || stocks.length === 0) return {};
 
   const stocksJson = JSON.stringify(
-    stocks.map(s => {
-      const priceVal = s.currentPrice != null && s.currentPrice !== "N/A"
-        ? (typeof s.currentPrice === "number" ? s.currentPrice.toFixed(2) : s.currentPrice)
-        : "N/A";
-      const dChange = s.dailyChangePct != null
-        ? `${Number(s.dailyChangePct) >= 0 ? "+" : ""}${Number(s.dailyChangePct).toFixed(2)}%`
-        : "0%";
-      const pChange = s.periodChangePct != null
-        ? `${Number(s.periodChangePct) >= 0 ? "+" : ""}${Number(s.periodChangePct).toFixed(2)}%`
-        : "0%";
+    stocks.map((s) => {
+      const priceVal =
+        s.currentPrice != null && s.currentPrice !== "N/A"
+          ? typeof s.currentPrice === "number"
+            ? s.currentPrice.toFixed(2)
+            : s.currentPrice
+          : "N/A";
+      const dChange =
+        s.dailyChangePct != null
+          ? `${Number(s.dailyChangePct) >= 0 ? "+" : ""}${Number(s.dailyChangePct).toFixed(2)}%`
+          : "0%";
+      const pChange =
+        s.periodChangePct != null
+          ? `${Number(s.periodChangePct) >= 0 ? "+" : ""}${Number(s.periodChangePct).toFixed(2)}%`
+          : "0%";
       const maVal = s.movingAverages || s.params?.movingAverages || "N/A";
       const adrVal = s.adr || s.params?.adr || "N/A";
       const liqVal = s.liquidity || s.params?.liquidity || "N/A";
@@ -221,9 +238,9 @@ export async function getBulkStockVerdicts(
         liquidity: liqVal,
         sector: s.sector || "Unknown",
         tags: (s.tags || []).join(", "),
-        notes: s.notes || ""
+        notes: s.notes || "",
       };
-    })
+    }),
   );
 
   let prompt =
@@ -323,39 +340,45 @@ export function parseAiError(error) {
       message: "An unexpected AI error occurred.",
       isQuota: false,
       providerName: "Google Gemini",
-      providerUrl: "https://aistudio.google.com/"
+      providerUrl: "https://aistudio.google.com/",
     };
   }
 
   const rawMsg = typeof error === "string" ? error : error.message || "";
-  const isQuota = rawMsg.includes("Quota Limit Reached") || 
-                  rawMsg.includes("RESOURCE_EXHAUSTED") || 
-                  rawMsg.includes("QuotaExceeded") || 
-                  rawMsg.includes("429") ||
-                  rawMsg.includes("AI Request Limit Reached");
+  const isQuota =
+    rawMsg.includes("Quota Limit Reached") ||
+    rawMsg.includes("RESOURCE_EXHAUSTED") ||
+    rawMsg.includes("QuotaExceeded") ||
+    rawMsg.includes("429") ||
+    rawMsg.includes("AI Request Limit Reached");
 
-  const isInvalidKey = rawMsg.includes("API Key") || 
-                       rawMsg.includes("API_KEY_INVALID") || 
-                       rawMsg.includes("400") || 
-                       rawMsg.includes("403");
+  const isInvalidKey =
+    rawMsg.includes("API Key") ||
+    rawMsg.includes("API_KEY_INVALID") ||
+    rawMsg.includes("400") ||
+    rawMsg.includes("403");
 
-  const isUnavailable = rawMsg.includes("500") || 
-                        rawMsg.includes("503") || 
-                        rawMsg.includes("UNAVAILABLE") || 
-                        rawMsg.includes("Overloaded");
+  const isUnavailable =
+    rawMsg.includes("500") ||
+    rawMsg.includes("503") ||
+    rawMsg.includes("UNAVAILABLE") ||
+    rawMsg.includes("Overloaded");
 
   let type = "UNKNOWN";
   let message = rawMsg;
 
   if (isQuota) {
     type = "QUOTA_EXCEEDED";
-    message = "Gemini API Quota Limit Reached. Your AI provider (Google Gemini) has temporarily paused requests due to free-tier quota limits. Please check your plan quota at Google AI Studio or try again later.";
+    message =
+      "Gemini API Quota Limit Reached. Your AI provider (Google Gemini) has temporarily paused requests due to free-tier quota limits. Please check your plan quota at Google AI Studio or try again later.";
   } else if (isInvalidKey) {
     type = "INVALID_KEY";
-    message = "Invalid Gemini API Key. Google Gemini rejected the provided API key. Please check or update your key in Settings.";
+    message =
+      "Invalid Gemini API Key. Google Gemini rejected the provided API key. Please check or update your key in Settings.";
   } else if (isUnavailable) {
     type = "SERVICE_UNAVAILABLE";
-    message = "Gemini Service Temporarily Unavailable. Google Gemini servers are experiencing high load or maintenance. Please try again in a few minutes.";
+    message =
+      "Gemini Service Temporarily Unavailable. Google Gemini servers are experiencing high load or maintenance. Please try again in a few minutes.";
   }
 
   return {
@@ -364,7 +387,7 @@ export function parseAiError(error) {
     isQuota,
     rawMessage: rawMsg,
     providerName: "Google Gemini",
-    providerUrl: "https://aistudio.google.com/"
+    providerUrl: "https://aistudio.google.com/",
   };
 }
 
@@ -389,13 +412,17 @@ async function getAiState() {
     return new Promise((resolve) => {
       chrome.storage.local.get(["trading_app_data"], (res) => {
         const db = res?.trading_app_data || {};
-        resolve(db.aiSettings?.aiState || { continuousFailures: 0, blockedUntil: 0 });
+        resolve(
+          db.aiSettings?.aiState || { continuousFailures: 0, blockedUntil: 0 },
+        );
       });
     });
   } else {
     try {
       const db = JSON.parse(localStorage.getItem("trading_app_data")) || {};
-      return db.aiSettings?.aiState || { continuousFailures: 0, blockedUntil: 0 };
+      return (
+        db.aiSettings?.aiState || { continuousFailures: 0, blockedUntil: 0 }
+      );
     } catch {
       return { continuousFailures: 0, blockedUntil: 0 };
     }
@@ -439,12 +466,26 @@ async function incrementAiFailureCount(errMsg) {
   await updateAiState(newFailures, blockedUntil);
 }
 
-async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3, skipCircuitBreaker = false) {
+async function fetchGemini(
+  apiKey,
+  prompt,
+  model,
+  isCustom = false,
+  retries = 3,
+  skipCircuitBreaker = false,
+  enableFallback = true,
+) {
   // Check if AI is currently blocked
   const state = await getAiState();
-  if (state.blockedUntil && state.blockedUntil > Date.now()) {
+  if (
+    !skipCircuitBreaker &&
+    state.blockedUntil &&
+    state.blockedUntil > Date.now()
+  ) {
     const remainingSecs = Math.ceil((state.blockedUntil - Date.now()) / 1000);
-    throw new Error(`AI Request Limit Reached. Available again in ${remainingSecs}s.`);
+    throw new Error(
+      `AI Request Limit Reached. Available again in ${remainingSecs}s.`,
+    );
   }
 
   // 1. Clean the model ID (ensure no redundant prefix)
@@ -458,8 +499,8 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3,
 
   for (let attempt = 1; attempt <= retries; attempt++) {
     const controller = new AbortController();
-    // 10 minute timeout per request to accommodate models with 'thinking' phases
-    const timeoutId = setTimeout(() => controller.abort(), 600000);
+    // 45-second timeout per API request (prevents background fetch sockets from hanging indefinitely)
+    const timeoutId = setTimeout(() => controller.abort(), 45000);
 
     try {
       const response = await fetch(url, {
@@ -471,9 +512,11 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3,
         signal: controller.signal,
         body: JSON.stringify({
           contents: [{ parts: [{ text: prompt }] }],
-          generationConfig: isCustom ? undefined : {
-            responseMimeType: "application/json"
-          }
+          generationConfig: isCustom
+            ? undefined
+            : {
+                responseMimeType: "application/json",
+              },
         }),
       });
 
@@ -482,7 +525,7 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3,
       if (!response.ok) {
         let err = {};
         try {
-          if (typeof response.json === 'function') {
+          if (typeof response.json === "function") {
             err = (await response.json()) || {};
           }
         } catch (_e) {
@@ -490,7 +533,7 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3,
         }
         const errMessage =
           err.error?.message ||
-          `Gemini API Error: ${response.status} ${response.statusText || ''} (${cleanModel})`.trim();
+          `Gemini API Error: ${response.status} ${response.statusText || ""} (${cleanModel})`.trim();
 
         // Quota / Credit Exhaustion Circuit Breaker
         if (
@@ -498,19 +541,72 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3,
           errMessage.includes("RESOURCE_EXHAUSTED") ||
           errMessage.includes("QuotaExceeded")
         ) {
+          // Automatic Model Fallback on Quota Exhaustion
+          if (enableFallback) {
+            const fallbackChain = CONFIG.FALLBACK_MODELS || [
+              "gemini-2.5-flash",
+              "gemini-3.5-flash",
+              "gemini-2.0-flash",
+              "gemini-1.5-flash",
+            ];
+            const currentIdx = fallbackChain.indexOf(cleanModel);
+            const nextModel =
+              fallbackChain[currentIdx + 1] ||
+              fallbackChain.find((m) => m !== cleanModel);
+            if (nextModel) {
+              console.warn(
+                `[Model Fallback] Quota limit on ${cleanModel}. Automatically switching request to fallback model ${nextModel}...`,
+              );
+              if (
+                typeof chrome !== "undefined" &&
+                chrome.runtime?.sendMessage
+              ) {
+                try {
+                  const res = chrome.runtime.sendMessage({
+                    action: "MODEL_FALLBACK_TRIGGERED",
+                    payload: {
+                      primaryModel: cleanModel,
+                      fallbackModel: nextModel,
+                    },
+                  });
+                  if (res && typeof res.catch === "function")
+                    res.catch(() => {});
+                } catch (_e) {
+                  // Ignore extension messaging errors in non-extension environments
+                }
+              }
+              return await fetchGemini(
+                apiKey,
+                prompt,
+                nextModel,
+                isCustom,
+                retries,
+                skipCircuitBreaker,
+                false,
+              );
+            }
+          }
+
           const retryMs = parseRetryAfterMs(errMessage, 65000);
           if (!skipCircuitBreaker) {
             const blockedUntil = Date.now() + retryMs;
             await updateAiState(3, blockedUntil);
             if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
-              chrome.runtime.sendMessage({
-                action: "AI_LIMIT_REACHED",
-                payload: { blockedUntil }
-              }).catch(() => {});
+              try {
+                const res = chrome.runtime.sendMessage({
+                  action: "AI_LIMIT_REACHED",
+                  payload: { blockedUntil },
+                });
+                if (res && typeof res.catch === "function") res.catch(() => {});
+              } catch (_e) {
+                // Ignore
+              }
             }
           }
           const secs = Math.ceil(retryMs / 1000);
-          throw new Error(`RESOURCE_EXHAUSTED: Gemini API Quota Limit. Retry in ${secs}s.`);
+          throw new Error(
+            `RESOURCE_EXHAUSTED: Gemini API Quota Limit. Retry in ${secs}s.`,
+          );
         }
 
         throw new Error(errMessage);
@@ -525,18 +621,39 @@ async function fetchGemini(apiKey, prompt, model, isCustom = false, retries = 3,
       return parseResponse(text, isCustom);
     } catch (error) {
       clearTimeout(timeoutId);
-      
+
       // If it is the block error we threw on entry, don't count it as a failure
       if (error.message && error.message.includes("AI Request Limit Reached")) {
         throw error;
       }
 
       let finalError = error;
-      if (error.name === 'AbortError') {
-        finalError = new Error("The AI request timed out. Please try again.", { cause: error });
+      if (error.name === "AbortError") {
+        finalError = new Error("The AI request timed out. Please try again.", {
+          cause: error,
+        });
       }
 
-      await incrementAiFailureCount(finalError.message || String(finalError));
+      // If more retries remain for non-rate-limit transient network errors, wait and retry attempt
+      if (attempt < retries) {
+        const errMsg = finalError.message || "";
+        const isRateLimit =
+          errMsg.includes("quota") ||
+          errMsg.includes("429") ||
+          errMsg.includes("rate") ||
+          errMsg.includes("RESOURCE_EXHAUSTED");
+        if (!isRateLimit) {
+          console.warn(
+            `[fetchGemini] Request attempt ${attempt}/${retries} failed (${finalError.message}). Retrying in 1.5s...`,
+          );
+          await new Promise((r) => setTimeout(r, 1500));
+          continue;
+        }
+      }
+
+      if (!skipCircuitBreaker) {
+        await incrementAiFailureCount(finalError.message || String(finalError));
+      }
       throw finalError;
     }
   }
@@ -574,7 +691,7 @@ function generatePrompt(
     sector: s.sector || s.industry || "Unknown",
     rsRating: s.rsRating || s.rs || s.relativeStrength || undefined,
     pattern: s.vcpPattern || s.pattern || undefined,
-    notes: s.notes || undefined
+    notes: s.notes || undefined,
   }));
 
   // Include extra metrics if they are passed (e.g. from CategoryAnalysis)
@@ -688,13 +805,13 @@ export async function getWeeklyJournalFeedback(
   apiKey,
   model,
   journals,
-  currentFeedback
+  currentFeedback,
 ) {
   if (!apiKey)
     throw new Error("API Key is missing. Please add it in Settings.");
 
   const journalsJson = JSON.stringify(
-    (journals || []).map(j => ({
+    (journals || []).map((j) => ({
       symbol: j.symbol,
       setup: j.setup,
       entryDate: j.entryDate,
@@ -702,10 +819,15 @@ export async function getWeeklyJournalFeedback(
       exitDate: j.exitDate,
       exitPrice: j.exitPrice,
       isClosed: j.isClosed,
-      transactions: (j.transactions || []).map(t => ({ type: t.type, price: t.price, qty: t.qty, date: t.date })),
+      transactions: (j.transactions || []).map((t) => ({
+        type: t.type,
+        price: t.price,
+        qty: t.qty,
+        date: t.date,
+      })),
       notes: j.notes || "",
       postMortem: j.postMortem || "",
-    }))
+    })),
   );
 
   let prompt = `
@@ -716,9 +838,9 @@ export async function getWeeklyJournalFeedback(
     ${journalsJson}
     
     Trader's Self-Reflection:
-    - What went right: ${currentFeedback.wentRight || 'None provided'}
-    - What went wrong: ${currentFeedback.wentWrong || 'None provided'}
-    - Areas for improvement: ${currentFeedback.improvement || 'None provided'}
+    - What went right: ${currentFeedback.wentRight || "None provided"}
+    - What went wrong: ${currentFeedback.wentWrong || "None provided"}
+    - Areas for improvement: ${currentFeedback.improvement || "None provided"}
     
     Provide a professional, concise, yet highly insightful psychological and tactical reflection for the trader. 
     Analyze if their reflection aligns with their actual trades. 
@@ -731,7 +853,10 @@ export async function getWeeklyJournalFeedback(
     return response.rawText;
   } catch (error) {
     const errorMsg = error.message || "Unknown error";
-    const safeErrorMsg = apiKey && apiKey.length > 5 ? errorMsg.replace(apiKey, "REDACTED") : errorMsg;
+    const safeErrorMsg =
+      apiKey && apiKey.length > 5
+        ? errorMsg.replace(apiKey, "REDACTED")
+        : errorMsg;
     throw new Error(safeErrorMsg, { cause: error });
   }
 }
@@ -741,13 +866,13 @@ export async function getPortfolioAnalysis(
   model,
   positions,
   capitalInfo,
-  country
+  country,
 ) {
   if (!apiKey)
     throw new Error("API Key is missing. Please add it in Settings.");
 
   const positionsJson = JSON.stringify(
-    (positions || []).map(p => ({
+    (positions || []).map((p) => ({
       symbol: p.symbol,
       setup: p.setup,
       isClosed: p.isClosed,
@@ -758,8 +883,8 @@ export async function getPortfolioAnalysis(
       rMultiple: p.rMultiple,
       notes: p.notes || "",
       postMortem: p.postMortem || "",
-      transactionsCount: p.transactions?.length || 0
-    }))
+      transactionsCount: p.transactions?.length || 0,
+    })),
   );
 
   let prompt = `
@@ -767,8 +892,8 @@ export async function getPortfolioAnalysis(
     Conduct a comprehensive review of the trader's logged positions and setups.
     
     Country Context: ${country}
-    Account Capital: ${country === 'IN' ? '₹' : '$'}${capitalInfo.capital.toLocaleString()}
-    Total Portfolio P&L: ${country === 'IN' ? '₹' : '$'}${capitalInfo.totalPnL.toLocaleString()} (${capitalInfo.returnPct.toFixed(2)}% return)
+    Account Capital: ${country === "IN" ? "₹" : "$"}${capitalInfo.capital.toLocaleString()}
+    Total Portfolio P&L: ${country === "IN" ? "₹" : "$"}${capitalInfo.totalPnL.toLocaleString()} (${capitalInfo.returnPct.toFixed(2)}% return)
     Win Rate: ${capitalInfo.winRate}%
     Profit Factor: ${capitalInfo.profitFactor}
     Average Win: ${capitalInfo.avgWin}
@@ -802,7 +927,10 @@ export async function getPortfolioAnalysis(
     return response.rawText;
   } catch (error) {
     const errorMsg = error.message || "Unknown error";
-    const safeErrorMsg = apiKey && apiKey.length > 5 ? errorMsg.replace(apiKey, "REDACTED") : errorMsg;
+    const safeErrorMsg =
+      apiKey && apiKey.length > 5
+        ? errorMsg.replace(apiKey, "REDACTED")
+        : errorMsg;
     throw new Error(safeErrorMsg, { cause: error });
   }
 }
@@ -813,16 +941,16 @@ export async function getRiskSuggestions(
   symbol,
   entryPrice,
   timeframe = "3mo",
-  candlesticks = []
+  candlesticks = [],
 ) {
   if (!apiKey)
     throw new Error("API Key is missing. Please add it in Settings.");
 
-  const simplifiedCandles = (candlesticks || []).slice(-60).map(c => ({
+  const simplifiedCandles = (candlesticks || []).slice(-60).map((c) => ({
     close: Number(c.close?.toFixed(2) || 0),
     high: Number(c.high?.toFixed(2) || 0),
     low: Number(c.low?.toFixed(2) || 0),
-    open: Number(c.open?.toFixed(2) || 0)
+    open: Number(c.open?.toFixed(2) || 0),
   }));
 
   const prompt = `
@@ -859,7 +987,10 @@ export async function getRiskSuggestions(
     return await fetchGemini(apiKey, prompt, modelToUse, false);
   } catch (error) {
     const errorMsg = error.message || "Unknown error";
-    const safeErrorMsg = apiKey && apiKey.length > 5 ? errorMsg.replace(apiKey, "REDACTED") : errorMsg;
+    const safeErrorMsg =
+      apiKey && apiKey.length > 5
+        ? errorMsg.replace(apiKey, "REDACTED")
+        : errorMsg;
     throw new Error(safeErrorMsg, { cause: error });
   }
 }
@@ -871,7 +1002,7 @@ export async function classifySectorsInBulk(
   country,
   availableSectors = [],
   signal = null,
-  onProgress = null
+  onProgress = null,
 ) {
   if (!apiKey || !stocks || stocks.length === 0) {
     return {};
@@ -879,8 +1010,8 @@ export async function classifySectorsInBulk(
   if (signal?.aborted) {
     throw new Error("Bulk AI sector classification aborted.");
   }
-  
-  const chunkSize = 15;
+
+  const chunkSize = 5;
   const total = stocks.length;
   const combinedResults = {};
 
@@ -894,12 +1025,15 @@ export async function classifySectorsInBulk(
     }
 
     const chunk = stocks.slice(i, i + chunkSize);
-    const sectorsList = availableSectors.map(s => s.name || s).join(", ");
+    const sectorsList = availableSectors.map((s) => s.name || s).join(", ");
     const stocksJson = JSON.stringify(chunk);
 
     const prompt = `
-    You are an expert financial classification assistant.
-    Task: Classify the following list of stocks in market "${country}" into one of the user's defined sector categories.
+    You are an expert equity research classification assistant.
+    Task: Classify the following list of stocks in market "${country}" into:
+    1. "sector": Standard industry sector (choose from User's Defined Sector Categories or suggest standard name).
+    2. "businessScope": All primary business segments, key products, or revenue drivers (array of 2-5 items).
+    3. "dependentIndustries": Upstream/downstream beneficiary macro themes or dependent industries (array of 2-4 items, e.g. "AI Infrastructure", "Data Centers", "EV Supply Chain", "Defense Localization").
     
     Stocks to Classify (JSON format):
     ${stocksJson}
@@ -909,38 +1043,89 @@ export async function classifySectorsInBulk(
     
     Classification Rules:
     1. Map each stock to the MOST appropriate category from the User's Defined Sector Categories list.
-    2. If none of the defined categories are a close or reasonable fit, suggest a new, concise, professionally standard sector name (e.g., "Defense", "Infrastructure", "Textiles", "Green Energy").
-    3. Ensure the sector names are clean, capitalized properly (Title Case), and concise.
+    2. If none of the defined categories fit, suggest a concise standard sector name (e.g. "Defense", "Infrastructure", "Electricals").
+    3. Ensure sector names, business scope, and dependent themes are clean, concise, and standard title case.
     
-    You MUST respond with a valid JSON object where the keys are the stock symbols and the values are objects containing the resolved sector.
+    You MUST respond with a valid JSON object mapping symbol to an object with "sector", "businessScope", and "dependentIndustries".
     Example output format:
     {
-      "TCS": { "sector": "IT" },
-      "ADANIPORTS": { "sector": "Infrastructure" }
+      "TCS": {
+        "sector": "IT",
+        "businessScope": ["IT Consulting", "Cloud Services", "AI Enterprise"],
+        "dependentIndustries": ["Enterprise AI", "Cloud Computing"]
+      },
+      "ADANIPORTS": {
+        "sector": "Infrastructure",
+        "businessScope": ["Port Management", "Logistics Parks", "SEZ Development"],
+        "dependentIndustries": ["Global Trade", "Logistics"]
+      }
     }
     
     Respond ONLY with the raw JSON string, do not wrap in markdown or include any other text.
     `;
 
     let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
+    let chunkResults = null;
     try {
       const res = await fetchGemini(apiKey, prompt, modelToUse, false);
-      if (res && typeof res === 'object') {
+      if (res && typeof res === "object") {
+        chunkResults = res;
         Object.assign(combinedResults, res);
       }
     } catch (error) {
       console.error("[AI Bulk Sector Classification Failed]:", error);
-      if (error?.message && error.message.includes("AI Request Limit Reached")) {
+      if (
+        error?.message &&
+        error.message.includes("AI Request Limit Reached")
+      ) {
         throw error;
       }
     }
 
     if (onProgress) {
-      onProgress({ completed: Math.min(i + chunkSize, total), total });
+      onProgress({
+        completed: Math.min(i + chunkSize, total),
+        total,
+        chunkResults,
+      });
     }
   }
 
   return combinedResults;
 }
 
+export async function enrichStockMetadataAI(
+  apiKey,
+  model,
+  symbol,
+  name = "",
+  sector = "",
+) {
+  if (!apiKey || !symbol) return null;
+  const prompt = `Act as an expert equity research analyst.
+Identify the core Business Scope (key product lines/business segments, max 4-5 items) and Dependent/Beneficiary Industries & Macro Themes (top 2-4 themes, e.g. "AI Infrastructure", "Data Centers", "EV Supply Chain", "Defense Localization") for stock symbol "${symbol}" (${name || symbol}), Sector: "${sector || "N/A"}".
 
+Return ONLY a strict JSON object format without markdown block:
+{
+  "businessScope": ["Segment 1", "Segment 2"],
+  "dependentIndustries": ["Theme 1", "Theme 2"]
+}`;
+
+  let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
+  try {
+    const res = await fetchGemini(apiKey, prompt, modelToUse, false);
+    if (res && typeof res === "object") {
+      return {
+        businessScope: Array.isArray(res.businessScope)
+          ? res.businessScope
+          : [],
+        dependentIndustries: Array.isArray(res.dependentIndustries)
+          ? res.dependentIndustries
+          : [],
+      };
+    }
+  } catch (err) {
+    console.warn(`[AI Scope Enrichment Failed for ${symbol}]:`, err);
+  }
+  return null;
+}

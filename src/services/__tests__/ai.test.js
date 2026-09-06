@@ -7,6 +7,7 @@ vi.stubGlobal("fetch", fetchMock);
 
 describe("ai service", () => {
   beforeEach(() => {
+    fetchMock.mockReset();
     vi.clearAllMocks();
   });
 
@@ -76,7 +77,7 @@ describe("ai service", () => {
         stocks: { AAPL: { symbol: "AAPL" } }
       };
 
-      fetchMock.mockResolvedValue({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
           candidates: [{ content: { parts: [{ text: "Custom Response" }] } }]
@@ -92,7 +93,7 @@ describe("ai service", () => {
   describe("testConnection", () => {
     it("should call Gemini correctly for testing", async () => {
       const apiKey = "valid-gemini-api-key-long-enough-39-chars";
-      fetchMock.mockResolvedValue({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
           candidates: [{ content: { parts: [{ text: '{"status": "OK"}' }] } }]
@@ -119,7 +120,7 @@ describe("ai service", () => {
         stocks: { AAPL: { symbol: "AAPL", sector: "Tech" } }
       };
 
-      fetchMock.mockResolvedValue({
+      fetchMock.mockResolvedValueOnce({
         ok: true,
         json: () => Promise.resolve({
           candidates: [{ content: { parts: [{ text: '{"marketBias": "Positive"}' }] } }]
@@ -145,7 +146,7 @@ describe("ai service", () => {
     };
 
     it("should throw error when API returns HTTP error status (e.g. 403 Forbidden)", async () => {
-      fetchMock.mockResolvedValueOnce({
+      fetchMock.mockResolvedValue({
         ok: false,
         status: 403,
         statusText: "Forbidden",
@@ -159,7 +160,7 @@ describe("ai service", () => {
     });
 
     it("should throw error when Gemini returns empty parts text", async () => {
-      fetchMock.mockResolvedValueOnce({
+      fetchMock.mockResolvedValue({
         ok: true,
         json: () => Promise.resolve({
           candidates: [{ content: { parts: [{}] } }]
@@ -173,10 +174,38 @@ describe("ai service", () => {
     it("should handle request timeout AbortError correctly", async () => {
       const abortError = new Error("The AI request timed out. Please try again.");
       abortError.name = "AbortError";
-      fetchMock.mockRejectedValueOnce(abortError);
+      fetchMock.mockRejectedValue(abortError);
 
       await expect(getAiAnalysis(apiKey, "gemini-1.5-pro", weekData, {}))
         .rejects.toThrow("The AI request timed out");
+    });
+
+    it("should automatically fall back to gemini-3.5-flash when primary model hits 429 rate limit", async () => {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 429,
+          json: () => Promise.resolve({ error: { message: "RESOURCE_EXHAUSTED: Quota limit reached" } })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            candidates: [{ content: { parts: [{ text: '{"status": "OK_FROM_FALLBACK"}' }] } }]
+          })
+        });
+
+      const result = await testConnection(apiKey, "gemini-2.5-flash");
+      expect(result.status).toBe("OK_FROM_FALLBACK");
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining("gemini-2.5-flash"),
+        expect.any(Object)
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("gemini-3.5-flash"),
+        expect.any(Object)
+      );
     });
   });
 });

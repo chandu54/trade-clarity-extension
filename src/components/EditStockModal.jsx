@@ -3,10 +3,13 @@ import Modal from "./Modal";
 import MiniCandlestickChart from "./MiniCandlestickChart";
 import { fetchStockData, fetchStockQuotes } from "../utils/yahooFinanceMap";
 import { getBenchmarkOptions, fetchBenchmarkCandles, calculateStockRsForCandles } from "../utils/benchmarkUtils";
-import { getSingleStockAnalysis, PROMPT_TEMPLATES } from "../services/ai";
+import { getSingleStockAnalysis, PROMPT_TEMPLATES, enrichStockMetadataAI } from "../services/ai";
 import { isParamRelevantForCountry, getActualParamKeyAndDef } from "../utils/paramUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
 import { fetchStockSummary, globalFundamentalsCache, fetchNseEarningsDate, calculateDaysAway } from "../utils/stockAnalysisApi";
+
+import ChartDrawingToolbar from "./ChartDrawingToolbar";
+import { useToast } from "./ToastContext";
 
 const getSidebarEarningsDays = (s, sidebarData, formData, summaryData, country) => {
   if (!s) return null;
@@ -158,6 +161,22 @@ const hasUserModified = (original, updated, paramDefinitions) => {
     return true;
   }
 
+  // Business Scope
+  const origScope = original.businessScope || [];
+  const updScope = updated.businessScope || [];
+  if (origScope.length !== updScope.length || JSON.stringify([...origScope].sort()) !== JSON.stringify([...updScope].sort())) {
+    console.log("[hasUserModified] Business Scope changed");
+    return true;
+  }
+
+  // Dependent Industries
+  const origDep = original.dependentIndustries || [];
+  const updDep = updated.dependentIndustries || [];
+  if (origDep.length !== updDep.length || JSON.stringify([...origDep].sort()) !== JSON.stringify([...updDep].sort())) {
+    console.log("[hasUserModified] Dependent Industries changed");
+    return true;
+  }
+
   return false;
 };
 
@@ -185,8 +204,42 @@ export default function EditStockModal({
   journals = null,
   initialActiveRightTab = 'position'
 }) {
+  const { showToast } = useToast();
   const [formData, setFormData] = useState(() => stock ? structuredClone(stock) : null);
   const [activeFlagMenuSymbol, setActiveFlagMenuSymbol] = useState(null);
+  const [isAiEnriching, setIsAiEnriching] = useState(false);
+
+  const handleAiDiscoverScope = async () => {
+    if (!formData?.symbol || !aiSettings?.apiKey) {
+      showToast("Please configure Gemini API Key in settings.", "warning");
+      return;
+    }
+    setIsAiEnriching(true);
+    try {
+      const res = await enrichStockMetadataAI(aiSettings.apiKey, aiSettings.model, formData.symbol, formData.name, formData.sector);
+      if (res && (res.businessScope?.length > 0 || res.dependentIndustries?.length > 0)) {
+        setFormData(prev => ({
+          ...prev,
+          businessScope: res.businessScope?.length > 0 ? res.businessScope : (prev?.businessScope || []),
+          dependentIndustries: res.dependentIndustries?.length > 0 ? res.dependentIndustries : (prev?.dependentIndustries || [])
+        }));
+        showToast(`Discovered business scope and macro themes for ${formData.symbol}!`, "success");
+      } else {
+        showToast("No business scope details found.", "info");
+      }
+    } catch (err) {
+      showToast("AI discovery failed: " + (err.message || err), "error");
+    } finally {
+      setIsAiEnriching(false);
+    }
+  };
+
+  const [activeDrawingTool, setActiveDrawingTool] = useState('select');
+  const [drawingColor, setDrawingColor] = useState('#3b82f6');
+  const [drawingWidth, setDrawingWidth] = useState(2);
+  const [drawingStyle, setDrawingStyle] = useState('solid');
+  const [drawingCount, setDrawingCount] = useState(0);
+  const [clearDrawingsTrigger, setClearDrawingsTrigger] = useState(0);
 
   const adrInfo = useMemo(() => getActualParamKeyAndDef(paramDefinitions, 'adr', 'adr', country), [paramDefinitions, country]);
   const liqInfo = useMemo(() => getActualParamKeyAndDef(paramDefinitions, 'liquidity', 'liquidity', country), [paramDefinitions, country]);
@@ -1641,15 +1694,28 @@ export default function EditStockModal({
           </select>
         </div>
 
-        <div className="property-row-item">
-          <label>Tradable</label>
-          <label className="checkbox-label-premium">
-            <input
-              type="checkbox"
-              checked={formData.tradable}
-              onChange={(e) => handleChange("tradable", e.target.checked)}
-            />
-          </label>
+        <div className="property-row-item" style={{ gridColumn: "span 2" }}>
+          <div className="property-row-header-inline">
+            <label style={{ margin: 0 }}>Business Scope (Products / Segments)</label>
+            <button
+              type="button"
+              className="ai-scope-discover-btn"
+              onClick={handleAiDiscoverScope}
+              disabled={isAiEnriching}
+              title="Use Gemini AI to discover business scope and macro themes for this stock"
+            >
+              {isAiEnriching ? "Discovering..." : "✨ AI Discover Scope"}
+            </button>
+          </div>
+          <input
+            type="text"
+            value={Array.isArray(formData.businessScope) ? formData.businessScope.join(", ") : ""}
+            onChange={(e) => {
+              const scopeArr = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+              handleChange("businessScope", scopeArr);
+            }}
+            placeholder="e.g. Cigarettes, Packaged Foods, Hotels (comma separated)"
+          />
         </div>
 
         <div className="property-row-item">
@@ -1661,6 +1727,30 @@ export default function EditStockModal({
             placeholder="e.g. Aug 4, 2026"
             title="Enter earnings date manually (e.g. Aug 4, 2026). Overrides auto-fetched date."
           />
+        </div>
+
+        <div className="property-row-item" style={{ gridColumn: "span 2" }}>
+          <label style={{ margin: 0, marginBottom: "2px" }}>Dependent Industries & Macro Themes</label>
+          <input
+            type="text"
+            value={Array.isArray(formData.dependentIndustries) ? formData.dependentIndustries.join(", ") : ""}
+            onChange={(e) => {
+              const themeArr = e.target.value.split(",").map(t => t.trim()).filter(Boolean);
+              handleChange("dependentIndustries", themeArr);
+            }}
+            placeholder="e.g. AI Infrastructure, Data Centers, Power Grid (comma separated)"
+          />
+        </div>
+
+        <div className="property-row-item">
+          <label>Tradable</label>
+          <label className="checkbox-label-premium">
+            <input
+              type="checkbox"
+              checked={formData.tradable}
+              onChange={(e) => handleChange("tradable", e.target.checked)}
+            />
+          </label>
         </div>
 
         {sortedParams.filter(([key]) => key !== 'movingAverages' && key !== adrKey && key !== liqKey).map(([key, def]) => (
@@ -2629,6 +2719,20 @@ export default function EditStockModal({
                         </div>
                       )}
                     </div>
+                    <div className="drawing-toolbar-header-container flex items-center ml-1">
+                      <ChartDrawingToolbar
+                        activeTool={activeDrawingTool}
+                        onToolChange={setActiveDrawingTool}
+                        selectedColor={drawingColor}
+                        onColorChange={setDrawingColor}
+                        selectedWidth={drawingWidth}
+                        onWidthChange={setDrawingWidth}
+                        selectedStyle={drawingStyle}
+                        onStyleChange={setDrawingStyle}
+                        onClearAll={() => setClearDrawingsTrigger(t => t + 1)}
+                        drawingCount={drawingCount}
+                      />
+                    </div>
                   </div>
                 </div>
               </div>
@@ -2651,6 +2755,13 @@ export default function EditStockModal({
                     selectedBenchmark={selectedBenchmark}
                     benchmarkMode={benchmarkMode}
                     benchmarkCandles={benchmarkCandles}
+                    activeToolProp={activeDrawingTool}
+                    onToolChangeProp={setActiveDrawingTool}
+                    drawColorProp={drawingColor}
+                    drawWidthProp={drawingWidth}
+                    drawStyleProp={drawingStyle}
+                    onDrawingsCountChange={setDrawingCount}
+                    clearDrawingsTrigger={clearDrawingsTrigger}
                   />
                 </div>
 

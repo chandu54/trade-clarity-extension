@@ -602,4 +602,100 @@ export async function fetchStockQuotes(symbols, country, signal = null, forceRef
   }
 }
 
+export async function fetchStockDataByRange(symbol, country, period1, period2, customInterval = '1d', signal = null) {
+  if (!symbol) return { symbol: '', candlesticks: [], error: 'Invalid symbol' };
+
+  let ticker = symbol;
+  if (country === 'IN' && !symbol.endsWith('.NS') && !symbol.endsWith('.BO') && !symbol.startsWith('^')) {
+    ticker = `${symbol}.NS`;
+  }
+
+  const cacheKey = `${ticker}:${country || 'US'}:range:${period1}:${period2}:${customInterval}`;
+  if (globalQuoteCache.cache.has(cacheKey)) {
+    const item = globalQuoteCache.get(cacheKey);
+    if (item && item.data) return item.data;
+  }
+
+  const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+  const baseUrl = isLocalhost ? '/yahoo-api' : 'https://query1.finance.yahoo.com';
+  const url = `${baseUrl}/v8/finance/chart/${encodeURIComponent(ticker)}?period1=${period1}&period2=${period2}&interval=${customInterval}`;
+  const fallbackUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?period1=${period1}&period2=${period2}&interval=${customInterval}`;
+
+  const isSingleStockCall = true;
+  try {
+    let attempts = 0;
+    let response = null;
+    while (attempts < 3) {
+      attempts++;
+      try {
+        const fetchUrl = (attempts % 2 === 1 || isLocalhost) ? url : fallbackUrl;
+        response = await globalRateQueue.enqueue(() => fetch(fetchUrl, { signal }), isSingleStockCall);
+        if (response.status === 429 && !isLocalhost) {
+          await new Promise(r => setTimeout(r, 1200 * attempts));
+          continue;
+        }
+        break;
+      } catch (err) {
+        if (attempts >= 3) throw err;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+    }
+
+    if (!response || !response.ok) {
+      return { symbol, candlesticks: [], error: `Failed with status ${response?.status}` };
+    }
+
+    const data = await response.json();
+    const result = data.chart?.result?.[0];
+    if (!result) return { symbol, candlesticks: [], error: 'No chart result' };
+
+    const quote = result.indicators?.quote?.[0] || {};
+    const adjIndicators = result.indicators?.adjclose?.[0]?.adjclose || [];
+    const timestamps = result.timestamp || [];
+    const closes = quote.close || [];
+    const opens = quote.open || [];
+    const highs = quote.high || [];
+    const lows = quote.low || [];
+
+    let rawBars = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      let closePrice = null;
+      if (adjIndicators[i] !== null && adjIndicators[i] !== undefined && adjIndicators[i] > 0) {
+        closePrice = adjIndicators[i];
+      } else if (closes[i] !== null && closes[i] !== undefined && closes[i] > 0) {
+        closePrice = closes[i];
+      }
+      
+      if (timestamps[i] != null && closePrice != null && closePrice > 0) {
+        const openPrice = (opens[i] != null && opens[i] > 0) ? opens[i] : closePrice;
+        const highPrice = (highs[i] != null && highs[i] > 0) ? highs[i] : closePrice;
+        const lowPrice = (lows[i] != null && lows[i] > 0) ? lows[i] : closePrice;
+        rawBars.push({
+          time: timestamps[i],
+          open: Number(openPrice.toFixed(2)),
+          high: Number(highPrice.toFixed(2)),
+          low: Number(lowPrice.toFixed(2)),
+          close: Number(closePrice.toFixed(2)),
+          volume: quote.volume?.[i] || 0
+        });
+      }
+    }
+
+    const resObj = {
+      symbol,
+      candlesticks: rawBars,
+      _meta: result.meta || {}
+    };
+
+    if (rawBars.length > 0) {
+      globalQuoteCache.set(cacheKey, resObj, false);
+    }
+
+    return resObj;
+  } catch (err) {
+    if (err.name === 'AbortError') throw err;
+    return { symbol, candlesticks: [], error: err.message };
+  }
+}
+
 

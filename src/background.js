@@ -43,8 +43,8 @@ function calculateEstimatedEndTime(completed, total) {
   if (remaining === 0) return Date.now();
   const chunkSize = 7;
   const remainingChunks = Math.ceil(remaining / chunkSize);
-  // ~10s per API call/data fetch + 65s wait between chunks
-  const remainingSecs = (remainingChunks * 10) + Math.max(0, (remainingChunks - 1) * 65);
+  // ~14s pacing delay per chunk API call
+  const remainingSecs = remainingChunks * 15;
   return Date.now() + (remainingSecs * 1000);
 }
 
@@ -103,6 +103,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   }
 
   if (message.action === "RUN_BULK_AI_ANALYSIS") {
+    isAiProcessing = false;
     const total = message.payload.stocks?.length || 0;
     const startTime = Date.now();
     const estimatedEndTime = calculateEstimatedEndTime(0, total);
@@ -123,9 +124,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         payload: { completed: 0, total, startTime, estimatedEndTime }
       }).catch(() => {});
 
-      if (!isAiProcessing) {
-        processAiQueue();
-      }
+      processAiQueue();
     });
     
     sendResponse({ status: "started" });
@@ -224,78 +223,49 @@ async function processAiQueue() {
     if (!taskState || taskState.status === "stopped") {
       return;
     }
+
+    const { payload, currentIndex = 0, results = {} } = taskState;
+    const { stocks, apiKey, model, country, weekKey, watchlistName } = payload;
+    const total = stocks ? stocks.length : 0;
+    const chunkSize = 7;
+    const startTime = taskState.startTime || Date.now();
+    const estimatedEndTime = taskState.estimatedEndTime || (startTime + (total * 60 * 1000));
     
-    // Check if AI is currently blocked
+    // Check if AI is currently blocked: wait out the block time rather than wiping the bulk task!
     const db = await _getStorageData();
     const blockedUntil = db.aiSettings?.aiState?.blockedUntil || 0;
     if (blockedUntil > Date.now()) {
-      console.warn("[BG] AI is currently blocked. Clearing bulk AI task.");
-      await saveActiveBulkAiTask(null);
-      chrome.runtime.sendMessage({
-        action: "BULK_AI_ANALYSIS_FAILED",
-        payload: { error: "AI requests blocked due to rate limit/errors." }
-      }).catch(() => {});
-      return;
+      const waitSeconds = Math.ceil((blockedUntil - Date.now()) / 1000);
+      console.warn(`[BG] AI is currently blocked until ${new Date(blockedUntil).toLocaleTimeString()}. Waiting ${waitSeconds}s before resuming bulk task...`);
+      await waitWithCountdown(waitSeconds, currentIndex, total);
     }
 
-    const { payload, currentIndex = 0, results = {} } = taskState;
-  const { stocks, apiKey, model, country, weekKey, watchlistName } = payload;
-  const total = stocks ? stocks.length : 0;
-  const chunkSize = 7;
-  const startTime = taskState.startTime || Date.now();
-  const estimatedEndTime = taskState.estimatedEndTime || (startTime + (total * 60 * 1000));
+    // Broadcast immediate progress so UI capsule shows instantly before network pre-fetch!
+    chrome.runtime.sendMessage({
+      action: "BULK_AI_PROGRESS",
+      payload: { completed: currentIndex, total, startTime, estimatedEndTime }
+    }).catch(() => {});
 
-  // Broadcast immediate progress so UI capsule shows instantly before network pre-fetch!
-  chrome.runtime.sendMessage({
-    action: "BULK_AI_PROGRESS",
-    payload: { completed: currentIndex, total, startTime, estimatedEndTime }
-  }).catch(() => {});
+    // Use stocks directly — all technical metrics, prices, and parameters are already present
+    let enrichedStocks = taskState.enrichedStocks || stocks;
 
-  // Pre-fetch 3mo market data (price, daily & period change pcts) so Gemini has full technical metrics
-  let enrichedStocks = stocks;
-  try {
-    console.log(`[BG] Pre-fetching 3mo market data for ${total} stocks for bulk AI analysis...`);
-    const marketData = await fetchStockData(stocks.map(s => s.symbol), country, "3mo");
-    if (marketData && marketData.length > 0) {
-      const marketDataMap = {};
-      marketData.forEach(d => {
-        marketDataMap[d.symbol] = d;
-      });
-      enrichedStocks = stocks.map(s => {
-        const m = marketDataMap[s.symbol];
-        if (m) {
-          return {
-            ...s,
-            currentPrice: m.currentPrice,
-            dailyChangePct: m.dailyChangePct,
-            periodChangePct: m.periodChangePct,
-            longName: m.longName || s.longName || s.shortName
-          };
+    // Resolve custom active bulk prompt from promptLibrary if configured
+    let activeBulkPrompt = payload.bulkPromptText || null;
+    if (!activeBulkPrompt) {
+      try {
+        const storageRes = await new Promise(r => chrome.storage.local.get(["trading_app_data"], r));
+        const dbObj = storageRes?.trading_app_data;
+        const defaultBulkId = dbObj?.aiSettings?.promptLibrary?.defaults?.bulk;
+        if (defaultBulkId && defaultBulkId !== "system" && defaultBulkId !== "default" && defaultBulkId !== "bulk_analysis") {
+          const customObj = dbObj?.aiSettings?.promptLibrary?.bulk?.find(p => p.id === defaultBulkId);
+          if (customObj) activeBulkPrompt = customObj.text;
         }
-        return s;
-      });
-    }
-  } catch (mErr) {
-    console.warn("[BG] Pre-fetching market data for bulk AI failed, falling back to basic data:", mErr);
-  }
-
-  // Resolve custom active bulk prompt from promptLibrary if configured
-  let activeBulkPrompt = payload.bulkPromptText || null;
-  if (!activeBulkPrompt) {
-    try {
-      const storageRes = await new Promise(r => chrome.storage.local.get(["trading_app_data"], r));
-      const dbObj = storageRes?.trading_app_data;
-      const defaultBulkId = dbObj?.aiSettings?.promptLibrary?.defaults?.bulk;
-      if (defaultBulkId && defaultBulkId !== "system" && defaultBulkId !== "default" && defaultBulkId !== "bulk_analysis") {
-        const customObj = dbObj?.aiSettings?.promptLibrary?.bulk?.find(p => p.id === defaultBulkId);
-        if (customObj) activeBulkPrompt = customObj.text;
+      } catch (err) {
+        console.warn("[BG] Could not resolve custom active bulk prompt:", err);
       }
-    } catch (err) {
-      console.warn("[BG] Could not resolve custom active bulk prompt:", err);
     }
-  }
 
-  for (let i = currentIndex; i < total; i += chunkSize) {
+    for (let i = currentIndex; i < total; i += chunkSize) {
       const liveCheck = await getActiveBulkAiTask();
       if (!isAiProcessing || !liveCheck || liveCheck.status === "stopped") {
         console.log("[BG] AI processing was cancelled. Stopping queue execution.");
@@ -324,10 +294,10 @@ async function processAiQueue() {
 
       const chunk = enrichedStocks.slice(i, i + chunkSize);
 
-      // Retry loop for this chunk — handles per-chunk 429s not caught inside ai.js
+      // Retry loop for this chunk — handles per-chunk 429s with progressive backoff countdowns
       let chunkResults = null;
       let chunkAttempt = 0;
-      const maxChunkRetries = 3;
+      const maxChunkRetries = 5;
       while (chunkAttempt < maxChunkRetries) {
         try {
           chunkResults = await getBulkStockVerdicts(apiKey, model, chunk, "3mo", activeBulkPrompt);
@@ -336,13 +306,22 @@ async function processAiQueue() {
           const errMsg = chunkErr.message || "";
           const isRateLimit = errMsg.includes("quota") || errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("RESOURCE_EXHAUSTED");
           if (isRateLimit && chunkAttempt < maxChunkRetries - 1) {
-            const waitMs = Math.min(parseRetryAfterMs(errMsg), 120000);
-            const waitSeconds = Math.round(waitMs / 1000);
+            const parsedWaitSecs = Math.round(parseRetryAfterMs(errMsg) / 1000);
+            // Progressive backoff: gives Google API time to reset token bucket on repeated rate limits
+            const waitSeconds = Math.min(120, Math.max(parsedWaitSecs, (chunkAttempt + 1) * 35));
             console.warn(`[BG] Rate limit on chunk ${i}–${i + chunkSize}. Waiting ${waitSeconds}s (attempt ${chunkAttempt + 1}/${maxChunkRetries})...`);
             await waitWithCountdown(waitSeconds, i, total);
             chunkAttempt++;
+          } else if (isRateLimit) {
+            console.warn(`[BG] Free-tier API rate limit reached after ${chunkAttempt + 1} retries at stock ${i}. Saving completed analysis for ${Object.keys(results).length} stocks.`);
+            break; // Gracefully complete task with analyzed stocks saved
+          } else if (chunkAttempt < 2) {
+            console.warn(`[BG] Transient error on chunk ${i}–${i + chunkSize} (attempt ${chunkAttempt + 1}/2): ${errMsg}. Retrying in 2s...`);
+            await new Promise(r => setTimeout(r, 2000));
+            chunkAttempt++;
           } else {
-            throw chunkErr; // non-rate-limit error, or exhausted retries
+            console.error(`[BG] Unrecoverable error on chunk ${i}–${i + chunkSize}:`, chunkErr);
+            break; // Move on so single chunk failure does not destroy the whole run!
           }
         }
       }
@@ -424,16 +403,16 @@ async function processAiQueue() {
         });
       }
 
-      // Respect free-tier 20 RPM limit: wait ~65s between chunks so we never
-      // exceed 1 request/minute (each chunk = 1 Gemini API call).
+      // Pacing delay between chunks (~14s) ensures ~4 RPM, staying safely below Google's 5 RPM free-tier limit
       if (i + chunkSize < total) {
         await saveActiveBulkAiTask({
           ...taskState,
           currentIndex: i + chunkSize,
           results,
-          status: "waiting"
+          status: "waiting",
+          nextResumeTime: Date.now() + (14 * 1000)
         });
-        await waitWithCountdown(65, i + chunkSize, total);
+        await waitWithCountdown(14, i + chunkSize, total);
       }
     }
 

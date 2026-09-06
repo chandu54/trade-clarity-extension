@@ -131,6 +131,8 @@ export const DEFAULT_DATA = {
       __stock__: true,
       __checks__: true,
       __tradable__: true,
+      __businessScope__: true,
+      __dependentIndustries__: true,
       // dynamic params will be injected automatically
     },
     sectors: [

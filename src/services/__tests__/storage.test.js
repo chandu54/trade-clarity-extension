@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { loadData, saveData } from "../storage";
+import { loadData, saveData, getDrawingsForSymbol, saveDrawingForSymbol, deleteDrawingForSymbol, clearDrawingsForSymbol } from "../storage";
 import { DEFAULT_DATA } from "../../seed";
 
 // Helper to mock global objects
@@ -139,6 +139,41 @@ describe("storage service", () => {
       const testData = { hello: "limit" };
       await saveData(testData);
       expect(chrome.runtime.lastError.message).toBe("Quota exceeded");
+    });
+  });
+
+  describe("Global Chart Drawings Storage", () => {
+    beforeEach(() => {
+      restoreChrome = stubGlobal("chrome", undefined);
+      restoreLocalStorage = stubGlobal("localStorage", localStorageMock);
+    });
+
+    afterEach(() => {
+      restoreChrome();
+      restoreLocalStorage();
+    });
+
+    it("should save, retrieve, delete, and clear global drawings by symbol", async () => {
+      const symbol = "AARTIPHARM";
+      const initial = await getDrawingsForSymbol(symbol);
+      expect(initial).toEqual([]);
+
+      const line1 = { id: "h1", type: "horizontal", price: 650, color: "#ef4444", width: 2 };
+      const saved1 = await saveDrawingForSymbol(symbol, line1);
+      expect(saved1).toEqual([line1]);
+
+      const line2 = { id: "t1", type: "trend", p1: { time: 100, price: 600 }, p2: { time: 200, price: 650 } };
+      await saveDrawingForSymbol(symbol, line2);
+
+      const retrieved = await getDrawingsForSymbol(symbol);
+      expect(retrieved.length).toBe(2);
+
+      const remaining = await deleteDrawingForSymbol(symbol, "h1");
+      expect(remaining.length).toBe(1);
+      expect(remaining[0].id).toBe("t1");
+
+      const cleared = await clearDrawingsForSymbol(symbol);
+      expect(cleared).toEqual([]);
     });
   });
 });

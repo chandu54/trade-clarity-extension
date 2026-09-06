@@ -117,7 +117,9 @@ Once your stocks are in the grid, it's time to process them.
   - Filter by your custom parameters (e.g., Show only stocks where "Trend" is "Up").
 - **Interactive Daily Trend Filters**: Click the **Advances (▲)** or **Declines (▼)** count badges in the grid header to filter the list instantly for stocks that are UP or DOWN today. The list is automatically sorted by the daily percent change, letting you spot momentum leaders immediately. Click the active badge again to clear the filter.
 - **Mark as Tradable**: When a stock meets all your criteria, check the **Tradable** box. This is your final "Shortlist."
-- **Live Syncing**: When you add new symbols or switch weeks, TradeClarity automatically fetches metrics like ADR and Liquidity in the background. A progress bar will appear in the grid header during this process.
+- **Live Syncing**: When you add new symbols or switch weeks, TradeClarity automatically fetches metrics like ADR and Liquidity in the background. A progress capsule in the header tracks both technical metrics sync and AI processing simultaneously — hover it to see exact progress.
+- **VCP Tightness Badges**: Volatility Contraction Pattern tightness is shown inline in the grid as **Tight**, **Moderate**, or **Wide** badges, letting you evaluate base quality at a glance.
+- **Multi-Select Dropdown Search**: Filter dropdowns for Sectors, Tags, Patterns, and other multi-value criteria include an embedded live search bar — type to instantly narrow long option lists.
 - **Data Freshness**: Check the **"Last synced"** timestamp in the top-left of the grid header. It shows the exact time your technical data was last refreshed from the market.
 - **Institutional Technicals (New)**: Both the grid and edit modal now feature a centralized **Moving Average Ribbon**.
   - **Color-Coded Trend**: Green/Emerald badges indicate price is **ABOVE** that MA level; Red/Rose badges indicate price is **BELOW**.

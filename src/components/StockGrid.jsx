@@ -368,6 +368,7 @@ export default function StockGrid({
   const fetchAbortControllerRef = useRef(null);
 
   const applySectorMappings = useCallback((mappings) => {
+    if (!mappings || Object.keys(mappings).length === 0) return;
     setData((prev) => {
       const prevWeek = prev.weeks?.[country]?.[weekKey];
       if (!prevWeek) return prev;
@@ -375,26 +376,33 @@ export default function StockGrid({
       const newCache = { ...(prev.stockSectorCache || {}) };
       const newSectorsList = [...(prev.uiConfig?.sectors || prev.sectors || [])];
 
-      Object.entries(mappings).forEach(([symbol, sectorName]) => {
+      Object.entries(mappings).forEach(([symbol, mapping]) => {
         if (newStocks[symbol]) {
+          const sectorName = typeof mapping === "object" ? mapping.sector : mapping;
+          const businessScope = typeof mapping === "object" && Array.isArray(mapping.businessScope) ? mapping.businessScope : null;
+          const dependentIndustries = typeof mapping === "object" && Array.isArray(mapping.dependentIndustries) ? mapping.dependentIndustries : null;
+
+          const localMeta = stockMetadata[country]?.[symbol.toUpperCase()];
           newStocks[symbol] = {
             ...newStocks[symbol],
-            sector: sectorName,
+            sector: sectorName || newStocks[symbol].sector || localMeta?.sector || "",
+            businessScope: (businessScope && businessScope.length > 0) ? businessScope : (newStocks[symbol].businessScope?.length > 0 ? newStocks[symbol].businessScope : localMeta?.businessScope || []),
+            dependentIndustries: (dependentIndustries && dependentIndustries.length > 0) ? dependentIndustries : (newStocks[symbol].dependentIndustries?.length > 0 ? newStocks[symbol].dependentIndustries : localMeta?.dependentIndustries || []),
           };
-          newCache[symbol.toUpperCase()] = sectorName;
-
-          // Register sector in uiConfig if it doesn't exist
-          const exists = newSectorsList.some(
-            (s) => (s.name || "").toLowerCase() === sectorName.toLowerCase()
-          );
-          if (!exists) {
-            newSectorsList.push({ name: sectorName, countries: [country] });
-          } else {
-            const existing = newSectorsList.find(
+          if (sectorName) {
+            newCache[symbol.toUpperCase()] = sectorName;
+            const exists = newSectorsList.some(
               (s) => (s.name || "").toLowerCase() === sectorName.toLowerCase()
             );
-            if (existing && existing.countries && !existing.countries.includes(country)) {
-              existing.countries.push(country);
+            if (!exists) {
+              newSectorsList.push({ name: sectorName, countries: [country] });
+            } else {
+              const existing = newSectorsList.find(
+                (s) => (s.name || "").toLowerCase() === sectorName.toLowerCase()
+              );
+              if (existing && existing.countries && !existing.countries.includes(country)) {
+                existing.countries.push(country);
+              }
             }
           }
         }
@@ -433,10 +441,18 @@ export default function StockGrid({
       (s) => selectedWatchlistId === "all" || s.watchlists?.includes(selectedWatchlistId)
     );
 
-    const stocksToResolve = watchlistStocks.filter((s) => !s.sector);
+    // Target stocks missing sector, businessScope, or dependentIndustries
+    let stocksToResolve = watchlistStocks.filter(
+      (s) => !s.sector || !s.businessScope || s.businessScope.length === 0 || !s.dependentIndustries || s.dependentIndustries.length === 0
+    );
+
+    // If ALL stocks in current view already have values, re-evaluate all stocks in the active view
+    if (stocksToResolve.length === 0) {
+      stocksToResolve = watchlistStocks;
+    }
 
     if (stocksToResolve.length === 0) {
-      showToast("All stocks in this watchlist already have sectors defined.", "info");
+      showToast("No stocks found in current watchlist.", "warning");
       return;
     }
 
@@ -455,31 +471,34 @@ export default function StockGrid({
 
       // 1. Local / Cache lookup first
       stocksToResolve.forEach((s) => {
-        const cached = data.stockSectorCache?.[s.symbol.toUpperCase()];
-        if (cached) {
-          resolvedMappings[s.symbol] = cached;
+        const cachedSector = data.stockSectorCache?.[s.symbol.toUpperCase()];
+        const localMeta = stockMetadata[country]?.[s.symbol.toUpperCase()];
+        if (localMeta && localMeta.sector && localMeta.businessScope && localMeta.businessScope.length > 0) {
+          resolvedMappings[s.symbol] = localMeta;
         } else {
-          const localMeta = stockMetadata[country]?.[s.symbol.toUpperCase()];
-          if (localMeta && localMeta.sector) {
-            resolvedMappings[s.symbol] = localMeta.sector;
-          } else {
-            remainingForAi.push(s);
+          if (cachedSector || localMeta?.sector) {
+            resolvedMappings[s.symbol] = {
+              sector: s.sector || localMeta?.sector || cachedSector,
+            };
           }
+          remainingForAi.push(s);
         }
       });
 
-      const localResolvedCount = Object.keys(resolvedMappings).length;
-      setSectorProgress({ completed: localResolvedCount, total: totalToResolve });
+      const fullyResolvedLocalCount = stocksToResolve.length - remainingForAi.length;
+      if (Object.keys(resolvedMappings).length > 0) {
+        applySectorMappings(resolvedMappings);
+      }
+      setSectorProgress({ completed: Math.min(fullyResolvedLocalCount, totalToResolve), total: totalToResolve });
 
-      // 2. AI Fallback if needed
+      // 2. AI Fallback for missing sector, scope, or themes
       if (remainingForAi.length > 0) {
         const apiKey = aiSettings?.apiKey;
         const model = aiSettings?.model || "gemini-2.5-flash";
 
         if (!apiKey || !apiKey.trim()) {
-          if (localResolvedCount > 0) {
-            applySectorMappings(resolvedMappings);
-            showToast(`Resolved ${localResolvedCount} sectors locally. Please configure Gemini API Key for the remaining ${remainingForAi.length} stocks.`, "warning");
+          if (fullyResolvedLocalCount > 0) {
+            showToast(`Resolved ${fullyResolvedLocalCount} stocks locally. Configure Gemini API Key in settings for full AI discovery.`, "warning");
           } else {
             showToast("Gemini API Key is missing. Please configure it in Settings.", "error");
           }
@@ -488,7 +507,7 @@ export default function StockGrid({
           return;
         }
 
-        showToast(`Detecting sectors for ${remainingForAi.length} stocks using AI...`, "info");
+        showToast(`Detecting sector & business scope for ${remainingForAi.length} stocks using AI...`, "info");
         
         const availableSectors = data.uiConfig?.sectors || [];
         const aiMappings = await classifySectorsInBulk(
@@ -498,17 +517,20 @@ export default function StockGrid({
           country,
           availableSectors,
           aiAbortControllerRef.current.signal,
-          ({ completed, total: _aiTotal }) => {
+          ({ completed, total: _aiTotal, chunkResults }) => {
+            if (chunkResults && Object.keys(chunkResults).length > 0) {
+              applySectorMappings(chunkResults);
+            }
             setSectorProgress({
-              completed: Math.min(totalToResolve, localResolvedCount + completed),
+              completed: Math.min(totalToResolve, fullyResolvedLocalCount + completed),
               total: totalToResolve
             });
           }
         );
 
         Object.entries(aiMappings).forEach(([sym, valObj]) => {
-          if (valObj && valObj.sector) {
-            resolvedMappings[sym] = valObj.sector;
+          if (valObj) {
+            resolvedMappings[sym] = valObj;
           }
         });
       }
@@ -517,14 +539,14 @@ export default function StockGrid({
 
       if (Object.keys(resolvedMappings).length > 0) {
         applySectorMappings(resolvedMappings);
-        showToast(`Successfully resolved sectors for ${Object.keys(resolvedMappings).length} stocks!`, "success");
+        showToast(`Successfully resolved sector & business scope for ${Object.keys(resolvedMappings).length} stocks!`, "success");
       } else {
         showToast("No sectors could be resolved for the stocks.", "warning");
       }
       
       setTimeout(() => {
         setSectorProgress({ completed: 0, total: 0 });
-      }, 1200);
+      }, 1500);
 
     } catch (err) {
       if (err.name === 'AbortError' || err.message?.includes('aborted')) {
@@ -539,7 +561,7 @@ export default function StockGrid({
     } finally {
       setDetectingSectors(false);
     }
-  }, [allStocks, selectedWatchlistId, data.stockSectorCache, data.uiConfig?.sectors, country, aiSettings, applySectorMappings, showToast]);
+  }, [aiSettings, allStocks, selectedWatchlistId, data.stockSectorCache, data.uiConfig?.sectors, country, showToast, applySectorMappings]);
 
   const fetchQuotesForGrid = useCallback(async (forceRefresh = false) => {
     const symbols = symbolsSerialized ? symbolsSerialized.split(",") : [];
@@ -1035,7 +1057,6 @@ export default function StockGrid({
         showToast("Metrics updated successfully!", "success");
       } else if (req.action === "BULK_AI_PROGRESS") {
         setAiProgress(req.payload);
-        setRateLimitWait(null); // clear rate-limit status when new progress arrives
       } else if (req.action === "BULK_AI_RATE_LIMIT_WAIT") {
         if (!req.payload) {
           setRateLimitWait(null);
@@ -1047,6 +1068,9 @@ export default function StockGrid({
             total: req.payload.total !== undefined ? req.payload.total : p.total
           }));
         }
+      } else if (req.action === "MODEL_FALLBACK_TRIGGERED") {
+        const fallMsg = `Quota limit on ${req.payload.primaryModel}. Automatically switched to ${req.payload.fallbackModel}...`;
+        showToast(fallMsg, "info");
       } else if (req.action === "BULK_AI_ANALYSIS_COMPLETE") {
         setAiProgress({ total: 0, completed: 0 });
         setRateLimitWait(null);
@@ -1074,6 +1098,14 @@ export default function StockGrid({
           startTime: task.startTime,
           estimatedEndTime: task.estimatedEndTime
         });
+        if (task.status === "waiting" && task.nextResumeTime && task.nextResumeTime > Date.now()) {
+          const waitSeconds = Math.ceil((task.nextResumeTime - Date.now()) / 1000);
+          setRateLimitWait({
+            waitSeconds,
+            completed: task.currentIndex || 0,
+            total: task.total
+          });
+        }
       }
     });
   }, []);
@@ -1090,6 +1122,8 @@ export default function StockGrid({
   }, [data.uiConfig?.columnVisibility]);
   const showNotes = columnConfig["__notes__"] !== false;
   const showLivePrice = columnConfig["__livePrice__"] !== false;
+  const showBusinessScope = columnConfig["__businessScope__"] !== false;
+  const showDependentIndustries = columnConfig["__dependentIndustries__"] !== false;
 
 
   const activeWatchlist = (data.watchlists || []).find(
@@ -1112,6 +1146,8 @@ export default function StockGrid({
     1 + // Stock
     (showLivePrice ? 1 : 0) + // Live Price
     1 + // Sector
+    (showBusinessScope ? 1 : 0) +
+    (showDependentIndustries ? 1 : 0) +
     visibleParams.length +
     1 + // Checks Passed
     (showNotes ? 1 : 0) +
@@ -1150,6 +1186,26 @@ export default function StockGrid({
       .map((s) => (typeof s === "string" ? s : s.name))
       .sort((a, b) => a.localeCompare(b));
   }, [data.uiConfig?.sectors, country]);
+
+  const availableScopes = useMemo(() => {
+    const scopeSet = new Set();
+    allStocks.forEach((s) => {
+      if (Array.isArray(s.businessScope)) {
+        s.businessScope.forEach((b) => scopeSet.add(b));
+      }
+    });
+    return Array.from(scopeSet).sort();
+  }, [allStocks]);
+
+  const availableThemes = useMemo(() => {
+    const themeSet = new Set();
+    allStocks.forEach((s) => {
+      if (Array.isArray(s.dependentIndustries)) {
+        s.dependentIndustries.forEach((t) => themeSet.add(t));
+      }
+    });
+    return Array.from(themeSet).sort();
+  }, [allStocks]);
 
   /* =====================
      CHECKS PASSED
@@ -1213,7 +1269,10 @@ export default function StockGrid({
         const symbolMatch = stock.symbol.toLowerCase().includes(q);
         const nameMatch = (stock.name || "").toLowerCase().includes(q);
         const notesMatch = (stock.notes || "").toLowerCase().includes(q);
-        if (!symbolMatch && !nameMatch && !notesMatch) return false;
+        const sectorMatch = (stock.sector || "").toLowerCase().includes(q);
+        const scopeMatch = Array.isArray(stock.businessScope) && stock.businessScope.some(b => (b || "").toLowerCase().includes(q));
+        const themeMatch = Array.isArray(stock.dependentIndustries) && stock.dependentIndustries.some(t => (t || "").toLowerCase().includes(q));
+        if (!symbolMatch && !nameMatch && !notesMatch && !sectorMatch && !scopeMatch && !themeMatch) return false;
       }
 
       /*SECTOR FILTER*/
@@ -1224,6 +1283,24 @@ export default function StockGrid({
         } else if (typeof sectorFilter === "string" && sectorFilter !== "") {
           if (stock.sector !== sectorFilter) return false;
         }
+      }
+
+      /* BUSINESS SCOPE FILTER */
+      const scopeFilter = filters.__businessScope__;
+      if (Array.isArray(scopeFilter) && scopeFilter.length > 0) {
+        const stockScopes = stock.businessScope || [];
+        if (!scopeFilter.some(sf => stockScopes.includes(sf))) return false;
+      } else if (typeof scopeFilter === "string" && scopeFilter !== "") {
+        if (!(stock.businessScope || []).includes(scopeFilter)) return false;
+      }
+
+      /* DEPENDENT THEMES FILTER */
+      const themeFilter = filters.__dependentIndustries__;
+      if (Array.isArray(themeFilter) && themeFilter.length > 0) {
+        const stockThemes = stock.dependentIndustries || [];
+        if (!themeFilter.some(tf => stockThemes.includes(tf))) return false;
+      } else if (typeof themeFilter === "string" && themeFilter !== "") {
+        if (!(stock.dependentIndustries || []).includes(themeFilter)) return false;
       }
       /* SYMBOLS FILTER */
       const symbolsFilter = filters.__symbols__;
@@ -2124,6 +2201,8 @@ export default function StockGrid({
         sectors={sectors}
         isTagFilterable={isTagFilterable}
         availableTags={availableTags}
+        availableScopes={availableScopes}
+        availableThemes={availableThemes}
         filterableParams={filterableParams}
         isTradableFilterable={isTradableFilterable}
         country={country}
@@ -2266,13 +2345,18 @@ export default function StockGrid({
                   })()}
 
                   <button
-                    className={`force-sync-btn radium-style ${detectingSectors ? 'is-syncing' : ''}`}
+                    className={`force-sync-btn radium-style ${detectingSectors ? 'is-syncing relative overflow-hidden' : ''}`}
                     onClick={handleDetectSectors}
-                    title="Detect missing sectors using Cache & AI"
+                    title={detectingSectors ? `Detecting Sector & Scope: ${sectorProgress.completed}/${sectorProgress.total}` : "Detect missing sectors and business scope using Cache & AI"}
                     disabled={detectingSectors}
+                    style={detectingSectors ? { minWidth: '160px', padding: '0 10px' } : {}}
                   >
                     {detectingSectors ? (
-                      <span className="spinner-mini" style={{ borderTopColor: 'currentColor', width: '10px', height: '10px' }} />
+                      <div className="flex items-center gap-1.5 z-10 relative text-cyan-700 dark:text-cyan-300 font-bold text-[11px] whitespace-nowrap">
+                        <span className="spinner-mini" style={{ borderTopColor: '#06b6d4', width: '10px', height: '10px' }} />
+                        <span>AI Scope {sectorProgress.total > 0 ? `${Math.round((sectorProgress.completed / Math.max(1, sectorProgress.total)) * 100)}%` : ''}</span>
+                        {sectorProgress.total > 0 && <span className="text-[10px] text-cyan-900/80 dark:text-cyan-200/80">({sectorProgress.completed}/{sectorProgress.total})</span>}
+                      </div>
                     ) : (
                       <svg
                         xmlns="http://www.w3.org/2000/svg"
@@ -2289,6 +2373,12 @@ export default function StockGrid({
                         <rect x="3" y="16" width="7" height="5" rx="1.5" />
                       </svg>
                     )}
+                    {detectingSectors && sectorProgress.total > 0 && (
+                      <div
+                        className="absolute left-0 top-0 bottom-0 bg-cyan-500/25 dark:bg-cyan-500/30 transition-all duration-300 pointer-events-none"
+                        style={{ width: `${Math.round((sectorProgress.completed / Math.max(1, sectorProgress.total)) * 100)}%` }}
+                      />
+                    )}
                   </button>
                 </>
               )}
@@ -2297,11 +2387,12 @@ export default function StockGrid({
         </div>
 
         <div className="command-right">
-          {(fetchProgress.total > 0 || aiProgress.total > 0 || sectorProgress.total > 0) && (
+          {((fetchProgress.total > 0 && fetchProgress.completed < fetchProgress.total) ||
+            (aiProgress.total > 0 && aiProgress.completed < aiProgress.total)) && (
             <div className="sync-badges-container">
-              <div className={`dual-activity-capsule-hub ${(aiProgress.total > 0 || sectorProgress.total > 0) ? "has-ai" : ""}`}>
-                {fetchProgress.total > 0 && (
-                  <div className={`activity-capsule-item metric-sync ${fetchProgress.completed >= fetchProgress.total ? "sync-finished" : ""}`}>
+              <div className={`dual-activity-capsule-hub ${aiProgress.total > 0 && aiProgress.completed < aiProgress.total ? "has-ai" : ""}`}>
+                {fetchProgress.total > 0 && fetchProgress.completed < fetchProgress.total && (
+                  <div className="activity-capsule-item metric-sync">
                     <div className="pulse-dot green" />
                     <span className="capsule-label">Fetching Metrics</span>
                     <span className="capsule-percent">{Math.round((fetchProgress.completed / fetchProgress.total) * 100)}%</span>
@@ -2315,39 +2406,13 @@ export default function StockGrid({
                   </div>
                 )}
 
-                {sectorProgress.total > 0 && (
+                {aiProgress.total > 0 && aiProgress.completed < aiProgress.total && (
                   <>
-                    {fetchProgress.total > 0 && <div className="activity-capsule-divider" />}
-                    <div 
-                      className={`activity-capsule-item sector-analysis ${sectorProgress.completed >= sectorProgress.total ? "sync-finished" : ""}`}
-                      title={`Auto-Identifying Sectors: Resolving missing stock sectors via Cache & Gemini AI (${sectorProgress.completed}/${sectorProgress.total})`}
-                    >
-                      <svg className="sector-capsule-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ color: '#06b6d4' }}>
-                        <rect x="3" y="3" width="7" height="9" rx="1.5" />
-                        <rect x="14" y="3" width="7" height="5" rx="1.5" />
-                        <rect x="14" y="12" width="7" height="9" rx="1.5" />
-                        <rect x="3" y="16" width="7" height="5" rx="1.5" />
-                      </svg>
-                      <span className="capsule-label">Sector AI</span>
-                      <span className="capsule-percent">{Math.round((sectorProgress.completed / sectorProgress.total) * 100)}%</span>
-                      <span className="capsule-count">({sectorProgress.completed}/{sectorProgress.total})</span>
-                      <div className="capsule-progress-track">
-                        <div 
-                          className="capsule-progress-bar cyan-bar" 
-                          style={{ width: `${Math.round((sectorProgress.completed / sectorProgress.total) * 100)}%` }} 
-                        />
-                      </div>
-                    </div>
-                  </>
-                )}
-
-                {aiProgress.total > 0 && (
-                  <>
-                    {(fetchProgress.total > 0 || sectorProgress.total > 0) && (
+                    {fetchProgress.total > 0 && fetchProgress.completed < fetchProgress.total && (
                       <div className="activity-capsule-divider" />
                     )}
                     <div 
-                      className={`activity-capsule-item ai-analysis ${aiProgress.completed >= aiProgress.total ? "sync-finished" : ""} ${rateLimitWait ? "is-waiting" : ""}`}
+                      className={`activity-capsule-item ai-analysis ${rateLimitWait ? "is-waiting" : ""}`}
                       title={rateLimitWait 
                         ? `Rate limit hit. Resuming in ~${rateLimitWait.waitSeconds}s... (${rateLimitWait.completed}/${rateLimitWait.total} stocks done)`
                         : (aiProgress.startTime && aiProgress.estimatedEndTime 
@@ -2361,31 +2426,31 @@ export default function StockGrid({
                             })()
                           : "Bulk AI Analysis: Evaluates all stocks in the watchlist & applies tags automatically")}
                     >
-                    <svg className="ai-sparkle-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
-                      <path d="M12 0C12 6.627 6.627 12 0 12C6.627 12 12 17.373 12 24C12 17.373 17.373 12 24 12C17.373 12 12 6.627 12 0Z" />
-                    </svg>
-                    <span className="capsule-label">
-                      {rateLimitWait ? `AI Wait (${rateLimitWait.waitSeconds}s)` : "Bulk AI"}
-                    </span>
-                    <span className="capsule-percent">{Math.round((aiProgress.completed / aiProgress.total) * 100)}%</span>
-                    <span className="capsule-count">({aiProgress.completed}/{aiProgress.total})</span>
-                    <button
-                      type="button"
-                      className="btn-stop-ai-mini"
-                      onClick={handleStopBulkAi}
-                      title="Cancel running AI analysis"
-                    >
-                      ⏹ Stop
-                    </button>
-                    <div className="capsule-progress-track">
-                      <div 
-                        className={`capsule-progress-bar ${rateLimitWait ? "amber-bar" : "purple-bar"}`} 
-                        style={{ width: `${Math.round((aiProgress.completed / aiProgress.total) * 100)}%` }} 
-                      />
+                      <svg className="ai-sparkle-icon" viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                        <path d="M12 0C12 6.627 6.627 12 0 12C6.627 12 12 17.373 12 24C12 17.373 17.373 12 24 12C17.373 12 12 6.627 12 0Z" />
+                      </svg>
+                      <span className="capsule-label">
+                        {rateLimitWait ? `AI Wait (${rateLimitWait.waitSeconds}s)` : "Bulk AI"}
+                      </span>
+                      <span className="capsule-percent">{Math.round((aiProgress.completed / aiProgress.total) * 100)}%</span>
+                      <span className="capsule-count">({aiProgress.completed}/{aiProgress.total})</span>
+                      <button
+                        type="button"
+                        className="btn-stop-ai-mini"
+                        onClick={handleStopBulkAi}
+                        title="Cancel running AI analysis"
+                      >
+                        ⏹ Stop
+                      </button>
+                      <div className="capsule-progress-track">
+                        <div 
+                          className={`capsule-progress-bar ${rateLimitWait ? "amber-bar" : "purple-bar"}`} 
+                          style={{ width: `${Math.round((aiProgress.completed / aiProgress.total) * 100)}%` }} 
+                        />
+                      </div>
                     </div>
-                  </div>
-                </>
-              )}
+                  </>
+                )}
               </div>
             </div>
           )}
@@ -2792,6 +2857,28 @@ export default function StockGrid({
                   onMouseDown={(e) => handleMouseDown(e, "tradable")}
                 />
               </th>
+              {showBusinessScope && (
+                <th className="resizable-th cw-businessScope">
+                  Business Scope
+                  <div
+                    className="col-resizer"
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => resetColWidth(e, "__businessScope__")}
+                    onMouseDown={(e) => handleMouseDown(e, "__businessScope__")}
+                  />
+                </th>
+              )}
+              {showDependentIndustries && (
+                <th className="resizable-th cw-dependentIndustries">
+                  Dependent Themes
+                  <div
+                    className="col-resizer"
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => resetColWidth(e, "__dependentIndustries__")}
+                    onMouseDown={(e) => handleMouseDown(e, "__dependentIndustries__")}
+                  />
+                </th>
+              )}
               {showNotes && (
                 <th
                   className="resizable-th notes-col cw-notes"
@@ -2971,7 +3058,7 @@ export default function StockGrid({
                       </div>
 
                       {!isReadOnly && showTags && (
-                        <div className="add-tag-wrapper">
+                        <div className={`add-tag-wrapper ${activeTagDropdown === stock.symbol ? "active-dropdown" : ""}`}>
                           <button
                             className={`add-tag-trigger ${activeTagDropdown === stock.symbol ? "active" : ""}`}
                             onClick={(e) => {
@@ -3276,7 +3363,6 @@ export default function StockGrid({
                   );
                 })}
 
-
                 <td className="checks-cell cw-checks">{renderChecksBadge(stock)}</td>
 
                 <td className="cw-tradable">
@@ -3291,6 +3377,49 @@ export default function StockGrid({
                     }}
                   />
                 </td>
+
+                {showBusinessScope && (
+                  <td className="cw-businessScope">
+                    <div className="flex flex-wrap gap-1 items-center max-w-[220px] max-h-[44px] overflow-hidden" title={(stock.businessScope || []).join(", ")}>
+                      {Array.isArray(stock.businessScope) && stock.businessScope.length > 0 ? (
+                        stock.businessScope.slice(0, 2).map((item, i) => (
+                          <span key={i} className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-slate-100 text-slate-800 border border-slate-300 dark:bg-slate-800/80 dark:text-slate-200 dark:border-slate-700/60 inline-block truncate max-w-[110px]">
+                            {item}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-slate-400 dark:text-slate-500 text-[11px] italic">—</span>
+                      )}
+                      {Array.isArray(stock.businessScope) && stock.businessScope.length > 2 && (
+                        <span className="text-[10px] text-slate-600 dark:text-slate-400 font-semibold px-1 py-0.5" title={stock.businessScope.slice(2).join(", ")}>
+                          +{stock.businessScope.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                )}
+
+                {showDependentIndustries && (
+                  <td className="cw-dependentIndustries">
+                    <div className="flex flex-wrap gap-1 items-center max-w-[220px] max-h-[44px] overflow-hidden" title={(stock.dependentIndustries || []).join(", ")}>
+                      {Array.isArray(stock.dependentIndustries) && stock.dependentIndustries.length > 0 ? (
+                        stock.dependentIndustries.slice(0, 2).map((item, i) => (
+                          <span key={i} className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100/90 text-amber-900 border border-amber-300 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30 inline-block truncate max-w-[110px]">
+                            ⚡ {item}
+                          </span>
+                        ))
+                      ) : (
+                        <span className="text-slate-400 dark:text-slate-500 text-[11px] italic">—</span>
+                      )}
+                      {Array.isArray(stock.dependentIndustries) && stock.dependentIndustries.length > 2 && (
+                        <span className="text-[10px] text-amber-800 dark:text-amber-300/80 font-semibold px-1 py-0.5" title={stock.dependentIndustries.slice(2).join(", ")}>
+                          +{stock.dependentIndustries.length - 2}
+                        </span>
+                      )}
+                    </div>
+                  </td>
+                )}
+
                 {showNotes && (
                   <td className="notes-col cw-notes">
                     <div className="input-clear-wrapper">
