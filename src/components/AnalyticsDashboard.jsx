@@ -1023,9 +1023,7 @@ const AIScopeExpandedExplorer = ({ param, onClose, onChartClick }) => {
           </div>
         ) : (
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pb-6">
-            {filteredData.map((group, idx) => {
-              const pct = Math.round((group.value / maxCount) * 100);
-              return (
+            {filteredData.map((group, idx) => (
                 <div
                   key={group.name}
                   className="ai-scope-exp-card p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-800/40 hover:border-blue-500/50 dark:hover:border-blue-400/50 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
@@ -1034,21 +1032,13 @@ const AIScopeExpandedExplorer = ({ param, onClose, onChartClick }) => {
                 >
                   <div>
                     {/* Card Top Row */}
-                    <div className="flex items-start justify-between gap-2 mb-2">
+                    <div className="flex items-start justify-between gap-2 mb-3">
                       <span className={`ai-scope-tag-pill idx-${idx % 6} text-xs font-bold px-2 py-1 rounded-md`}>
                         {group.name}
                       </span>
                       <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded-md whitespace-nowrap">
                         {group.value} {group.value === 1 ? "stock" : "stocks"}
                       </span>
-                    </div>
-
-                    {/* Progress Bar Track */}
-                    <div className="w-full bg-slate-200 dark:bg-slate-700 h-1.5 rounded-full overflow-hidden mb-3">
-                      <div
-                        className={`h-full ai-scope-bar-fill idx-${idx % 6}`}
-                        style={{ width: `${Math.max(pct, 5)}%` }}
-                      />
                     </div>
                   </div>
 
@@ -1066,8 +1056,7 @@ const AIScopeExpandedExplorer = ({ param, onClose, onChartClick }) => {
                     </div>
                   )}
                 </div>
-              );
-            })}
+              ))}
           </div>
         )}
       </div>

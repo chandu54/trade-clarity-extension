@@ -12,12 +12,25 @@ export const CONFIG = {
   MODELS: [
     { value: "gemini-2.5-flash", label: "Gemini 2.5 Flash", isPremium: false },
     { value: "gemini-3.5-flash", label: "Gemini 3.5 Flash", isPremium: false },
-    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash", isPremium: false },
+    { value: "gemini-3.6-flash", label: "Gemini 3.6 Flash", isPremium: false },
+    { value: "gemini-flash-latest", label: "Gemini 3 Flash (Preview)", isPremium: false },
     { value: "gemini-1.5-flash", label: "Gemini 1.5 Flash", isPremium: false },
     { value: "gemini-2.5-pro", label: "Gemini 2.5 Pro", isPremium: true },
-    { value: "gemini-flash-latest", label: "Gemini 3 Flash (Preview)", isPremium: false },
+    { value: "gemini-2.0-flash", label: "Gemini 2.0 Flash (Deprecated)", isPremium: false },
   ],
-  FALLBACK_MODELS: ["gemini-2.5-flash", "gemini-3.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"],
+  FALLBACK_MODELS: [
+    "gemini-2.5-flash",
+    "gemini-3.5-flash",
+    "gemini-3.6-flash",
+    "gemini-flash-latest",
+    "gemini-1.5-flash",
+  ],
+
+  // AI Rate Limiting & Pacing Defaults
+  AI_PACING_DELAY_MS: 18000, // 18s safe pacing between bulk chunks (~3.3 RPM, comfortably below 5 RPM limit)
+  AI_PAID_DELAY_MS: 800, // Sub-second pacing for paid / billing tier (1,000 RPM)
+  AI_CHUNK_SIZE_SECTORS: 18, // 18 stocks per prompt for sector & business scope classification
+  AI_CHUNK_SIZE_VERDICTS: 7, // 7 stocks per prompt for deep Minervini/Qullamaggie reasoning
 
   // API Endpoints
   YAHOO_FINANCE_URL: "https://query1.finance.yahoo.com/v8/finance/chart/",

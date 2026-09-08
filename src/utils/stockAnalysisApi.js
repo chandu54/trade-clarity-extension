@@ -111,12 +111,20 @@ globalFundamentalsCache.loadFromStorage();
 // Used as a free, auth-less fallback when Yahoo Finance returns no earningsDate.
 let nseCalendarCache = null;     // Array of { symbol, date, purpose, bm_desc }
 let nseCalendarFetchedAt = 0;
-const NSE_CALENDAR_TTL = 4 * 60 * 60 * 1000; // 4 hours
+let nseCalendarFailedAt = 0;
+let nseCalendarInFlight = null;
+const NSE_CALENDAR_TTL = 4 * 60 * 60 * 1000; // 4 hours on success
+const NSE_CALENDAR_FAIL_TTL = 30 * 60 * 1000; // 30 minutes cooldown on failure
 const NSE_HEADERS = {
-  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
-  'Accept': 'application/json, text/plain, */*',
-  'Referer': 'https://www.nseindia.com/',
+  'Accept': 'application/json, text/plain, */*'
 };
+
+export function resetNseCalendarCache() {
+  nseCalendarCache = null;
+  nseCalendarFetchedAt = 0;
+  nseCalendarFailedAt = 0;
+  nseCalendarInFlight = null;
+}
 
 async function ensureNseCalendar() {
   const now = Date.now();
@@ -124,64 +132,100 @@ async function ensureNseCalendar() {
     return nseCalendarCache;
   }
 
-  const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
-  const baseUrl = isLocalhost ? '/nse-api' : 'https://www.nseindia.com';
-  const primaryUrl = `${baseUrl}/api/event-calendar`;
-  const fallbackUrl = `${baseUrl}/api/corporate-board-meetings?index=equities`;
-
-  let calendarEntries = [];
-
-  try {
-    const res = await fetch(primaryUrl, {
-      headers: NSE_HEADERS,
-      cache: 'no-cache'
-    });
-    if (res.ok) {
-      const data = await res.json();
-      if (Array.isArray(data) && data.length > 0) {
-        calendarEntries = data;
-      }
-    }
-  } catch (e) {
-    console.warn('[NSE Calendar] Primary event-calendar fetch failed:', e.message);
+  // If recently blocked or failed, observe cooldown to prevent network flooding and console spam
+  if (nseCalendarFailedAt && (now - nseCalendarFailedAt < NSE_CALENDAR_FAIL_TTL)) {
+    return null;
   }
 
-  // Fallback to board-meetings endpoint if primary calendar is empty or failed
-  if (calendarEntries.length === 0) {
+  // Deduplicate concurrent in-flight requests across multiple stocks
+  if (nseCalendarInFlight) {
+    return nseCalendarInFlight;
+  }
+
+  nseCalendarInFlight = (async () => {
+    const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+    const baseUrl = isLocalhost ? '/nse-api' : 'https://www.nseindia.com';
+    const primaryUrl = `${baseUrl}/api/event-calendar`;
+    const fallbackUrl = `${baseUrl}/api/corporate-board-meetings?index=equities`;
+
+    let calendarEntries = [];
+
+    const fetchWithTimeout = async (url, options = {}, timeoutMs = 2500) => {
+      const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+      const id = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
+      try {
+        const res = await fetch(url, { ...options, signal: controller?.signal });
+        if (id) clearTimeout(id);
+        return res;
+      } catch (_err) {
+        if (id) clearTimeout(id);
+        return null;
+      }
+    };
+
     try {
-      const res = await fetch(fallbackUrl, {
+      const res = await fetchWithTimeout(primaryUrl, {
         headers: NSE_HEADERS,
+        credentials: 'include',
         cache: 'no-cache'
-      });
-      if (res.ok) {
+      }, 2500);
+      if (res && res.ok) {
         const data = await res.json();
-        const rows = Array.isArray(data) ? data : (data.data || data.rows || []);
-        if (Array.isArray(rows) && rows.length > 0) {
-          calendarEntries = rows;
+        if (Array.isArray(data) && data.length > 0) {
+          calendarEntries = data;
         }
       }
-    } catch (e) {
-      console.warn('[NSE Calendar] Fallback board-meetings fetch failed:', e.message);
+    } catch (_e) {
+      // Primary event calendar fetch failed silently
     }
-  }
 
-  if (calendarEntries.length > 0) {
-    // Normalize entries into standard { symbol, date, purpose } objects
-    nseCalendarCache = calendarEntries.map(e => {
-      const rawSymbol = (e.symbol || e.bm_symbol || e.sm_symbol || '').replace(/-EQ$/i, '').toUpperCase();
-      const rawDate = e.date || e.bm_date || e.boardMeetingDate || e.bm_dt;
-      const rawPurpose = e.purpose || e.bm_desc || e.desc || e.purpose_desc || '';
-      return {
-        symbol: rawSymbol,
-        date: rawDate,
-        purpose: rawPurpose
-      };
-    }).filter(e => Boolean(e.symbol && e.date));
+    // Fallback to board-meetings endpoint if primary calendar is empty or failed
+    if (calendarEntries.length === 0) {
+      try {
+        const res = await fetchWithTimeout(fallbackUrl, {
+          headers: NSE_HEADERS,
+          credentials: 'include',
+          cache: 'no-cache'
+        }, 2500);
+        if (res && res.ok) {
+          const data = await res.json();
+          const rows = Array.isArray(data) ? data : (data.data || data.rows || []);
+          if (Array.isArray(rows) && rows.length > 0) {
+            calendarEntries = rows;
+          }
+        }
+      } catch (_e) {
+        // Fallback fetch failed silently
+      }
+    }
 
-    nseCalendarFetchedAt = now;
-  }
+    if (calendarEntries.length > 0) {
+      // Normalize entries into standard { symbol, date, purpose } objects
+      nseCalendarCache = calendarEntries.map(e => {
+        const rawSymbol = (e.symbol || e.bm_symbol || e.sm_symbol || '').replace(/-EQ$/i, '').toUpperCase();
+        const rawDate = e.date || e.bm_date || e.boardMeetingDate || e.bm_dt;
+        const rawPurpose = e.purpose || e.bm_desc || e.desc || e.purpose_desc || '';
+        return {
+          symbol: rawSymbol,
+          date: rawDate,
+          purpose: rawPurpose
+        };
+      }).filter(e => Boolean(e.symbol && e.date));
 
-  return nseCalendarCache;
+      nseCalendarFetchedAt = Date.now();
+      nseCalendarFailedAt = 0;
+    } else {
+      // Both endpoints failed or were blocked (e.g. 403 Forbidden by NSE WAF)
+      // Set cooldown to prevent subsequent calls from spamming the network and console
+      nseCalendarFailedAt = Date.now();
+    }
+
+    return nseCalendarCache;
+  })().finally(() => {
+    nseCalendarInFlight = null;
+  });
+
+  return nseCalendarInFlight;
 }
 
 export function calculateDaysAway(dateVal) {
@@ -252,15 +296,32 @@ export async function fetchNseEarningsDate(nseSymbol) {
  */
 export async function fetchNseQuarterlyResults(nseSymbol, country = 'IN') {
   if (!nseSymbol) return [];
+  // If NSE endpoints are currently blocked or failed, do not attempt to prevent 403 spam
+  if (nseCalendarFailedAt && (Date.now() - nseCalendarFailedAt < NSE_CALENDAR_FAIL_TTL)) {
+    return [];
+  }
+
   const symbol = nseSymbol.replace(/\.(NS|BO)$/i, '').toUpperCase();
+
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  const timeoutId = controller ? setTimeout(() => controller.abort(), 2500) : null;
 
   try {
     const url = `https://www.nseindia.com/api/results-comparision?symbol=${encodeURIComponent(symbol)}`;
     const res = await fetch(url, {
       headers: NSE_HEADERS,
-      cache: 'no-cache'
+      credentials: 'include',
+      cache: 'no-cache',
+      signal: controller?.signal
     });
-    if (!res.ok) return [];
+    if (timeoutId) clearTimeout(timeoutId);
+
+    if (!res.ok) {
+      if (res.status === 403) {
+        nseCalendarFailedAt = Date.now();
+      }
+      return [];
+    }
 
     const json = await res.json();
     const data = json.resCmpData || [];

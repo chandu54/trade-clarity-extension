@@ -22,17 +22,45 @@ Start directly with the analysis.`,
   {
     value: "bulk_analysis",
     label: "Background Bulk Stock Tagging Engine",
-    text: `Act as a Master Institutional Swing & Momentum Trader combining the proven methodologies of Mark Minervini (SEPA / VCP), Kristjan Qullamaggie (10/20 EMA Surfing / High Tight Flags / Extended Rule), and Stockbee / VVV (Relative Strength & Momentum Bursts).
+    text: `Act as a Master Institutional Swing & Momentum Trader combining the proven methodologies of Mark Minervini (SEPA / VCP), William O'Neil (CANSLIM / IPO Bases), Kristjan Qullamaggie (10/20 EMA Surfing / High Tight Flags / Extended Rule), and Stockbee / VVV (Relative Strength & Momentum Bursts).
 
 Your mission is to evaluate the list of stocks provided in JSON format ({stocksJson}) for timeframe ({timeframe}) and output a high-conviction verdict (STRONG BUY, BUY, WAIT, or SELL) and a sharp 1-sentence technical reasoning for each stock.
 
-Evaluation & Verdict Criteria (Strictly Applied):
-1. **STRONG BUY**: Meets Minervini Trend Template & Qullamaggie VCP / High Tight Flag. Surfing cleanly above 10/20/50 MAs in proper bullish order with strong relative strength.
-2. **BUY**: Clean orderly pullback to 10/20 EMA support within an established uptrend, or early-stage base breakout with positive momentum alignment.
-3. **WAIT**: Extended stock (>15% above 10/20 EMA), forming a base that needs time, or counter-trend bounce below 50/200 MAs.
-4. **SELL**: Lower highs, breakdown below 20/50 MAs, or heavy breakdown volume.
+Regime-Based Evaluation Rules (Strictly Applied):
+
+REGIME 1: YOUNG IPOs, RECENT LISTINGS & IPO BASES (Applies to stocks tagged "Young IPO", "Recent Listing", "IPO Base", or lacking 50/200 MAs):
+- EXEMPTION: Strictly exempt from 50/200 MAs, multi-quarter RS history, and Stan Weinstein Stage 2 criteria (stock is too young). DO NOT penalize for missing 50/200 MAs or lack of 3-month RS! Judge strength by price holding above listing price / Day-1 High and volume dry-up.
+- STRONG BUY: First IPO Base breakout clearing Day 1 High / ATH pivot on volume, High Tight Flag, or surfing 10/20 EMA with tight price contraction and zero overhead resistance.
+- BUY: Orderly pullback to 10/20 EMA support (IPO U-Turn recovery or handle), or early base-2 consolidation with strong relative strength.
+- WAIT: Ultra-young listing (<10-15 trading days) still in erratic price discovery, or wide/loose base (>35% depth) needing consolidation time.
+- SELL: Trend breakdown breaching listing-day low, heavy distribution volume, or losing 20 EMA with no support.
+
+REGIME 2: ESTABLISHED STOCKS (>= 250 Trading Days):
+- STRONG BUY: Meets Minervini Trend Template & Qullamaggie VCP / High Tight Flag. Surfing cleanly above 10/20/50 MAs in proper bullish order (10 > 20 > 50 > 200) with strong relative strength.
+- BUY: Clean orderly pullback to 10/20 EMA support within an established uptrend, or early-stage base breakout with positive momentum alignment.
+- WAIT: Extended stock (>15-20% above 10/20 EMA), forming a base that needs time, or counter-trend bounce below 50/200 MAs.
+- SELL: Lower highs, breakdown below 20/50 MAs, or heavy breakdown volume.
 
 Return ONLY a strict JSON object mapping each ticker symbol to its object containing "verdict" and "reasoning".`,
+  },
+  {
+    value: "ipo_analysis",
+    label: "IPO & Recent Listings Specialist",
+    text: `Act as a Lead Institutional IPO & Young Growth Specialist (inspired by William O'Neil and Mark Minervini's IPO Playbook).
+Conduct an institutional deep dive on the IPO / Recent Listing watchlist ({category}).
+
+Mission: Identify high-velocity IPO Base breakouts and early-stage institutional accumulation while screening out broken post-listing distributions.
+
+Required Sections:
+1. **IPO Cohort Health**: 2-3 sentences evaluating the collective appetite for recent market listings and risk appetite.
+2. **Prime IPO Setups (Top Tier)**:
+   - Identify 1-3 leading IPOs forming tight IPO Bases, IPO U-turns, or High Tight Flags.
+   - For each: State the **Pivot Breakout Level**, **Current Base Depth %**, **EMA Support Alignment (10/20 EMA)**, and **Volume Dry-up Quality**.
+3. **Execution Decision Matrix**: Entry triggers, stops, and risk parameters.
+4. **Red Flags & Traps**: List any young stocks showing heavy institutional liquidation or breaching Day 1 lows.
+
+Identify: {tickers}. Use their provided performance numbers for the analysis.
+Start directly with the report.`,
   },
   {
     value: "phenomena",
@@ -184,7 +212,7 @@ export async function getSingleStockAnalysis(
 
   try {
     let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
-    return await fetchGemini(apiKey, prompt, modelToUse, true); // Use isCustom=true to get raw text
+    return await fetchGemini(apiKey, prompt, modelToUse, true, 3, true); // Use isCustom=true, retries=3, skipCircuitBreaker=true (VIP lane)
   } catch (error) {
     const errorMsg = error.message || "Unknown error";
     const safeErrorMsg =
@@ -246,7 +274,7 @@ export async function getBulkStockVerdicts(
   let prompt =
     customPromptText ||
     `
-    Act as a Master Institutional Swing & Momentum Trader combining the proven methodologies of Mark Minervini (SEPA / VCP), Kristjan Qullamaggie (10/20 EMA Surfing / High Tight Flags / Extended Rule), and Stockbee / VVV (Relative Strength & Momentum Bursts).
+    Act as a Master Institutional Swing & Momentum Trader combining the proven methodologies of Mark Minervini (SEPA / VCP), William O'Neil (CANSLIM / IPO Bases), Kristjan Qullamaggie (10/20 EMA Surfing / High Tight Flags / Extended Rule), and Stockbee / VVV (Relative Strength & Momentum Bursts).
 
     Your mission is to evaluate the following list of stocks provided in JSON format and output a high-conviction verdict and a sharp 1-sentence technical reasoning for each stock.
 
@@ -255,34 +283,34 @@ export async function getBulkStockVerdicts(
     Stock Data Payload:
     {stocksJson}
 
-    Evaluation & Verdict Criteria (Strictly Applied):
+    Regime-Based Evaluation Rules (Strictly Applied):
 
-    1. STRONG BUY:
-       - Must meet Minervini Trend Template & Qullamaggie VCP / High Tight Flag setup.
-       - Price must be surfing cleanly above 10/20/50 MAs in proper bullish order (10 > 20 > 50 > 200).
-       - High Relative Strength (strong positive period change), low volatility contraction near key breakout level.
+    REGIME 1: YOUNG IPOs, RECENT LISTINGS & IPO BASES (Applies if tagged "Young IPO", "Recent Listing", "IPO Base", or lacking 50/200 MAs):
+    - EXEMPTION: Strictly exempt from 50/200 MAs, multi-quarter RS history, and Stan Weinstein Stage 2 criteria (stock is too young). DO NOT penalize for missing 50/200 MAs or lack of 3-month RS! Judge strength by price holding above listing price / Day-1 High and volume dry-up.
+    - STRONG BUY: First IPO Base breakout clearing Day 1 High / ATH pivot on volume, High Tight Flag, or surfing 10/20 EMA with tight price contraction and zero overhead resistance.
+    - BUY: Orderly pullback to 10/20 EMA support (IPO U-Turn recovery or handle), or early base-2 consolidation with strong relative strength.
+    - WAIT: Ultra-young listing (<10-15 trading days) still in erratic price discovery, or wide/loose base (>35% depth) needing consolidation time.
+    - SELL: Trend breakdown breaching listing-day low, heavy distribution volume, or losing 20 EMA with no support.
 
-    2. BUY:
-       - Clean orderly pullback to 10/20 EMA support within an established uptrend, or early-stage base breakout.
-       - Positive momentum alignment with strong relative strength vs broader market.
-
-    3. WAIT:
-       - Extended Rule (Qullamaggie): If a stock is extended >15-20% above its 10/20 EMA or recent base, assign WAIT ("Extended — wait for 10/20 EMA pullback or flag base").
-       - Base Consolidation: Forming a base, but needs volume dry-up or tighter price contraction before entry.
-       - Counter-Trend Bounce: Daily gain occurs beneath heavy overhead MA resistance or negative period trend ("Counter-trend bounce below 50/200 MA").
-
-    4. SELL:
-       - Trend Breakdown: Violation of key MAs (below 50/200 MA), breakdown below recent swing lows, or lagging relative strength.
+    REGIME 2: ESTABLISHED STOCKS (>= 250 Trading Days):
+    - STRONG BUY: Meets Minervini Trend Template & Qullamaggie VCP / High Tight Flag. Surfing cleanly above 10/20/50 MAs in proper bullish order (10 > 20 > 50 > 200) with strong relative strength.
+    - BUY: Clean orderly pullback to 10/20 EMA support within an established uptrend, or early-stage base breakout with positive momentum alignment.
+    - WAIT: Extended stock (>15-20% above 10/20 EMA), forming a base that needs time, or counter-trend bounce below 50/200 MAs.
+    - SELL: Trend breakdown, violation of key MAs (below 50/200 MA), or heavy breakdown volume.
 
     Reasoning Output Requirements:
     - The reasoning MUST be 1 concise, punchy sentence.
-    - Explicitly reference specific legendary setups or technical metrics (e.g., Minervini VCP, Qullamaggie 10/20 EMA Surfing, Extended Rule, MA alignment, Relative Strength %, ADR volatility).
+    - Explicitly reference specific legendary setups or technical metrics (e.g., IPO Base Breakout, Day-1 High Pivot, Minervini VCP, Qullamaggie 10/20 EMA Surfing, Extended Rule, MA alignment, Relative Strength %, ADR volatility).
     - DO NOT output generic fluff like "Stock looks good" or "Price is going up".
 
     Response Format:
     Respond ONLY with a valid JSON object where the keys are the stock symbols and the values are objects containing 'verdict' and 'reasoning'.
     Example Output:
     {
+      "BAJAJHFL": {
+        "verdict": "STRONG BUY",
+        "reasoning": "IPO Base Breakout: Surfing 10/20 EMA, clearing Day-1 high pivot with zero overhead resistance."
+      },
       "RELIANCE": {
         "verdict": "STRONG BUY",
         "reasoning": "Minervini VCP Setup: Surfing above 10/20 MAs with +24.5% 3mo relative strength; tight price contraction near pivot."
@@ -535,27 +563,36 @@ async function fetchGemini(
           err.error?.message ||
           `Gemini API Error: ${response.status} ${response.statusText || ""} (${cleanModel})`.trim();
 
-        // Quota / Credit Exhaustion Circuit Breaker
-        if (
+        const isQuota =
           response.status === 429 ||
           errMessage.includes("RESOURCE_EXHAUSTED") ||
-          errMessage.includes("QuotaExceeded")
-        ) {
-          // Automatic Model Fallback on Quota Exhaustion
+          errMessage.includes("QuotaExceeded");
+
+        const isModelUnavailable =
+          response.status === 404 ||
+          errMessage.includes("no longer available") ||
+          errMessage.includes("is not found") ||
+          errMessage.includes("deprecated");
+
+        // Quota Exhaustion or Deprecated Model Fallback
+        if (isQuota || isModelUnavailable) {
           if (enableFallback) {
             const fallbackChain = CONFIG.FALLBACK_MODELS || [
               "gemini-2.5-flash",
               "gemini-3.5-flash",
-              "gemini-2.0-flash",
+              "gemini-3.6-flash",
+              "gemini-flash-latest",
               "gemini-1.5-flash",
             ];
             const currentIdx = fallbackChain.indexOf(cleanModel);
-            const nextModel =
-              fallbackChain[currentIdx + 1] ||
-              fallbackChain.find((m) => m !== cleanModel);
+            const remainingModels =
+              currentIdx >= 0
+                ? fallbackChain.slice(currentIdx + 1)
+                : fallbackChain.filter((m) => m !== cleanModel);
+            const nextModel = remainingModels[0];
             if (nextModel) {
               console.warn(
-                `[Model Fallback] Quota limit on ${cleanModel}. Automatically switching request to fallback model ${nextModel}...`,
+                `[Model Fallback] ${isModelUnavailable ? "Model deprecated/unavailable" : "Quota limit"} on ${cleanModel}. Automatically switching request to fallback model ${nextModel}...`,
               );
               if (
                 typeof chrome !== "undefined" &&
@@ -582,31 +619,33 @@ async function fetchGemini(
                 isCustom,
                 retries,
                 skipCircuitBreaker,
-                false,
+                remainingModels.length > 1,
               );
             }
           }
 
-          const retryMs = parseRetryAfterMs(errMessage, 65000);
-          if (!skipCircuitBreaker) {
-            const blockedUntil = Date.now() + retryMs;
-            await updateAiState(3, blockedUntil);
-            if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
-              try {
-                const res = chrome.runtime.sendMessage({
-                  action: "AI_LIMIT_REACHED",
-                  payload: { blockedUntil },
-                });
-                if (res && typeof res.catch === "function") res.catch(() => {});
-              } catch (_e) {
-                // Ignore
+          if (isQuota) {
+            const retryMs = parseRetryAfterMs(errMessage, 65000);
+            if (!skipCircuitBreaker) {
+              const blockedUntil = Date.now() + retryMs;
+              await updateAiState(3, blockedUntil);
+              if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+                try {
+                  const res = chrome.runtime.sendMessage({
+                    action: "AI_LIMIT_REACHED",
+                    payload: { blockedUntil },
+                  });
+                  if (res && typeof res.catch === "function") res.catch(() => {});
+                } catch (_e) {
+                  // Ignore
+                }
               }
             }
+            const secs = Math.ceil(retryMs / 1000);
+            throw new Error(
+              `RESOURCE_EXHAUSTED: Gemini API Quota Limit. Retry in ${secs}s.`,
+            );
           }
-          const secs = Math.ceil(retryMs / 1000);
-          throw new Error(
-            `RESOURCE_EXHAUSTED: Gemini API Quota Limit. Retry in ${secs}s.`,
-          );
         }
 
         throw new Error(errMessage);
@@ -1003,6 +1042,7 @@ export async function classifySectorsInBulk(
   availableSectors = [],
   signal = null,
   onProgress = null,
+  options = {},
 ) {
   if (!apiKey || !stocks || stocks.length === 0) {
     return {};
@@ -1011,9 +1051,16 @@ export async function classifySectorsInBulk(
     throw new Error("Bulk AI sector classification aborted.");
   }
 
-  const chunkSize = 5;
+  // 18 stocks per prompt provides high JSON fidelity while cutting API calls by ~72%
+  const chunkSize = options.chunkSize || CONFIG.AI_CHUNK_SIZE_SECTORS || 18;
   const total = stocks.length;
   const combinedResults = {};
+
+  const isTest =
+    typeof process !== "undefined" && process.env?.NODE_ENV === "test";
+  const pacingDelayMs =
+    options.pacingDelayMs ??
+    (isTest ? 0 : CONFIG.AI_PACING_DELAY_MS || 18000);
 
   for (let i = 0; i < total; i += chunkSize) {
     if (signal?.aborted) {
@@ -1066,19 +1113,59 @@ export async function classifySectorsInBulk(
 
     let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
     let chunkResults = null;
-    try {
-      const res = await fetchGemini(apiKey, prompt, modelToUse, false);
-      if (res && typeof res === "object") {
-        chunkResults = res;
-        Object.assign(combinedResults, res);
+    let attempts = 0;
+    const maxChunkAttempts = 3;
+
+    while (attempts < maxChunkAttempts) {
+      if (signal?.aborted) {
+        throw new Error("Bulk AI sector classification aborted.");
       }
-    } catch (error) {
-      console.error("[AI Bulk Sector Classification Failed]:", error);
-      if (
-        error?.message &&
-        error.message.includes("AI Request Limit Reached")
-      ) {
-        throw error;
+      try {
+        attempts++;
+        // Use skipCircuitBreaker=true so transient bulk errors do NOT lock out single-stock analysis
+        const res = await fetchGemini(apiKey, prompt, modelToUse, false, 2, true);
+        if (res && typeof res === "object") {
+          chunkResults = res;
+          Object.assign(combinedResults, res);
+        }
+        break; // Success: exit retry loop
+      } catch (error) {
+        const errStr = error?.message || String(error);
+        const is429 =
+          errStr.includes("429") ||
+          errStr.includes("RESOURCE_EXHAUSTED") ||
+          errStr.includes("Quota") ||
+          errStr.includes("AI Request Limit Reached");
+
+        if (is429 && attempts < maxChunkAttempts && !signal?.aborted) {
+          const retryMs = parseRetryAfterMs(errStr, 35000);
+          const retrySecs = Math.ceil(retryMs / 1000);
+          console.warn(
+            `[classifySectorsInBulk] Rate limit reached on attempt ${attempts}. Pausing for ${retrySecs}s before auto-resuming chunk...`,
+          );
+          const stepWait = isTest ? 0 : 1000;
+          for (let s = retrySecs; s > 0; s--) {
+            if (signal?.aborted) {
+              throw new Error("Bulk AI sector classification aborted.");
+            }
+            if (onProgress) {
+              onProgress({
+                completed: i,
+                total,
+                statusText: `Quota limit reached. Auto-resuming in ${s}s...`,
+                isWaitingForQuota: true,
+                retryInSecs: s,
+              });
+            }
+            if (stepWait > 0) {
+              await new Promise((r) => setTimeout(r, stepWait));
+            }
+          }
+          continue; // Retry this chunk
+        } else {
+          console.error("[AI Bulk Sector Classification Failed]:", error);
+          break;
+        }
       }
     }
 
@@ -1088,6 +1175,29 @@ export async function classifySectorsInBulk(
         total,
         chunkResults,
       });
+    }
+
+    // Pacing delay between chunks (only when more chunks remain and delay > 0)
+    if (i + chunkSize < total && pacingDelayMs > 0 && !signal?.aborted) {
+      const waitSecs = Math.ceil(pacingDelayMs / 1000);
+      const stepWait = isTest ? 0 : 1000;
+      for (let s = waitSecs; s > 0; s--) {
+        if (signal?.aborted) {
+          throw new Error("Bulk AI sector classification aborted.");
+        }
+        if (onProgress) {
+          onProgress({
+            completed: Math.min(i + chunkSize, total),
+            total,
+            chunkResults: null,
+            statusText: `Chunk ${Math.floor(i / chunkSize) + 1} complete. Pacing next chunk in ${s}s...`,
+            nextChunkIn: s,
+          });
+        }
+        if (stepWait > 0) {
+          await new Promise((r) => setTimeout(r, stepWait));
+        }
+      }
     }
   }
 
@@ -1113,7 +1223,7 @@ Return ONLY a strict JSON object format without markdown block:
 
   let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
   try {
-    const res = await fetchGemini(apiKey, prompt, modelToUse, false);
+    const res = await fetchGemini(apiKey, prompt, modelToUse, false, 3, true);
     if (res && typeof res === "object") {
       return {
         businessScope: Array.isArray(res.businessScope)

@@ -168,7 +168,7 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
   };
 
   const getSystemDefaults = (cat) => {
-    if (cat === "watchlist") return PROMPT_TEMPLATES.filter(t => t.value === "swing" || t.value === "momentum");
+    if (cat === "watchlist") return PROMPT_TEMPLATES.filter(t => t.value === "swing" || t.value === "momentum" || t.value === "ipo_analysis");
     if (cat === "bulk") return PROMPT_TEMPLATES.filter(t => t.value === "bulk_analysis");
     if (cat === "phenomena") return [PROMPT_TEMPLATES.find(t => t.value === "phenomena")].filter(Boolean);
     if (cat === "stock") {

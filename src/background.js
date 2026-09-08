@@ -4,6 +4,7 @@ import { calculateStockRsCategory } from "./utils/benchmarkUtils.js";
 import { evaluateStageFromCandles } from "./utils/calculateStageMetric.ts";
 import { evaluateVCPTightnessFromCandles } from "./utils/calculateVcpTightness.ts";
 import { evaluateIPOTag } from "./utils/detectYoungIPO";
+import { evaluateIPOBase } from "./utils/detectIPOBase";
 import { getBulkStockVerdicts } from "./services/ai.js";
 import { fetchStockData } from "./utils/yahooFinanceMap.js";
 import { CONFIG } from "./constants/config.js";
@@ -41,10 +42,10 @@ async function getActiveBulkAiTask() {
 function calculateEstimatedEndTime(completed, total) {
   const remaining = Math.max(0, total - completed);
   if (remaining === 0) return Date.now();
-  const chunkSize = 7;
+  const chunkSize = CONFIG.AI_CHUNK_SIZE_VERDICTS || 7;
   const remainingChunks = Math.ceil(remaining / chunkSize);
-  // ~14s pacing delay per chunk API call
-  const remainingSecs = remainingChunks * 15;
+  const pacingSecs = Math.ceil((CONFIG.AI_PACING_DELAY_MS || 18000) / 1000);
+  const remainingSecs = remainingChunks * (pacingSecs + 2);
   return Date.now() + (remainingSecs * 1000);
 }
 
@@ -403,16 +404,17 @@ async function processAiQueue() {
         });
       }
 
-      // Pacing delay between chunks (~14s) ensures ~4 RPM, staying safely below Google's 5 RPM free-tier limit
+      // Pacing delay between chunks (18s default) ensures ~3.3 RPM, staying safely below Google's 5 RPM free-tier limit
       if (i + chunkSize < total) {
+        const pacingSecs = Math.ceil((CONFIG.AI_PACING_DELAY_MS || 18000) / 1000);
         await saveActiveBulkAiTask({
           ...taskState,
           currentIndex: i + chunkSize,
           results,
           status: "waiting",
-          nextResumeTime: Date.now() + (14 * 1000)
+          nextResumeTime: Date.now() + (pacingSecs * 1000)
         });
-        await waitWithCountdown(14, i + chunkSize, total);
+        await waitWithCountdown(pacingSecs, i + chunkSize, total);
       }
     }
 
@@ -717,7 +719,8 @@ async function fetchAndCalculateMetrics(
     // --- RELATIVE STRENGTH (RS) MAPPING ---
     const rsMatch = getActualParamKeyAndDef(paramDefs, "rs", "rs", country);
     let rsCategory = "Neutral";
-    if (validDays.length > 0) {
+    // For fresh IPOs (<20 trading days), keep RS as Neutral to avoid skewed comparison against multi-month benchmark
+    if (validDays.length >= 20) {
       const timeframe = uiConfig?.rsTimeframe || "3mo";
       // Map RS timeframe to approximate trading days
       const rsTradingDays = { '1mo': 21, '3mo': 63, '6mo': 126, '1y': 252 };
@@ -751,8 +754,13 @@ async function fetchAndCalculateMetrics(
     // --- IPO TAG MAPPING ---
     const ipoResult = evaluateIPOTag(symbol, validDays);
     const isYoungIPO = ipoResult.isYoungIPO;
+    const isRecentListing = ipoResult.isRecentListing;
 
-    console.log(`[Sync] Computed for ${symbol}: ADR=${formattedAdr}, Liquidity=${formattedLiquidity}, MAs=${maBucket}, RS=${rsCategory}, Stage=${stageCategory}, VCP=${vcpDisplayText}, YoungIPO=${isYoungIPO}`);
+    // --- IPO BASE PATTERN MAPPING ---
+    const ipoBaseResult = evaluateIPOBase(symbol, validDays);
+    const isIPOBase = ipoBaseResult.isIPOBase;
+
+    console.log(`[Sync] Computed for ${symbol}: ADR=${formattedAdr}, Liquidity=${formattedLiquidity}, MAs=${maBucket}, RS=${rsCategory}, Stage=${stageCategory}, VCP=${vcpDisplayText}, YoungIPO=${isYoungIPO}, RecentListing=${isRecentListing}, IPOBase=${isIPOBase}`);
 
     return {
       adr: formattedAdr,
@@ -764,6 +772,8 @@ async function fetchAndCalculateMetrics(
       vcp_tightness_display: vcpDisplayText,
       isTightVCP: isTightVCP,
       isYoungIPO: isYoungIPO,
+      isRecentListing: isRecentListing,
+      isIPOBase: isIPOBase,
       name: companyName,
       isInvalid: false,
       adrKey: adrMatch.key,
@@ -789,6 +799,16 @@ async function updateStorageWithMetrics(updates) {
 
       let dataChanged = false;
 
+      // Ensure system tags exist in uiConfig.tags
+      if (!db.uiConfig) db.uiConfig = {};
+      if (!db.uiConfig.tags) db.uiConfig.tags = [];
+      ["Young IPO", "Recent Listing", "IPO Base", "AI:Tight VCP"].forEach(t => {
+        if (!db.uiConfig.tags.includes(t)) {
+          db.uiConfig.tags.push(t);
+          dataChanged = true;
+        }
+      });
+
       updates.forEach(({ symbol, country, weekKey, metrics }) => {
         const weekData = db.weeks[country]?.[weekKey];
         if (weekData && weekData.stocks && weekData.stocks[symbol]) {
@@ -801,11 +821,26 @@ async function updateStorageWithMetrics(updates) {
           const rsKey = metrics.rsKey || "rs";
           const stageKey = metrics.stageKey || "stage";
 
-          // Auto-apply Young IPO tag if stock has < 60 days of historical candles
+          // Auto-apply Young IPO (<60d) or Recent Listing (60-250d)
           if (metrics.isYoungIPO) {
             const currentTags = stock.tags || [];
             if (!currentTags.includes("Young IPO")) {
-              stock.tags = [...currentTags, "Young IPO"];
+              stock.tags = [...currentTags.filter(t => t !== "Recent Listing"), "Young IPO"];
+              dataChanged = true;
+            }
+          } else if (metrics.isRecentListing) {
+            const currentTags = stock.tags || [];
+            if (!currentTags.includes("Recent Listing")) {
+              stock.tags = [...currentTags.filter(t => t !== "Young IPO"), "Recent Listing"];
+              dataChanged = true;
+            }
+          }
+
+          // Auto-apply IPO Base tag if constructive IPO cup/recovery pattern detected
+          if (metrics.isIPOBase) {
+            const currentTags = stock.tags || [];
+            if (!currentTags.includes("IPO Base")) {
+              stock.tags = [...currentTags, "IPO Base"];
               dataChanged = true;
             }
           }

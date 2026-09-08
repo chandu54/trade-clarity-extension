@@ -983,17 +983,20 @@ export default function EditStockModal({
     try {
       const results = await fetchStockQuotes(symbols, country, signal, forceRefresh);
       if (results && results.length > 0) {
-        const mapping = {};
-        results.forEach(r => {
-          mapping[r.symbol] = {
-            dailyChangePct: r.dailyChangePct,
-            isAdvancing: r.isAdvancing,
-            currentPrice: r.currentPrice,
-            earningsDate: r.earningsDate,
-            earningsDaysAway: r.earningsDaysAway
-          };
+        setSidebarStockData(prev => {
+          const mapping = { ...prev };
+          results.forEach(r => {
+            mapping[r.symbol] = {
+              ...(mapping[r.symbol] || {}),
+              dailyChangePct: r.dailyChangePct,
+              isAdvancing: r.isAdvancing,
+              currentPrice: r.currentPrice,
+              earningsDate: r.earningsDate || mapping[r.symbol]?.earningsDate,
+              earningsDaysAway: r.earningsDaysAway !== undefined ? r.earningsDaysAway : mapping[r.symbol]?.earningsDaysAway
+            };
+          });
+          return mapping;
         });
-        setSidebarStockData(mapping);
       }
     } catch (err) {
       if (err.name !== 'AbortError') {

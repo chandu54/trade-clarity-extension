@@ -3,13 +3,87 @@ import {
   evaluateFundamentalHealth,
   formatLargeNumber,
   fetchStockSummary,
-  globalFundamentalsCache
+  globalFundamentalsCache,
+  fetchNseEarningsDate,
+  fetchNseQuarterlyResults,
+  resetNseCalendarCache
 } from '../stockAnalysisApi';
 
 describe('stockAnalysisApi', () => {
   beforeEach(() => {
     globalFundamentalsCache.clear();
+    resetNseCalendarCache();
     vi.restoreAllMocks();
+  });
+
+  describe('fetchNseEarningsDate & NSE Calendar resilience', () => {
+    it('deduplicates concurrent requests and initiates cooldown on 403 Forbidden', async () => {
+      let fetchCallCount = 0;
+      vi.stubGlobal('fetch', vi.fn((url) => {
+        fetchCallCount++;
+        // Simulate NSE blocking with 403 Forbidden
+        return Promise.resolve({
+          ok: false,
+          status: 403,
+          json: () => Promise.resolve({ message: 'Forbidden' })
+        });
+      }));
+
+      // Simulate 10 concurrent requests for different stocks (as in a watchlist load)
+      const symbols = ['RELIANCE', 'TCS', 'INFY', 'HDFCBANK', 'ICICIBANK', 'SBIN', 'BHARTIARTL', 'ITC', 'LICI', 'LT'];
+      const results = await Promise.all(symbols.map(sym => fetchNseEarningsDate(sym)));
+
+      // All should return null gracefully
+      results.forEach(res => expect(res).toBeNull());
+
+      // Only one in-flight sequence should have fired (primary + fallback = max 2 calls), NOT 10 * 2 = 20 calls
+      expect(fetchCallCount).toBeLessThanOrEqual(2);
+
+      // Now make another request immediately — it should be blocked by cooldown without any new fetch calls
+      const beforeCount = fetchCallCount;
+      const followUp = await fetchNseEarningsDate('WIPRO');
+      expect(followUp).toBeNull();
+      expect(fetchCallCount).toBe(beforeCount);
+    });
+
+    it('successfully parses financial results dates when calendar data is returned', async () => {
+      const mockCalendar = [
+        {
+          symbol: 'TCS',
+          date: '2026-10-15',
+          purpose: 'Financial Results and Interim Dividend'
+        }
+      ];
+
+      vi.stubGlobal('fetch', vi.fn((url) => {
+        if (url.includes('/api/event-calendar')) {
+          return Promise.resolve({
+            ok: true,
+            json: () => Promise.resolve(mockCalendar)
+          });
+        }
+        return Promise.resolve({ ok: true });
+      }));
+
+      const res = await fetchNseEarningsDate('TCS.NS');
+      expect(res).not.toBeNull();
+      expect(res.dateStr).toContain('2026');
+      expect(typeof res.daysAway).toBe('number');
+    });
+
+    it('fetchNseQuarterlyResults handles symbol formatting and 403 failure cleanly', async () => {
+      vi.stubGlobal('fetch', vi.fn((url) => {
+        return Promise.resolve({
+          ok: false,
+          status: 403
+        });
+      }));
+
+      // Must not throw "symbol is not defined"
+      const results = await fetchNseQuarterlyResults('E2E.NS', 'IN');
+      expect(Array.isArray(results)).toBe(true);
+      expect(results.length).toBe(0);
+    });
   });
 
   describe('formatLargeNumber', () => {

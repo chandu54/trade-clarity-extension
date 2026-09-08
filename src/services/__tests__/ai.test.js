@@ -1,5 +1,11 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { getAiAnalysis, testConnection, PROMPT_TEMPLATES, classifySectorsInBulk } from "../ai";
+import {
+  getAiAnalysis,
+  testConnection,
+  PROMPT_TEMPLATES,
+  classifySectorsInBulk,
+  getSingleStockAnalysis,
+} from "../ai";
 
 // Mock fetch
 const fetchMock = vi.fn();
@@ -52,6 +58,85 @@ describe("ai service", () => {
         []
       );
       expect(result).toEqual({});
+    });
+
+    it("should chunk requests and report progress", async () => {
+      const apiKey = "valid-gemini-api-key-long-enough-39-chars";
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              candidates: [
+                {
+                  content: {
+                    parts: [{ text: '{"AAPL": {"sector": "Tech"}}' }],
+                  },
+                },
+              ],
+            }),
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () =>
+            Promise.resolve({
+              candidates: [
+                {
+                  content: {
+                    parts: [{ text: '{"MSFT": {"sector": "Software"}}' }],
+                  },
+                },
+              ],
+            }),
+        });
+
+      const progressCalls = [];
+      const result = await classifySectorsInBulk(
+        apiKey,
+        "gemini-model",
+        [
+          { symbol: "AAPL", companyName: "Apple Inc." },
+          { symbol: "MSFT", companyName: "Microsoft Corp." },
+        ],
+        "US",
+        [],
+        null,
+        (p) => progressCalls.push(p),
+        { chunkSize: 1, pacingDelayMs: 0 },
+      );
+
+      expect(result.AAPL?.sector).toBe("Tech");
+      expect(result.MSFT?.sector).toBe("Software");
+      expect(fetchMock).toHaveBeenCalledTimes(2);
+      expect(progressCalls.length).toBeGreaterThanOrEqual(2);
+    });
+  });
+
+  describe("getSingleStockAnalysis", () => {
+    it("should execute single stock analysis with VIP lane", async () => {
+      const apiKey = "valid-gemini-api-key-long-enough-39-chars";
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () =>
+          Promise.resolve({
+            candidates: [
+              { content: { parts: [{ text: "### TREND\nBullish" }] } },
+            ],
+          }),
+      });
+
+      const result = await getSingleStockAnalysis(
+        apiKey,
+        "gemini-2.5-flash",
+        { symbol: "RELIANCE", currentPrice: 2950, sector: "Energy" },
+        "3mo",
+      );
+
+      expect(result?.rawText || result).toBe("### TREND\nBullish");
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("gemini-2.5-flash"),
+        expect.any(Object),
+      );
     });
   });
 

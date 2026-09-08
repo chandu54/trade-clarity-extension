@@ -517,13 +517,14 @@ export default function StockGrid({
           country,
           availableSectors,
           aiAbortControllerRef.current.signal,
-          ({ completed, total: _aiTotal, chunkResults }) => {
+          ({ completed, total: _aiTotal, chunkResults, statusText }) => {
             if (chunkResults && Object.keys(chunkResults).length > 0) {
               applySectorMappings(chunkResults);
             }
             setSectorProgress({
               completed: Math.min(totalToResolve, fullyResolvedLocalCount + completed),
-              total: totalToResolve
+              total: totalToResolve,
+              statusText
             });
           }
         );
@@ -585,12 +586,13 @@ export default function StockGrid({
           const updated = { ...prev };
           partialBatch.forEach((r) => {
             if (r && r.symbol && r.currentPrice) {
+              const existingDate = r.earningsDate || prev[r.symbol]?.earningsDate || week?.stocks?.[r.symbol]?.earningsDate || week?.stocks?.[r.symbol]?.params?.earningsDate;
               updated[r.symbol] = {
                 currentPrice: r.currentPrice,
                 dailyChangePct: r.dailyChangePct,
                 isAdvancing: r.isAdvancing,
                 longName: r.longName || r.name,
-                earningsDate: r.earningsDate,
+                earningsDate: existingDate,
               };
             }
           });
@@ -603,12 +605,13 @@ export default function StockGrid({
         const mapping = {};
         results.forEach((r) => {
           if (r && r.symbol && r.currentPrice) {
+            const existingDate = r.earningsDate || quotes[r.symbol]?.earningsDate || week?.stocks?.[r.symbol]?.earningsDate || week?.stocks?.[r.symbol]?.params?.earningsDate;
             mapping[r.symbol] = {
               currentPrice: r.currentPrice,
               dailyChangePct: r.dailyChangePct,
               isAdvancing: r.isAdvancing,
               longName: r.longName || r.name,
-              earningsDate: r.earningsDate,
+              earningsDate: existingDate,
             };
           }
         });
@@ -1109,6 +1112,26 @@ export default function StockGrid({
       }
     });
   }, []);
+
+  // Watchdog timer: Guarantee loadingQuotes never gets stuck spinning indefinitely
+  useEffect(() => {
+    if (!loadingQuotes) return;
+    const timer = setTimeout(() => {
+      console.warn("[Watchdog] loadingQuotes stuck for >15s. Forcing reset.");
+      setLoadingQuotes(false);
+    }, 15000);
+    return () => clearTimeout(timer);
+  }, [loadingQuotes]);
+
+  // Watchdog timer: Guarantee fetchProgress (metrics sync) never gets stuck spinning indefinitely
+  useEffect(() => {
+    if (fetchProgress.total <= 0 || fetchProgress.completed >= fetchProgress.total) return;
+    const timer = setTimeout(() => {
+      console.warn("[Watchdog] fetchProgress stuck for >30s. Forcing reset.");
+      setFetchProgress({ total: 0, completed: 0 });
+    }, 30000);
+    return () => clearTimeout(timer);
+  }, [fetchProgress.total, fetchProgress.completed]);
 
   /* =====================
      BASE DATASET
@@ -2228,6 +2251,8 @@ export default function StockGrid({
             {activeFilters.map(([key, value]) => {
               let label;
               if (key === "__sector__") label = "Sector";
+              else if (key === "__businessScope__") label = "Business Scope";
+              else if (key === "__dependentIndustries__") label = "Dependent Themes";
               else if (key === "__symbols__") label = "AI Selection";
               else if (key === "__tag__") label = "Tag";
               else if (key === "__tradable__") label = "Tradable";
@@ -2323,9 +2348,20 @@ export default function StockGrid({
                     return (
                       <button 
                         className={`force-sync-btn ${isRefreshing ? 'is-syncing' : ''}`}
-                        onClick={() => triggerFullSync(true)}
-                        title="Force refresh all stock metrics"
-                        disabled={isRefreshing}
+                        onClick={() => {
+                          if (isRefreshing) {
+                            setLoadingQuotes(false);
+                            setFetchProgress({ total: 0, completed: 0 });
+                            if (fetchAbortControllerRef.current) {
+                              fetchAbortControllerRef.current.abort();
+                              fetchAbortControllerRef.current = null;
+                            }
+                            showToast("Sync reset.", "info");
+                          } else {
+                            triggerFullSync(true);
+                          }
+                        }}
+                        title={isRefreshing ? "Syncing in progress... Click to cancel/reset" : "Force refresh all stock metrics"}
                       >
                         <svg 
                           xmlns="http://www.w3.org/2000/svg" 
@@ -2347,7 +2383,7 @@ export default function StockGrid({
                   <button
                     className={`force-sync-btn radium-style ${detectingSectors ? 'is-syncing relative overflow-hidden' : ''}`}
                     onClick={handleDetectSectors}
-                    title={detectingSectors ? `Detecting Sector & Scope: ${sectorProgress.completed}/${sectorProgress.total}` : "Detect missing sectors and business scope using Cache & AI"}
+                    title={detectingSectors ? (sectorProgress.statusText || `Detecting Sector & Scope: ${sectorProgress.completed}/${sectorProgress.total}`) : "Detect missing sectors and business scope using Cache & AI"}
                     disabled={detectingSectors}
                     style={detectingSectors ? { minWidth: '160px', padding: '0 10px' } : {}}
                   >
@@ -3185,18 +3221,22 @@ export default function StockGrid({
                             <span className="stock-grid-price-change decimal">—</span>
                           )}
                         </div>
-                        {quotes[stock.symbol].earningsDate && (
-                          <span className="text-[9px] font-bold text-slate-450 dark:text-slate-500 font-mono tracking-tight" title="Next Earnings Date">
-                            E: {(() => {
-                              try {
-                                const d = new Date(quotes[stock.symbol].earningsDate);
-                                return d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-                              } catch (_e) {
-                                return quotes[stock.symbol].earningsDate;
-                              }
-                            })()}
-                          </span>
-                        )}
+                        {(() => {
+                          const earningsDateVal = quotes[stock.symbol]?.earningsDate || stock.earningsDate || stock.params?.earningsDate;
+                          if (!earningsDateVal) return null;
+                          return (
+                            <span className="text-[9px] font-bold text-slate-450 dark:text-slate-500 font-mono tracking-tight" title={`Next Earnings Date: ${earningsDateVal}`}>
+                              E: {(() => {
+                                try {
+                                  const d = new Date(earningsDateVal);
+                                  return isNaN(d.getTime()) ? earningsDateVal : d.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+                                } catch (_e) {
+                                  return earningsDateVal;
+                                }
+                              })()}
+                            </span>
+                          );
+                        })()}
                       </div>
                     ) : (
                       <span className="stock-grid-price-placeholder">—</span>

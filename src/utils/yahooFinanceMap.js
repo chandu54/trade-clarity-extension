@@ -1,4 +1,4 @@
-import { fetchNseEarningsDate } from './stockAnalysisApi.js';
+import { fetchNseEarningsDate, globalFundamentalsCache } from './stockAnalysisApi.js';
 
 // LRU Cache implementation following Chrome Extension storage best practices
 export class LRUQuoteCache {
@@ -575,21 +575,34 @@ export async function fetchStockQuotes(symbols, country, signal = null, forceRef
   try {
     const results = await fetchStockData(symbols, country, '5d', '1d', signal, forceRefresh, onBatch);
 
-    // Fallback enrichment for Indian stocks: If Yahoo did not provide earningsDate, query NSE Calendar API
-    if (country === 'IN' && Array.isArray(results)) {
-      const missingEarnings = results.filter(r => r && !r.earningsDate);
-      if (missingEarnings.length > 0) {
-        await Promise.all(missingEarnings.map(async (r) => {
-          try {
-            const nseData = await fetchNseEarningsDate(r.symbol);
-            if (nseData?.dateStr) {
-              r.earningsDate = nseData.dateStr;
-              r.earningsDaysAway = nseData.daysAway;
+    // Fallback enrichment: Check local fundamentals cache first, then query NSE Calendar if Indian stock
+    if (Array.isArray(results)) {
+      results.forEach(r => {
+        if (!r || r.earningsDate) return;
+        const sym = r.symbol;
+        const cacheKey = `${sym}${country === 'IN' && !sym.endsWith('.NS') && !sym.endsWith('.BO') ? '.NS' : ''}_${country || 'US'}`;
+        const cached = globalFundamentalsCache.get(cacheKey);
+        if (cached?.data?.catalysts?.earningsDate) {
+          r.earningsDate = cached.data.catalysts.earningsDate;
+          r.earningsDaysAway = cached.data.catalysts.earningsDaysAway;
+        }
+      });
+
+      if (country === 'IN') {
+        const stillMissing = results.filter(r => r && !r.earningsDate);
+        if (stillMissing.length > 0) {
+          await Promise.all(stillMissing.map(async (r) => {
+            try {
+              const nseData = await fetchNseEarningsDate(r.symbol);
+              if (nseData?.dateStr) {
+                r.earningsDate = nseData.dateStr;
+                r.earningsDaysAway = nseData.daysAway;
+              }
+            } catch (_e) {
+              // Silently swallow fallback errors
             }
-          } catch (_e) {
-            // Silently swallow fallback errors
-          }
-        }));
+          }));
+        }
       }
     }
 
