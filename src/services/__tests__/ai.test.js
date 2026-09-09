@@ -46,6 +46,63 @@ describe("ai service", () => {
       );
     });
 
+    it("should parse and normalize multi-thematic vectors with roles and theses", async () => {
+      const apiKey = "valid-gemini-api-key-long-enough-39-chars";
+      fetchMock.mockResolvedValueOnce({
+        ok: true,
+        json: () => Promise.resolve({
+          candidates: [{
+            content: {
+              parts: [{
+                text: JSON.stringify({
+                  AVALON: {
+                    sector: "Electronics",
+                    macroTheme: "AI & Data Centers",
+                    thematicVectors: [
+                      {
+                        theme: "Defense Modernization",
+                        role: "component supplier",
+                        conviction: "high",
+                        thesis: "Manufactures radar PCBs for defense",
+                      },
+                      {
+                        theme: "AI & Computing Infrastructure",
+                        role: "enabler",
+                        conviction: "high",
+                        thesis: "Produces server boards for AI data centers",
+                      },
+                    ],
+                    businessScope: ["PCBs", "Harnesses"],
+                    dependentIndustries: ["Defense", "Data Centers"],
+                  },
+                }),
+              }],
+            },
+          }],
+        }),
+      });
+
+      const result = await classifySectorsInBulk(
+        apiKey,
+        "gemini-model",
+        [{ symbol: "AVALON", companyName: "Avalon Tech" }],
+        "IN",
+        []
+      );
+
+      expect(result.AVALON?.sector).toBe("Electronics");
+      expect(result.AVALON?.macroTheme).toBe("AI & Data Centers");
+      expect(result.AVALON?.thematicVectors.length).toBe(2);
+      expect(result.AVALON?.thematicVectors[0]).toEqual({
+        theme: "Aerospace & Defense",
+        subFocus: "",
+        role: "Component Supplier",
+        conviction: "High",
+        thesis: "Manufactures radar PCBs for defense",
+      });
+      expect(result.AVALON?.thematicVectors[1].role).toBe("Pick-and-Shovel Enabler");
+    });
+
     it("should return empty object if the fetch or parsing fails", async () => {
       const apiKey = "valid-gemini-api-key-long-enough-39-chars";
       fetchMock.mockRejectedValueOnce(new Error("Gemini is offline"));
@@ -265,12 +322,12 @@ describe("ai service", () => {
         .rejects.toThrow("The AI request timed out");
     });
 
-    it("should automatically fall back to gemini-3.5-flash when primary model hits 429 rate limit", async () => {
+    it("should automatically fall back when primary model is deprecated or unavailable (404)", async () => {
       fetchMock
         .mockResolvedValueOnce({
           ok: false,
-          status: 429,
-          json: () => Promise.resolve({ error: { message: "RESOURCE_EXHAUSTED: Quota limit reached" } })
+          status: 404,
+          json: () => Promise.resolve({ error: { message: "models/gemini-old-model is not found" } })
         })
         .mockResolvedValueOnce({
           ok: true,
@@ -279,8 +336,36 @@ describe("ai service", () => {
           })
         });
 
-      const result = await testConnection(apiKey, "gemini-2.5-flash");
+      const result = await testConnection(apiKey, "gemini-old-model");
       expect(result.status).toBe("OK_FROM_FALLBACK");
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        1,
+        expect.stringContaining("gemini-old-model"),
+        expect.any(Object)
+      );
+      expect(fetchMock).toHaveBeenNthCalledWith(
+        2,
+        expect.stringContaining("gemini-2.5-flash"),
+        expect.any(Object)
+      );
+    });
+
+    it("should automatically fall back when model returns 503 high demand", async () => {
+      fetchMock
+        .mockResolvedValueOnce({
+          ok: false,
+          status: 503,
+          json: () => Promise.resolve({ error: { message: "This model is currently experiencing high demand." } })
+        })
+        .mockResolvedValueOnce({
+          ok: true,
+          json: () => Promise.resolve({
+            candidates: [{ content: { parts: [{ text: '{"status": "OK_FROM_503_FALLBACK"}' }] } }]
+          })
+        });
+
+      const result = await testConnection(apiKey, "gemini-2.5-flash");
+      expect(result.status).toBe("OK_FROM_503_FALLBACK");
       expect(fetchMock).toHaveBeenNthCalledWith(
         1,
         expect.stringContaining("gemini-2.5-flash"),
@@ -288,9 +373,20 @@ describe("ai service", () => {
       );
       expect(fetchMock).toHaveBeenNthCalledWith(
         2,
-        expect.stringContaining("gemini-3.5-flash"),
+        expect.stringContaining("gemini-3.8-flash"),
         expect.any(Object)
       );
+    });
+
+    it("should throw RESOURCE_EXHAUSTED without model fallback when 429 quota error occurs", async () => {
+      fetchMock.mockResolvedValueOnce({
+        ok: false,
+        status: 429,
+        json: () => Promise.resolve({ error: { message: "RESOURCE_EXHAUSTED: Quota limit reached" } })
+      });
+
+      await expect(testConnection(apiKey, "gemini-2.5-flash")).rejects.toThrow("RESOURCE_EXHAUSTED");
+      expect(fetchMock).toHaveBeenCalledTimes(1);
     });
   });
 });

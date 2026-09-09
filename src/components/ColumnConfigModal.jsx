@@ -10,7 +10,7 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
   const visibility = data.uiConfig.columnVisibility;
 
   function toggle(key) {
-    if (isGlobal || key === "__livePrice__" || key === "__notes__" || key === "__businessScope__" || key === "__dependentIndustries__") {
+    if (isGlobal || key === "__livePrice__" || key === "__notes__" || key === "__businessScope__" || key === "__dependentIndustries__" || key === "__macroTheme__") {
       const nextValue = !getValue(key);
       const newVisibility = { ...visibility, [key]: nextValue };
       const newData = {
@@ -34,7 +34,7 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
   }
 
   function getValue(key) {
-    if (isGlobal || key === "__livePrice__" || key === "__notes__" || key === "__businessScope__" || key === "__dependentIndustries__") return visibility[key] ?? true;
+    if (isGlobal || key === "__livePrice__" || key === "__notes__" || key === "__businessScope__" || key === "__dependentIndustries__" || key === "__macroTheme__") return visibility[key] ?? true;
     return activeWatchlist?.visibleParams.includes(key) ?? false;
   }
 
@@ -159,6 +159,22 @@ export default function ColumnConfigModal({ data, setData, onClose, isOpen, sele
               type="checkbox"
               checked={getValue("__dependentIndustries__")}
               onChange={() => toggle("__dependentIndustries__")}
+            />
+            <span className="slider" />
+          </label>
+        </div>
+
+        {/* Macro Theme */}
+        <div className="filter-config-row">
+          <div>
+            <strong>Macro Theme</strong>
+            <div className="muted small">Consolidated Thematic Basket</div>
+          </div>
+          <label className="switch">
+            <input
+              type="checkbox"
+              checked={getValue("__macroTheme__")}
+              onChange={() => toggle("__macroTheme__")}
             />
             <span className="slider" />
           </label>

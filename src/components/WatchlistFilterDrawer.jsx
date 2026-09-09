@@ -17,6 +17,7 @@ export default function WatchlistFilterDrawer({
   availableTags = [],
   availableScopes = [],
   availableThemes = [],
+  availableMacroThemes = [],
   filterableParams = [],
   isTradableFilterable,
   country = "IN",
@@ -228,6 +229,37 @@ export default function WatchlistFilterDrawer({
                 </div>
               )}
 
+              {/* Macro Theme Filter */}
+              {(availableMacroThemes || []).length > 0 && (
+                <div className="drawer-filter-item">
+                  <label htmlFor="drawer-macro-theme-filter">Macro Theme</label>
+                  <div className="filter-input-wrapper">
+                    <MultiSelectDropdown
+                      id="drawer-macro-theme-filter"
+                      options={availableMacroThemes}
+                      value={
+                        Array.isArray(filters.__macroTheme__)
+                          ? filters.__macroTheme__
+                          : filters.__macroTheme__
+                            ? [filters.__macroTheme__]
+                            : []
+                      }
+                      onChange={(val) => setFilter("__macroTheme__", val)}
+                      placeholder="All Macro Themes"
+                    />
+                    {filters.__macroTheme__ &&
+                      (Array.isArray(filters.__macroTheme__)
+                        ? filters.__macroTheme__.length > 0
+                        : filters.__macroTheme__ !== "") && (
+                        <ClearButton
+                          onClick={() => setFilter("__macroTheme__", [])}
+                          isSelect
+                        />
+                      )}
+                  </div>
+                </div>
+              )}
+
               {/* Dependent Themes Filter */}
               {(availableThemes || []).length > 0 && (
                 <div className="drawer-filter-item">
@@ -244,7 +276,7 @@ export default function WatchlistFilterDrawer({
                             : []
                       }
                       onChange={(val) => setFilter("__dependentIndustries__", val)}
-                      placeholder="All Macro Themes"
+                      placeholder="All Dependent Themes"
                     />
                     {filters.__dependentIndustries__ &&
                       (Array.isArray(filters.__dependentIndustries__)

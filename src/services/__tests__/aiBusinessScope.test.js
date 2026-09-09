@@ -21,6 +21,7 @@ describe("enrichStockMetadataAI service", () => {
             parts: [
               {
                 text: JSON.stringify({
+                  macroTheme: "Consumer & Retail",
                   businessScope: ["Cigarettes", "Packaged Foods", "Hotels"],
                   dependentIndustries: ["Consumer Staples", "Hospitality"]
                 })
@@ -40,6 +41,7 @@ describe("enrichStockMetadataAI service", () => {
     const result = await enrichStockMetadataAI(fakeApiKey, "gemini-2.5-flash", "ITC", "ITC Limited", "FMCG");
     
     expect(result).not.toBeNull();
+    expect(result.macroTheme).toBe("Consumer & Retail");
     expect(result.businessScope).toEqual(["Cigarettes", "Packaged Foods", "Hotels"]);
     expect(result.dependentIndustries).toEqual(["Consumer Staples", "Hospitality"]);
 

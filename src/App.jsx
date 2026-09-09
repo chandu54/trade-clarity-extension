@@ -358,6 +358,23 @@ function AppContent() {
           newData.stockSectorCache[updatedStock.symbol.toUpperCase()] = updatedStock.sector;
         }
 
+        if (
+          updatedStock.macroTheme ||
+          (updatedStock.thematicVectors && updatedStock.thematicVectors.length > 0) ||
+          (updatedStock.businessScope && updatedStock.businessScope.length > 0)
+        ) {
+          if (!newData.stockThematicCache) newData.stockThematicCache = {};
+          const symUpper = updatedStock.symbol.toUpperCase();
+          newData.stockThematicCache[symUpper] = {
+            sector: updatedStock.sector || newData.stockSectorCache?.[symUpper] || "",
+            macroTheme: updatedStock.macroTheme || "",
+            thematicVectors: updatedStock.thematicVectors || [],
+            businessScope: updatedStock.businessScope || [],
+            dependentIndustries: updatedStock.dependentIndustries || [],
+            updatedAt: Date.now(),
+          };
+        }
+
         showToast(`Updated ${updatedStock.symbol}`, "success");
       }
       return newData;

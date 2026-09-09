@@ -42,6 +42,50 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
     }
   };
 
+  const handleClearScopeCache = () => {
+    try {
+      setData((prev) => {
+        const newData = structuredClone(prev);
+        // Clear stockSectorCache and global stockThematicCache
+        newData.stockSectorCache = {};
+        newData.stockThematicCache = {};
+
+        // Also clean sector, macroTheme, businessScope & dependentIndustries on all stocks in current country so grid and AI Scope re-evaluate completely
+        if (newData.weeks) {
+          Object.keys(newData.weeks).forEach((c) => {
+            if (!country || c === country) {
+              Object.values(newData.weeks[c] || {}).forEach((weekObj) => {
+                if (weekObj?.stocks && typeof weekObj.stocks === "object") {
+                  Object.keys(weekObj.stocks).forEach((sym) => {
+                    const st = weekObj.stocks[sym];
+                    if (st) {
+                      st.sector = "";
+                      st.macroTheme = "";
+                      st.thematicVectors = [];
+                      st.businessScope = [];
+                      st.dependentIndustries = [];
+                    }
+                  });
+                }
+              });
+            }
+          });
+        }
+        return newData;
+      });
+
+      const msg = "Business Scope, Thematic & Sector cache cleared! Click '✨ AI Scope' in the grid to re-classify.";
+      showToast?.(msg, "success");
+      setSaveStatus(msg);
+      setTimeout(() => {
+        setSaveStatus("");
+      }, 4000);
+    } catch (err) {
+      console.error("Failed to clear scope cache:", err);
+      showToast?.("Failed to clear scope cache.", "error");
+    }
+  };
+
   const actualCurrentSunday = getActualCurrentSunday();
   const storedWeeksKeys = Object.keys(data?.weeks?.[country] || {}).sort().reverse();
 
@@ -169,16 +213,18 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
 
             <div className="settings-card" style={{ marginTop: "16px" }}>
               <label className="settings-label-v2 settings-label-mb flex justify-between items-center">
-                <span>Quote & Stock Cache Management</span>
-                <span className="info-icon" title="Purge local price & fundamental quote cache while preserving sector classifications" />
+                <span>Cache & Classification Management</span>
+                <span className="info-icon" title="Purge local market quote cache or AI Business Scope / Sector classifications" />
               </label>
-              <div className="flex justify-between items-center py-2">
+
+              {/* Row 1: Quote Cache */}
+              <div className="flex justify-between items-center py-2.5 border-b border-slate-200/60 dark:border-slate-700/50">
                 <div className="pr-4">
                   <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
                     Clear Quote & Stock Cache
                   </div>
                   <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
-                    Purges temporary market prices and fundamentals cache. Sector Cache (<code>stockSectorCache</code>) remains completely intact.
+                    Purges temporary market prices and fundamentals cache. Sector & scope data remain intact.
                   </div>
                 </div>
                 <button
@@ -186,7 +232,26 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
                   className="settings-btn-v2 dm-btn-outline-danger shrink-0"
                   onClick={handleClearStockCaches}
                 >
-                  Clear Cache
+                  Clear Quote Cache
+                </button>
+              </div>
+
+              {/* Row 2: Business Scope, Thematic & Sector Cache */}
+              <div className="flex justify-between items-center py-2.5">
+                <div className="pr-4">
+                  <div className="text-xs font-semibold text-slate-800 dark:text-slate-200">
+                    Clear Scope, Thematic & Sector Cache
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Resets global thematic vectors, business scopes, downstream catalysts, and sector caches across all weeks so clicking <strong>'✨ AI Scope'</strong> completely re-analyzes them.
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="settings-btn-v2 dm-btn-outline-danger shrink-0"
+                  onClick={handleClearScopeCache}
+                >
+                  Clear Scope Cache
                 </button>
               </div>
             </div>

@@ -147,12 +147,48 @@ describe("DataManagementModal Components", () => {
       />
     );
 
-    const clearBtn = screen.getByRole("button", { name: /Clear Cache/i });
+    const clearBtn = screen.getByRole("button", { name: /Clear Quote Cache/i });
     expect(clearBtn).toBeInTheDocument();
 
     fireEvent.click(clearBtn);
     await waitFor(() => {
       expect(screen.getByText(/Quote & stock price cache cleared/i)).toBeInTheDocument();
+    });
+  });
+
+  it("clears business scope, thematic, and sector cache when Clear Scope Cache button is clicked", async () => {
+    const testData = {
+      ...mockData,
+      stockSectorCache: { AAPL: "Technology" },
+      stockThematicCache: { AAPL: { sector: "Technology", macroTheme: "AI & Tech", thematicVectors: [] } },
+    };
+
+    render(
+      <DataManagementModal
+        isOpen={true}
+        onClose={mockOnClose}
+        data={testData}
+        setData={mockSetData}
+        country="US"
+        weekKey="2024-04-07"
+        setWeekKey={mockSetWeekKey}
+      />
+    );
+
+    const clearScopeBtn = screen.getByRole("button", { name: /Clear Scope Cache/i });
+    expect(clearScopeBtn).toBeInTheDocument();
+
+    fireEvent.click(clearScopeBtn);
+    expect(mockSetData).toHaveBeenCalled();
+
+    // Verify updater clears both caches
+    const updater = mockSetData.mock.calls[0][0];
+    const updated = updater(testData);
+    expect(updated.stockSectorCache).toEqual({});
+    expect(updated.stockThematicCache).toEqual({});
+
+    await waitFor(() => {
+      expect(screen.getByText(/Business Scope, Thematic & Sector cache cleared/i)).toBeInTheDocument();
     });
   });
 });

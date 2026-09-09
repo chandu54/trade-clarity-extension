@@ -60,6 +60,10 @@ export async function loadData() {
     data.uiConfig.columnVisibility.__dependentIndustries__ = true;
     needsSave = true;
   }
+  if (!("__macroTheme__" in data.uiConfig.columnVisibility)) {
+    data.uiConfig.columnVisibility.__macroTheme__ = true;
+    needsSave = true;
+  }
 
   Object.keys(data.paramDefinitions).forEach((key) => {
     if (!(key in data.uiConfig.columnVisibility)) {
@@ -291,6 +295,49 @@ export async function loadData() {
   if (!data.drawings) {
     data.drawings = {};
     needsSave = true;
+  }
+
+  /* =========================
+     ENSURE GLOBAL CACHES & HARVEST THEMATICS
+  ========================= */
+  if (!data.stockSectorCache) {
+    data.stockSectorCache = {};
+    needsSave = true;
+  }
+  if (!data.stockThematicCache) {
+    data.stockThematicCache = {};
+    needsSave = true;
+  }
+
+  // Auto-harvest existing rich thematic & scope data from weeks into stockThematicCache if not present
+  if (data.weeks) {
+    Object.keys(data.weeks).forEach((c) => {
+      Object.values(data.weeks[c] || {}).forEach((weekObj) => {
+        if (weekObj?.stocks && typeof weekObj.stocks === "object") {
+          Object.keys(weekObj.stocks).forEach((sym) => {
+            const st = weekObj.stocks[sym];
+            const symUpper = sym.toUpperCase();
+            if (st && (st.macroTheme || (st.thematicVectors && st.thematicVectors.length > 0) || (st.businessScope && st.businessScope.length > 0))) {
+              if (!data.stockThematicCache[symUpper]) {
+                data.stockThematicCache[symUpper] = {
+                  sector: st.sector || data.stockSectorCache[symUpper] || "",
+                  macroTheme: st.macroTheme || "",
+                  thematicVectors: st.thematicVectors || [],
+                  businessScope: st.businessScope || [],
+                  dependentIndustries: st.dependentIndustries || [],
+                  updatedAt: Date.now(),
+                };
+                needsSave = true;
+              }
+              if (st.sector && !data.stockSectorCache[symUpper]) {
+                data.stockSectorCache[symUpper] = st.sector;
+                needsSave = true;
+              }
+            }
+          });
+        }
+      });
+    });
   }
 
   /* =========================

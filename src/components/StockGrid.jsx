@@ -10,6 +10,11 @@ import { useToast } from "./ToastContext";
 import { useConfirm } from "./ConfirmContext";
 import { classifySectorsInBulk } from "../services/ai";
 import stockMetadata from "../constants/stockMetadata.json";
+import {
+  normalizeMacroTheme,
+  extractStockThematicThemes,
+  extractStockThematicVectors,
+} from "../constants/thematicCatalog";
 
 import {
   doesParamPassCheck,
@@ -373,44 +378,90 @@ export default function StockGrid({
       const prevWeek = prev.weeks?.[country]?.[weekKey];
       if (!prevWeek) return prev;
       const newStocks = { ...prevWeek.stocks };
-      const newCache = { ...(prev.stockSectorCache || {}) };
+      const newSectorCache = { ...(prev.stockSectorCache || {}) };
+      const newThematicCache = { ...(prev.stockThematicCache || {}) };
       const newSectorsList = [...(prev.uiConfig?.sectors || prev.sectors || [])];
 
       Object.entries(mappings).forEach(([symbol, mapping]) => {
         if (newStocks[symbol]) {
+          const symUpper = symbol.toUpperCase();
           const sectorName = typeof mapping === "object" ? mapping.sector : mapping;
+          const macroTheme = typeof mapping === "object" && typeof mapping.macroTheme === "string" ? mapping.macroTheme.trim() : null;
+          const thematicVectors = typeof mapping === "object" && Array.isArray(mapping.thematicVectors) ? mapping.thematicVectors : null;
           const businessScope = typeof mapping === "object" && Array.isArray(mapping.businessScope) ? mapping.businessScope : null;
           const dependentIndustries = typeof mapping === "object" && Array.isArray(mapping.dependentIndustries) ? mapping.dependentIndustries : null;
 
-          const localMeta = stockMetadata[country]?.[symbol.toUpperCase()];
+          const localMeta = stockMetadata[country]?.[symUpper];
+          const cachedThematic = newThematicCache[symUpper];
+
+          const finalSector = sectorName || newStocks[symbol].sector || cachedThematic?.sector || localMeta?.sector || "";
+          const finalMacroTheme = macroTheme || newStocks[symbol].macroTheme || cachedThematic?.macroTheme || localMeta?.macroTheme || "";
+          const finalThematicVectors = (thematicVectors && thematicVectors.length > 0)
+            ? thematicVectors
+            : (newStocks[symbol].thematicVectors?.length > 0
+                ? newStocks[symbol].thematicVectors
+                : (cachedThematic?.thematicVectors?.length > 0
+                    ? cachedThematic.thematicVectors
+                    : localMeta?.thematicVectors || []));
+          const finalBusinessScope = (businessScope && businessScope.length > 0)
+            ? businessScope
+            : (newStocks[symbol].businessScope?.length > 0
+                ? newStocks[symbol].businessScope
+                : (cachedThematic?.businessScope?.length > 0
+                    ? cachedThematic.businessScope
+                    : localMeta?.businessScope || []));
+          const finalDependentIndustries = (dependentIndustries && dependentIndustries.length > 0)
+            ? dependentIndustries
+            : (newStocks[symbol].dependentIndustries?.length > 0
+                ? newStocks[symbol].dependentIndustries
+                : (cachedThematic?.dependentIndustries?.length > 0
+                    ? cachedThematic.dependentIndustries
+                    : localMeta?.dependentIndustries || []));
+
           newStocks[symbol] = {
             ...newStocks[symbol],
-            sector: sectorName || newStocks[symbol].sector || localMeta?.sector || "",
-            businessScope: (businessScope && businessScope.length > 0) ? businessScope : (newStocks[symbol].businessScope?.length > 0 ? newStocks[symbol].businessScope : localMeta?.businessScope || []),
-            dependentIndustries: (dependentIndustries && dependentIndustries.length > 0) ? dependentIndustries : (newStocks[symbol].dependentIndustries?.length > 0 ? newStocks[symbol].dependentIndustries : localMeta?.dependentIndustries || []),
+            sector: finalSector,
+            macroTheme: finalMacroTheme,
+            thematicVectors: finalThematicVectors,
+            businessScope: finalBusinessScope,
+            dependentIndustries: finalDependentIndustries,
           };
-          if (sectorName) {
-            newCache[symbol.toUpperCase()] = sectorName;
+
+          if (finalSector) {
+            newSectorCache[symUpper] = finalSector;
             const exists = newSectorsList.some(
-              (s) => (s.name || "").toLowerCase() === sectorName.toLowerCase()
+              (s) => (s.name || "").toLowerCase() === finalSector.toLowerCase()
             );
             if (!exists) {
-              newSectorsList.push({ name: sectorName, countries: [country] });
+              newSectorsList.push({ name: finalSector, countries: [country] });
             } else {
               const existing = newSectorsList.find(
-                (s) => (s.name || "").toLowerCase() === sectorName.toLowerCase()
+                (s) => (s.name || "").toLowerCase() === finalSector.toLowerCase()
               );
               if (existing && existing.countries && !existing.countries.includes(country)) {
                 existing.countries.push(country);
               }
             }
           }
+
+          // Save complete profile to institutional thematic cache
+          if (finalMacroTheme || finalThematicVectors.length > 0 || finalBusinessScope.length > 0) {
+            newThematicCache[symUpper] = {
+              sector: finalSector,
+              macroTheme: finalMacroTheme,
+              thematicVectors: finalThematicVectors,
+              businessScope: finalBusinessScope,
+              dependentIndustries: finalDependentIndustries,
+              updatedAt: Date.now(),
+            };
+          }
         }
       });
 
       return {
         ...prev,
-        stockSectorCache: newCache,
+        stockSectorCache: newSectorCache,
+        stockThematicCache: newThematicCache,
         uiConfig: {
           ...(prev.uiConfig || {}),
           sectors: newSectorsList,
@@ -441,9 +492,9 @@ export default function StockGrid({
       (s) => selectedWatchlistId === "all" || s.watchlists?.includes(selectedWatchlistId)
     );
 
-    // Target stocks missing sector, businessScope, or dependentIndustries
+    // Target stocks missing sector, macroTheme, thematicVectors, businessScope, or dependentIndustries
     let stocksToResolve = watchlistStocks.filter(
-      (s) => !s.sector || !s.businessScope || s.businessScope.length === 0 || !s.dependentIndustries || s.dependentIndustries.length === 0
+      (s) => !s.sector || !s.macroTheme || !s.thematicVectors || s.thematicVectors.length === 0 || !s.businessScope || s.businessScope.length === 0 || !s.dependentIndustries || s.dependentIndustries.length === 0
     );
 
     // If ALL stocks in current view already have values, re-evaluate all stocks in the active view
@@ -469,11 +520,28 @@ export default function StockGrid({
       const resolvedMappings = {};
       const remainingForAi = [];
 
-      // 1. Local / Cache lookup first
+      // 1. Local / Cache lookup first (Check institutional thematic cache, then sector cache, then stockMetadata)
       stocksToResolve.forEach((s) => {
-        const cachedSector = data.stockSectorCache?.[s.symbol.toUpperCase()];
-        const localMeta = stockMetadata[country]?.[s.symbol.toUpperCase()];
-        if (localMeta && localMeta.sector && localMeta.businessScope && localMeta.businessScope.length > 0) {
+        const symUpper = s.symbol.toUpperCase();
+        const cachedThematic = data.stockThematicCache?.[symUpper];
+        const cachedSector = data.stockSectorCache?.[symUpper];
+        const localMeta = stockMetadata[country]?.[symUpper];
+
+        const hasFullThematic = cachedThematic && (
+          cachedThematic.macroTheme ||
+          (cachedThematic.thematicVectors && cachedThematic.thematicVectors.length > 0) ||
+          (cachedThematic.businessScope && cachedThematic.businessScope.length > 0)
+        );
+
+        if (hasFullThematic) {
+          resolvedMappings[s.symbol] = {
+            sector: cachedThematic.sector || cachedSector || localMeta?.sector || s.sector || "",
+            macroTheme: cachedThematic.macroTheme || "",
+            thematicVectors: cachedThematic.thematicVectors || [],
+            businessScope: cachedThematic.businessScope || [],
+            dependentIndustries: cachedThematic.dependentIndustries || [],
+          };
+        } else if (localMeta && localMeta.sector && localMeta.businessScope && localMeta.businessScope.length > 0) {
           resolvedMappings[s.symbol] = localMeta;
         } else {
           if (cachedSector || localMeta?.sector) {
@@ -513,36 +581,54 @@ export default function StockGrid({
         const aiMappings = await classifySectorsInBulk(
           apiKey,
           model,
-          remainingForAi.map((s) => ({ symbol: s.symbol, companyName: s.name || "" })),
+          remainingForAi.map((s) => ({
+            symbol: s.symbol,
+            companyName:
+              s.name ||
+              quotes[s.symbol]?.longName ||
+              stockMetadata[country]?.[s.symbol.toUpperCase()]?.name ||
+              quotes[s.symbol]?.shortName ||
+              "",
+          })),
           country,
           availableSectors,
           aiAbortControllerRef.current.signal,
-          ({ completed, total: _aiTotal, chunkResults, statusText }) => {
+          ({ completed, total: _aiTotal, chunkResults, statusText, isWaitingForQuota, retryInSecs }) => {
             if (chunkResults && Object.keys(chunkResults).length > 0) {
               applySectorMappings(chunkResults);
             }
             setSectorProgress({
               completed: Math.min(totalToResolve, fullyResolvedLocalCount + completed),
               total: totalToResolve,
-              statusText
+              statusText,
+              isWaitingForQuota,
+              retryInSecs,
             });
           }
         );
 
+        const aiResolvedCount = Object.keys(aiMappings).length;
         Object.entries(aiMappings).forEach(([sym, valObj]) => {
           if (valObj) {
             resolvedMappings[sym] = valObj;
           }
         });
+
+        if (aiResolvedCount === 0 && remainingForAi.length > 0) {
+          showToast("AI was unable to resolve sector & scope for remaining stocks. Please check Gemini API quota.", "warning");
+          setSectorProgress({ completed: 0, total: 0 });
+          return;
+        }
       }
 
-      setSectorProgress({ completed: totalToResolve, total: totalToResolve });
-
-      if (Object.keys(resolvedMappings).length > 0) {
+      const totalResolved = Object.keys(resolvedMappings).length;
+      if (totalResolved > 0) {
+        setSectorProgress({ completed: totalResolved, total: totalToResolve });
         applySectorMappings(resolvedMappings);
-        showToast(`Successfully resolved sector & business scope for ${Object.keys(resolvedMappings).length} stocks!`, "success");
+        showToast(`Successfully resolved sector & business scope for ${totalResolved} stocks!`, "success");
       } else {
-        showToast("No sectors could be resolved for the stocks.", "warning");
+        setSectorProgress({ completed: 0, total: 0 });
+        showToast("No sectors could be resolved. Please check API quota or model settings.", "warning");
       }
       
       setTimeout(() => {
@@ -552,8 +638,15 @@ export default function StockGrid({
     } catch (err) {
       if (err.name === 'AbortError' || err.message?.includes('aborted')) {
         console.log("Sector detection aborted by user.");
-      } else if (err.message?.includes('AI Request Limit Reached')) {
-        showToast("AI Credit Limit Reached. Available again shortly.", "error");
+        showToast("AI Scope detection stopped.", "info");
+      } else if (
+        err.message?.includes('AI Request Limit Reached') ||
+        err.message?.includes('RESOURCE_EXHAUSTED') ||
+        err.message?.includes('Quota') ||
+        err.message?.includes('quota') ||
+        err.message?.includes('429')
+      ) {
+        showToast("Gemini API Quota Exceeded (429). Daily free-tier or rate limit reached. Please check your Google Gemini quota.", "error");
       } else {
         console.error("Manual sector detection failed:", err);
         showToast(`Sector detection failed: ${err.message || err}`, "error");
@@ -562,7 +655,7 @@ export default function StockGrid({
     } finally {
       setDetectingSectors(false);
     }
-  }, [aiSettings, allStocks, selectedWatchlistId, data.stockSectorCache, data.uiConfig?.sectors, country, showToast, applySectorMappings]);
+  }, [aiSettings, allStocks, selectedWatchlistId, data.stockSectorCache, data.stockThematicCache, data.uiConfig?.sectors, country, showToast, applySectorMappings, quotes]);
 
   const fetchQuotesForGrid = useCallback(async (forceRefresh = false) => {
     const symbols = symbolsSerialized ? symbolsSerialized.split(",") : [];
@@ -602,20 +695,22 @@ export default function StockGrid({
       if (controller.signal.aborted) return;
 
       if (results && results.length > 0) {
-        const mapping = {};
-        results.forEach((r) => {
-          if (r && r.symbol && r.currentPrice) {
-            const existingDate = r.earningsDate || quotes[r.symbol]?.earningsDate || week?.stocks?.[r.symbol]?.earningsDate || week?.stocks?.[r.symbol]?.params?.earningsDate;
-            mapping[r.symbol] = {
-              currentPrice: r.currentPrice,
-              dailyChangePct: r.dailyChangePct,
-              isAdvancing: r.isAdvancing,
-              longName: r.longName || r.name,
-              earningsDate: existingDate,
-            };
-          }
+        setQuotes(prev => {
+          const updated = { ...prev };
+          results.forEach((r) => {
+            if (r && r.symbol && r.currentPrice) {
+              const existingDate = r.earningsDate || prev[r.symbol]?.earningsDate || week?.stocks?.[r.symbol]?.earningsDate || week?.stocks?.[r.symbol]?.params?.earningsDate;
+              updated[r.symbol] = {
+                currentPrice: r.currentPrice,
+                dailyChangePct: r.dailyChangePct,
+                isAdvancing: r.isAdvancing,
+                longName: r.longName || r.name,
+                earningsDate: existingDate,
+              };
+            }
+          });
+          return updated;
         });
-        setQuotes(prev => ({ ...prev, ...mapping }));
       }
     } catch (err) {
       if (err.name !== 'AbortError') {
@@ -627,6 +722,7 @@ export default function StockGrid({
         fetchAbortControllerRef.current = null;
       }
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [symbolsSerialized, country]);
 
   const hydrateRsForGrid = useCallback(async () => {
@@ -1116,12 +1212,15 @@ export default function StockGrid({
   // Watchdog timer: Guarantee loadingQuotes never gets stuck spinning indefinitely
   useEffect(() => {
     if (!loadingQuotes) return;
+    const timeoutMs = Math.max(35000, allStocks.length * 600);
     const timer = setTimeout(() => {
-      console.warn("[Watchdog] loadingQuotes stuck for >15s. Forcing reset.");
+      console.warn(`[Watchdog] loadingQuotes exceeded ${Math.round(timeoutMs / 1000)}s. Forcing reset.`);
+      fetchAbortControllerRef.current?.abort();
+      fetchAbortControllerRef.current = null;
       setLoadingQuotes(false);
-    }, 15000);
+    }, timeoutMs);
     return () => clearTimeout(timer);
-  }, [loadingQuotes]);
+  }, [loadingQuotes, allStocks.length]);
 
   // Watchdog timer: Guarantee fetchProgress (metrics sync) never gets stuck spinning indefinitely
   useEffect(() => {
@@ -1147,6 +1246,7 @@ export default function StockGrid({
   const showLivePrice = columnConfig["__livePrice__"] !== false;
   const showBusinessScope = columnConfig["__businessScope__"] !== false;
   const showDependentIndustries = columnConfig["__dependentIndustries__"] !== false;
+  const showMacroTheme = columnConfig["__macroTheme__"] !== false;
 
 
   const activeWatchlist = (data.watchlists || []).find(
@@ -1171,6 +1271,7 @@ export default function StockGrid({
     1 + // Sector
     (showBusinessScope ? 1 : 0) +
     (showDependentIndustries ? 1 : 0) +
+    (showMacroTheme ? 1 : 0) +
     visibleParams.length +
     1 + // Checks Passed
     (showNotes ? 1 : 0) +
@@ -1226,6 +1327,15 @@ export default function StockGrid({
       if (Array.isArray(s.dependentIndustries)) {
         s.dependentIndustries.forEach((t) => themeSet.add(t));
       }
+    });
+    return Array.from(themeSet).sort();
+  }, [allStocks]);
+
+  const availableMacroThemes = useMemo(() => {
+    const themeSet = new Set();
+    allStocks.forEach((s) => {
+      const themes = extractStockThematicThemes(s);
+      themes.forEach((t) => themeSet.add(t));
     });
     return Array.from(themeSet).sort();
   }, [allStocks]);
@@ -1293,9 +1403,15 @@ export default function StockGrid({
         const nameMatch = (stock.name || "").toLowerCase().includes(q);
         const notesMatch = (stock.notes || "").toLowerCase().includes(q);
         const sectorMatch = (stock.sector || "").toLowerCase().includes(q);
+        const macroMatch = (stock.macroTheme || "").toLowerCase().includes(q);
+        const vectorMatch = Array.isArray(stock.thematicVectors) && stock.thematicVectors.some(v =>
+          (v.theme || "").toLowerCase().includes(q) ||
+          (v.thesis || "").toLowerCase().includes(q) ||
+          (v.role || "").toLowerCase().includes(q)
+        );
         const scopeMatch = Array.isArray(stock.businessScope) && stock.businessScope.some(b => (b || "").toLowerCase().includes(q));
         const themeMatch = Array.isArray(stock.dependentIndustries) && stock.dependentIndustries.some(t => (t || "").toLowerCase().includes(q));
-        if (!symbolMatch && !nameMatch && !notesMatch && !sectorMatch && !scopeMatch && !themeMatch) return false;
+        if (!symbolMatch && !nameMatch && !notesMatch && !sectorMatch && !macroMatch && !vectorMatch && !scopeMatch && !themeMatch) return false;
       }
 
       /*SECTOR FILTER*/
@@ -1315,6 +1431,16 @@ export default function StockGrid({
         if (!scopeFilter.some(sf => stockScopes.includes(sf))) return false;
       } else if (typeof scopeFilter === "string" && scopeFilter !== "") {
         if (!(stock.businessScope || []).includes(scopeFilter)) return false;
+      }
+
+      /* MACRO THEME FILTER */
+      const macroFilter = filters.__macroTheme__;
+      if (Array.isArray(macroFilter) && macroFilter.length > 0) {
+        const stockThemes = extractStockThematicThemes(stock);
+        if (!macroFilter.some(mf => stockThemes.includes(mf))) return false;
+      } else if (typeof macroFilter === "string" && macroFilter !== "") {
+        const stockThemes = extractStockThematicThemes(stock);
+        if (!stockThemes.includes(macroFilter)) return false;
       }
 
       /* DEPENDENT THEMES FILTER */
@@ -1477,6 +1603,11 @@ export default function StockGrid({
         const aNum = quotes[a.symbol]?.dailyChangePct ?? 0;
         const bNum = quotes[b.symbol]?.dailyChangePct ?? 0;
         return sortDir === "asc" ? aNum - bNum : bNum - aNum;
+      } else if (sortBy === "__macroTheme__") {
+        const aRaw = a.macroTheme || (Array.isArray(a.dependentIndustries) && a.dependentIndustries[0]) || "";
+        const bRaw = b.macroTheme || (Array.isArray(b.dependentIndustries) && b.dependentIndustries[0]) || "";
+        aVal = normalizeMacroTheme(aRaw) || aRaw;
+        bVal = normalizeMacroTheme(bRaw) || bRaw;
       } else {
         aVal = a[sortBy] ?? a.params?.[sortBy];
         bVal = b[sortBy] ?? b.params?.[sortBy];
@@ -1662,8 +1793,9 @@ export default function StockGrid({
 
       symbols.forEach((symbol) => {
         const symUpper = symbol.toUpperCase();
+        const cachedThematic = prev.stockThematicCache?.[symUpper];
         const cachedSector =
-          newCache[symUpper] || stockMetadata[country]?.[symUpper]?.sector || "";
+          newCache[symUpper] || cachedThematic?.sector || stockMetadata[country]?.[symUpper]?.sector || "";
 
         if (cachedSector) {
           if (!newCache[symUpper]) {
@@ -1677,10 +1809,20 @@ export default function StockGrid({
           }
         }
 
+        const localMeta = stockMetadata[country]?.[symUpper];
+        const initialMacroTheme = cachedThematic?.macroTheme || localMeta?.macroTheme || "";
+        const initialThematicVectors = cachedThematic?.thematicVectors || localMeta?.thematicVectors || [];
+        const initialBusinessScope = cachedThematic?.businessScope || localMeta?.businessScope || [];
+        const initialDependentIndustries = cachedThematic?.dependentIndustries || localMeta?.dependentIndustries || [];
+
         if (!newStocks[symbol]) {
           newStocks[symbol] = {
             symbol,
             sector: cachedSector,
+            macroTheme: initialMacroTheme,
+            thematicVectors: initialThematicVectors,
+            businessScope: initialBusinessScope,
+            dependentIndustries: initialDependentIndustries,
             tradable: false,
             notes: "",
             tags: [],
@@ -2088,23 +2230,28 @@ export default function StockGrid({
     setData((prev) => {
       const prevWeekData = prev.weeks[country]?.[weekKey] || { stocks: {} };
       const newStocks = { ...prevWeekData.stocks };
-      const newCache = { ...(prev.stockSectorCache || {}) };
+      const newSectorCache = { ...(prev.stockSectorCache || {}) };
+      const newThematicCache = { ...(prev.stockThematicCache || {}) };
       const newSectorsList = [...(prev.uiConfig?.sectors || prev.sectors || [])];
 
       stocksArray.forEach((s) => {
         if (s.symbol) {
           const symUpper = s.symbol.toUpperCase();
           const existing = newStocks[s.symbol];
+          const cachedThematic = newThematicCache[symUpper];
+          const localMeta = stockMetadata[country]?.[symUpper];
+
           const resolvedSector =
             s.sector ||
             existing?.sector ||
-            newCache[symUpper] ||
-            stockMetadata[country]?.[symUpper]?.sector ||
+            newSectorCache[symUpper] ||
+            cachedThematic?.sector ||
+            localMeta?.sector ||
             "";
 
           if (resolvedSector) {
-            if (!newCache[symUpper]) {
-              newCache[symUpper] = resolvedSector;
+            if (!newSectorCache[symUpper]) {
+              newSectorCache[symUpper] = resolvedSector;
             }
             const exists = newSectorsList.some(
               (sec) => (sec.name || "").toLowerCase() === resolvedSector.toLowerCase()
@@ -2114,9 +2261,44 @@ export default function StockGrid({
             }
           }
 
+          const resolvedMacroTheme =
+            s.macroTheme ||
+            existing?.macroTheme ||
+            cachedThematic?.macroTheme ||
+            localMeta?.macroTheme ||
+            "";
+          const resolvedThematicVectors =
+            (s.thematicVectors && s.thematicVectors.length > 0)
+              ? s.thematicVectors
+              : (existing?.thematicVectors && existing.thematicVectors.length > 0)
+                ? existing.thematicVectors
+                : (cachedThematic?.thematicVectors && cachedThematic.thematicVectors.length > 0)
+                  ? cachedThematic.thematicVectors
+                  : (localMeta?.thematicVectors || []);
+          const resolvedBusinessScope =
+            (s.businessScope && s.businessScope.length > 0)
+              ? s.businessScope
+              : (existing?.businessScope && existing.businessScope.length > 0)
+                ? existing.businessScope
+                : (cachedThematic?.businessScope && cachedThematic.businessScope.length > 0)
+                  ? cachedThematic.businessScope
+                  : (localMeta?.businessScope || []);
+          const resolvedDependentIndustries =
+            (s.dependentIndustries && s.dependentIndustries.length > 0)
+              ? s.dependentIndustries
+              : (existing?.dependentIndustries && existing.dependentIndustries.length > 0)
+                ? existing.dependentIndustries
+                : (cachedThematic?.dependentIndustries && cachedThematic.dependentIndustries.length > 0)
+                  ? cachedThematic.dependentIndustries
+                  : (localMeta?.dependentIndustries || []);
+
           const base = {
             symbol: s.symbol,
             sector: resolvedSector,
+            macroTheme: resolvedMacroTheme,
+            thematicVectors: resolvedThematicVectors,
+            businessScope: resolvedBusinessScope,
+            dependentIndustries: resolvedDependentIndustries,
             tradable: false,
             notes: "",
             tags: [],
@@ -2129,6 +2311,10 @@ export default function StockGrid({
             ...s,
             // Preserve existing populated fields — don't let empty import data wipe them
             sector: resolvedSector,
+            macroTheme: resolvedMacroTheme,
+            thematicVectors: resolvedThematicVectors,
+            businessScope: resolvedBusinessScope,
+            dependentIndustries: resolvedDependentIndustries,
             notes: s.notes || existing?.notes || "",
             tradable: (s.tradable !== undefined && s.tradable !== false) ? s.tradable : (existing?.tradable || false),
             params: { ...(existing?.params || {}), ...(s.params || {}) },
@@ -2145,7 +2331,8 @@ export default function StockGrid({
 
       return {
         ...prev,
-        stockSectorCache: newCache,
+        stockSectorCache: newSectorCache,
+        stockThematicCache: newThematicCache,
         uiConfig: {
           ...(prev.uiConfig || {}),
           sectors: newSectorsList,
@@ -2203,6 +2390,9 @@ export default function StockGrid({
         "--cw-sector": colWidths["sector"] ? `${colWidths["sector"]}px` : "auto",
         "--cw-checks": colWidths["__checks__"] ? `${colWidths["__checks__"]}px` : "auto",
         "--cw-tradable": colWidths["tradable"] ? `${colWidths["tradable"]}px` : "auto",
+        "--cw-businessScope": colWidths["__businessScope__"] ? `${colWidths["__businessScope__"]}px` : "auto",
+        "--cw-dependentIndustries": colWidths["__dependentIndustries__"] ? `${colWidths["__dependentIndustries__"]}px` : "auto",
+        "--cw-macroTheme": colWidths["__macroTheme__"] ? `${colWidths["__macroTheme__"]}px` : "190px",
         "--cw-notes": colWidths["__notes__"] ? `${colWidths["__notes__"]}px` : "auto",
         ...visibleParams.reduce((acc, [key]) => {
           acc[`--cw-${key}`] = colWidths[key] ? `${colWidths[key]}px` : "auto";
@@ -2226,6 +2416,7 @@ export default function StockGrid({
         availableTags={availableTags}
         availableScopes={availableScopes}
         availableThemes={availableThemes}
+        availableMacroThemes={availableMacroThemes}
         filterableParams={filterableParams}
         isTradableFilterable={isTradableFilterable}
         country={country}
@@ -2253,6 +2444,7 @@ export default function StockGrid({
               if (key === "__sector__") label = "Sector";
               else if (key === "__businessScope__") label = "Business Scope";
               else if (key === "__dependentIndustries__") label = "Dependent Themes";
+              else if (key === "__macroTheme__") label = "Macro Theme";
               else if (key === "__symbols__") label = "AI Selection";
               else if (key === "__tag__") label = "Tag";
               else if (key === "__tradable__") label = "Tradable";
@@ -2380,42 +2572,98 @@ export default function StockGrid({
                     );
                   })()}
 
-                  <button
-                    className={`force-sync-btn radium-style ${detectingSectors ? 'is-syncing relative overflow-hidden' : ''}`}
-                    onClick={handleDetectSectors}
-                    title={detectingSectors ? (sectorProgress.statusText || `Detecting Sector & Scope: ${sectorProgress.completed}/${sectorProgress.total}`) : "Detect missing sectors and business scope using Cache & AI"}
-                    disabled={detectingSectors}
-                    style={detectingSectors ? { minWidth: '160px', padding: '0 10px' } : {}}
-                  >
+                  <div className="flex items-center">
                     {detectingSectors ? (
-                      <div className="flex items-center gap-1.5 z-10 relative text-cyan-700 dark:text-cyan-300 font-bold text-[11px] whitespace-nowrap">
-                        <span className="spinner-mini" style={{ borderTopColor: '#06b6d4', width: '10px', height: '10px' }} />
-                        <span>AI Scope {sectorProgress.total > 0 ? `${Math.round((sectorProgress.completed / Math.max(1, sectorProgress.total)) * 100)}%` : ''}</span>
-                        {sectorProgress.total > 0 && <span className="text-[10px] text-cyan-900/80 dark:text-cyan-200/80">({sectorProgress.completed}/{sectorProgress.total})</span>}
+                      <div
+                        className="force-sync-btn radium-style relative overflow-hidden flex items-center"
+                        style={{ minWidth: '175px', padding: '0 8px 0 10px', cursor: 'default' }}
+                        title={sectorProgress.statusText || `Detecting Sector & Scope: ${sectorProgress.completed}/${sectorProgress.total}`}
+                      >
+                        <div className="flex items-center gap-1.5 z-10 relative text-cyan-700 dark:text-cyan-300 font-bold text-[11px] whitespace-nowrap">
+                          <span
+                            className="spinner-mini"
+                            style={{
+                              borderTopColor: sectorProgress.isWaitingForQuota ? '#f59e0b' : '#06b6d4',
+                              width: '10px',
+                              height: '10px',
+                            }}
+                          />
+                          {sectorProgress.isWaitingForQuota ? (
+                            <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                              Wait ({sectorProgress.retryInSecs || 0}s)
+                            </span>
+                          ) : (
+                            <span>AI Scope {sectorProgress.total > 0 ? `${Math.round((sectorProgress.completed / Math.max(1, sectorProgress.total)) * 100)}%` : ''}</span>
+                          )}
+                          <span className="text-[10px] text-cyan-900/80 dark:text-cyan-200/80">({sectorProgress.completed}/{sectorProgress.total})</span>
+                          <button
+                            type="button"
+                            className="btn-stop-ai-mini ml-1"
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (aiAbortControllerRef.current) {
+                                aiAbortControllerRef.current.abort();
+                              }
+                              setDetectingSectors(false);
+                              setSectorProgress({ completed: 0, total: 0 });
+                              showToast("AI Scope detection stopped.", "info");
+                            }}
+                            title="Stop AI Scope detection"
+                            style={{
+                              cursor: "pointer",
+                              pointerEvents: "auto",
+                              position: "relative",
+                              zIndex: 30,
+                              padding: "2px 6px",
+                              display: "inline-flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                            }}
+                          >
+                            <svg
+                              width="8"
+                              height="8"
+                              viewBox="0 0 24 24"
+                              fill="#ef4444"
+                              style={{ animation: "none", transform: "none", color: "#ef4444" }}
+                            >
+                              <rect width="24" height="24" rx="3" fill="#ef4444" />
+                            </svg>
+                          </button>
+                        </div>
+                        {sectorProgress.total > 0 && (
+                          <div
+                            className={`absolute left-0 top-0 bottom-0 ${sectorProgress.isWaitingForQuota ? 'bg-amber-500/25 dark:bg-amber-500/30' : 'bg-cyan-500/25 dark:bg-cyan-500/30'} transition-all duration-300 pointer-events-none`}
+                            style={{ width: `${Math.round((sectorProgress.completed / Math.max(1, sectorProgress.total)) * 100)}%` }}
+                          />
+                        )}
                       </div>
                     ) : (
-                      <svg
-                        xmlns="http://www.w3.org/2000/svg"
-                        fill="none"
-                        viewBox="0 0 24 24"
-                        strokeWidth={2.5}
-                        stroke="currentColor"
-                        width="13"
-                        height="13"
-                      >
-                        <rect x="3" y="3" width="7" height="9" rx="1.5" />
-                        <rect x="14" y="3" width="7" height="5" rx="1.5" />
-                        <rect x="14" y="12" width="7" height="9" rx="1.5" />
-                        <rect x="3" y="16" width="7" height="5" rx="1.5" />
-                      </svg>
+                      <>
+                        <button
+                          className="force-sync-btn radium-style"
+                          onClick={handleDetectSectors}
+                          title="Detect missing sectors and business scope using Cache & AI"
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            strokeWidth={2.5}
+                            stroke="currentColor"
+                            width="13"
+                            height="13"
+                          >
+                            <rect x="3" y="3" width="7" height="9" rx="1.5" />
+                            <rect x="14" y="3" width="7" height="5" rx="1.5" />
+                            <rect x="14" y="12" width="7" height="9" rx="1.5" />
+                            <rect x="3" y="16" width="7" height="5" rx="1.5" />
+                          </svg>
+                        </button>
+                      </>
                     )}
-                    {detectingSectors && sectorProgress.total > 0 && (
-                      <div
-                        className="absolute left-0 top-0 bottom-0 bg-cyan-500/25 dark:bg-cyan-500/30 transition-all duration-300 pointer-events-none"
-                        style={{ width: `${Math.round((sectorProgress.completed / Math.max(1, sectorProgress.total)) * 100)}%` }}
-                      />
-                    )}
-                  </button>
+                  </div>
                 </>
               )}
             </div>
@@ -2912,6 +3160,20 @@ export default function StockGrid({
                     onClick={(e) => e.stopPropagation()}
                     onDoubleClick={(e) => resetColWidth(e, "__dependentIndustries__")}
                     onMouseDown={(e) => handleMouseDown(e, "__dependentIndustries__")}
+                  />
+                </th>
+              )}
+              {showMacroTheme && (
+                <th
+                  className="resizable-th cw-macroTheme"
+                  onClick={() => toggleSort("__macroTheme__")}
+                >
+                  Macro Theme {renderSortIndicator("__macroTheme__")}
+                  <div
+                    className="col-resizer"
+                    onClick={(e) => e.stopPropagation()}
+                    onDoubleClick={(e) => resetColWidth(e, "__macroTheme__")}
+                    onMouseDown={(e) => handleMouseDown(e, "__macroTheme__")}
                   />
                 </th>
               )}
@@ -3444,19 +3706,52 @@ export default function StockGrid({
                     <div className="flex flex-wrap gap-1 items-center max-w-[220px] max-h-[44px] overflow-hidden" title={(stock.dependentIndustries || []).join(", ")}>
                       {Array.isArray(stock.dependentIndustries) && stock.dependentIndustries.length > 0 ? (
                         stock.dependentIndustries.slice(0, 2).map((item, i) => (
-                          <span key={i} className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-amber-100/90 text-amber-900 border border-amber-300 dark:bg-amber-500/10 dark:text-amber-400 dark:border-amber-500/30 inline-block truncate max-w-[110px]">
-                            ⚡ {item}
+                          <span key={i} className="text-[11px] font-medium px-1.5 py-0.5 rounded bg-slate-100 dark:bg-slate-800/90 text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-slate-700/70 inline-flex items-center truncate max-w-[125px]">
+                            <span className="text-sky-500 dark:text-sky-400 mr-1 select-none text-[9px]">✦</span>
+                            <span className="truncate">{item}</span>
                           </span>
                         ))
                       ) : (
                         <span className="text-slate-400 dark:text-slate-500 text-[11px] italic">—</span>
                       )}
                       {Array.isArray(stock.dependentIndustries) && stock.dependentIndustries.length > 2 && (
-                        <span className="text-[10px] text-amber-800 dark:text-amber-300/80 font-semibold px-1 py-0.5" title={stock.dependentIndustries.slice(2).join(", ")}>
+                        <span className="text-[10px] text-slate-600 dark:text-slate-300 bg-slate-200/80 dark:bg-slate-700/80 px-1.5 py-0.5 rounded font-semibold shrink-0 border border-slate-300/50 dark:border-slate-600/50" title={stock.dependentIndustries.slice(2).join(", ")}>
                           +{stock.dependentIndustries.length - 2}
                         </span>
                       )}
                     </div>
+                  </td>
+                )}
+
+                {showMacroTheme && (
+                  <td className="cw-macroTheme">
+                    {(() => {
+                      const rawTheme = stock.macroTheme || (Array.isArray(stock.dependentIndustries) && stock.dependentIndustries[0]) || "";
+                      const theme = normalizeMacroTheme(rawTheme) || rawTheme;
+                      const vectors = extractStockThematicVectors(stock);
+                      const additionalVectors = vectors.filter(v => v.theme.toLowerCase() !== theme.toLowerCase());
+
+                      return theme ? (
+                        <div className="flex items-center gap-1.5 max-w-[210px] overflow-hidden" title={theme}>
+                          <span
+                            className="inline-flex items-center gap-1 text-[11px] font-semibold px-2.5 py-0.5 rounded-full bg-violet-100 text-violet-800 border border-violet-300 dark:bg-violet-950/40 dark:text-violet-300 dark:border-violet-500/30 truncate max-w-[155px]"
+                          >
+                            <span className="text-[10px] shrink-0">🌐</span>
+                            <span className="truncate">{theme}</span>
+                          </span>
+                          {additionalVectors.length > 0 && (
+                            <span
+                              className="text-[10px] font-bold text-violet-700 dark:text-violet-300 bg-violet-50 dark:bg-violet-900/60 border border-violet-200 dark:border-violet-700/60 px-1.5 py-0.5 rounded-md shrink-0 cursor-default"
+                              title={additionalVectors.map(v => v.theme).filter(Boolean).join(", ")}
+                            >
+                              +{additionalVectors.length}
+                            </span>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-slate-400 dark:text-slate-500 text-[11px] italic">—</span>
+                      );
+                    })()}
                   </td>
                 )}
 

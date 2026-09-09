@@ -177,6 +177,12 @@ const hasUserModified = (original, updated, paramDefinitions) => {
     return true;
   }
 
+  // Macro Theme
+  if ((original.macroTheme || "") !== (updated.macroTheme || "")) {
+    console.log("[hasUserModified] Macro Theme changed");
+    return true;
+  }
+
   return false;
 };
 
@@ -217,9 +223,11 @@ export default function EditStockModal({
     setIsAiEnriching(true);
     try {
       const res = await enrichStockMetadataAI(aiSettings.apiKey, aiSettings.model, formData.symbol, formData.name, formData.sector);
-      if (res && (res.businessScope?.length > 0 || res.dependentIndustries?.length > 0)) {
+      if (res && (res.businessScope?.length > 0 || res.dependentIndustries?.length > 0 || res.macroTheme)) {
         setFormData(prev => ({
           ...prev,
+          macroTheme: res.macroTheme || prev?.macroTheme || "",
+          thematicVectors: res.thematicVectors?.length > 0 ? res.thematicVectors : (prev?.thematicVectors || []),
           businessScope: res.businessScope?.length > 0 ? res.businessScope : (prev?.businessScope || []),
           dependentIndustries: res.dependentIndustries?.length > 0 ? res.dependentIndustries : (prev?.dependentIndustries || [])
         }));
@@ -1732,8 +1740,18 @@ export default function EditStockModal({
           />
         </div>
 
+        <div className="property-row-item">
+          <label style={{ margin: 0, marginBottom: "2px" }}>Macro Theme</label>
+          <input
+            type="text"
+            value={formData.macroTheme || ""}
+            onChange={(e) => handleChange("macroTheme", e.target.value)}
+            placeholder="e.g. AI & Data Centers, EV & Clean Mobility"
+          />
+        </div>
+
         <div className="property-row-item" style={{ gridColumn: "span 2" }}>
-          <label style={{ margin: 0, marginBottom: "2px" }}>Dependent Industries & Macro Themes</label>
+          <label style={{ margin: 0, marginBottom: "2px" }}>Dependent Themes & Sub-Catalysts</label>
           <input
             type="text"
             value={Array.isArray(formData.dependentIndustries) ? formData.dependentIndustries.join(", ") : ""}
@@ -1744,6 +1762,32 @@ export default function EditStockModal({
             placeholder="e.g. AI Infrastructure, Data Centers, Power Grid (comma separated)"
           />
         </div>
+
+        {Array.isArray(formData.thematicVectors) && formData.thematicVectors.length > 0 && (
+          <div className="property-row-item" style={{ gridColumn: "span 2" }}>
+            <label style={{ margin: 0, marginBottom: "4px" }}>Connected Thematic Beneficiary Vectors</label>
+            <div className="space-y-1.5 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
+              {formData.thematicVectors.map((v, idx) => (
+                <div key={idx} className="flex flex-col gap-0.5 text-[11px] pb-1 border-b border-slate-200/50 dark:border-slate-800/50 last:border-0">
+                  <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
+                    <span className="text-violet-600 dark:text-violet-400">🌐 {v.theme}</span>
+                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300">
+                      {v.role}
+                    </span>
+                    {v.conviction && (
+                      <span className="text-[10px] text-slate-400">({v.conviction})</span>
+                    )}
+                  </div>
+                  {v.thesis && (
+                    <span className="text-[10.5px] text-slate-500 dark:text-slate-400 italic pl-3">
+                      "{v.thesis}"
+                    </span>
+                  )}
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         <div className="property-row-item">
           <label>Tradable</label>

@@ -21,6 +21,9 @@ export const DEFAULT_DATA = {
     { name: "Data Center", countries: ["US"] },
   ],
 
+  stockSectorCache: {},
+  stockThematicCache: {},
+
   paramDefinitions: {
     stage: {
       label: "Stage",
@@ -133,6 +136,7 @@ export const DEFAULT_DATA = {
       __tradable__: true,
       __businessScope__: true,
       __dependentIndustries__: true,
+      __macroTheme__: true,
       // dynamic params will be injected automatically
     },
     sectors: [

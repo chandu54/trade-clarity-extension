@@ -1,5 +1,6 @@
 import React, { useMemo, useState, useEffect, useRef } from "react";
 import CategoryAnalysisView from "./CategoryAnalysisView";
+import HighlightText from "./HighlightText";
 
 const COLORS = [
   "#3b82f6", // Blue
@@ -13,6 +14,7 @@ const COLORS = [
 ];
 import { parseInstitutionalDate } from "../utils/dateUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
+import { extractStockThematicVectors, normalizeMacroTheme } from "../constants/thematicCatalog";
 
 const BarChartIcon = () => (
   <svg
@@ -878,34 +880,168 @@ const DateHeatmapChart = ({ data, onPointClick, isExpanded }) => {
 
 const AIScopeExpandedExplorer = ({ param, onClose, onChartClick }) => {
   const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("ALL");
   const [sortBy, setSortBy] = useState("count"); // "count" | "name"
-  const rawData = param.data || [];
+  const [expandedCardNames, setExpandedCardNames] = useState(new Set());
+  const [collapsedCardNames, setCollapsedCardNames] = useState(new Set());
+  const rawData = useMemo(() => param.data || [], [param.data]);
+
+  const isSearchActive = Boolean(searchTerm.trim());
+
+  const toggleCardExpand = (name, e) => {
+    e.stopPropagation();
+    if (isSearchActive) {
+      setCollapsedCardNames((prev) => {
+        const next = new Set(prev);
+        if (next.has(name)) {
+          next.delete(name);
+        } else {
+          next.add(name);
+        }
+        return next;
+      });
+    } else {
+      setExpandedCardNames((prev) => {
+        const next = new Set(prev);
+        if (next.has(name)) {
+          next.delete(name);
+        } else {
+          next.add(name);
+        }
+        return next;
+      });
+    }
+  };
+
+  const checkStockMatches = (sym, item, q) => {
+    if (!q) return false;
+    const cleanQ = q.trim().toLowerCase();
+    if (!cleanQ) return false;
+
+    const symLower = (sym || "").toLowerCase();
+    const nameLower = (item.stockNames?.[sym] || "").toLowerCase();
+    const thesisObj = item.stockTheses?.[sym];
+    const roleLower = (thesisObj?.role || "").toLowerCase();
+    const thesisLower = (thesisObj?.thesis || "").toLowerCase();
+    const catalysts = item.stockCatalysts?.[sym];
+    const catalystsJoined = Array.isArray(catalysts)
+      ? catalysts.map((c) => (c || "").toLowerCase()).join(" ")
+      : "";
+
+    if (
+      symLower.includes(cleanQ) ||
+      nameLower.includes(cleanQ) ||
+      roleLower.includes(cleanQ) ||
+      thesisLower.includes(cleanQ) ||
+      catalystsJoined.includes(cleanQ)
+    ) {
+      return true;
+    }
+
+    const tokens = cleanQ.split(/\s+/).filter(Boolean);
+    if (tokens.length > 1) {
+      return tokens.some(
+        (tok) =>
+          symLower.includes(tok) ||
+          nameLower.includes(tok) ||
+          roleLower.includes(tok) ||
+          thesisLower.includes(tok) ||
+          catalystsJoined.includes(tok)
+      );
+    }
+
+    return false;
+  };
+
+  // Extract available distinct roles dynamically from data with sensible fallback
+  const availableRoles = useMemo(() => {
+    const roles = new Set();
+    rawData.forEach((item) => {
+      if (item.stockTheses) {
+        Object.values(item.stockTheses).forEach((t) => {
+          if (t && t.role) roles.add(t.role);
+        });
+      }
+    });
+    // Fallback to canonical plain-English roles if none found
+    if (roles.size === 0) {
+      return [
+        "Brand / Maker",
+        "Equipment Maker",
+        "Parts Supplier",
+        "Lender / Bank",
+        "Platform / Exchange",
+        "Utility / Grid",
+      ];
+    }
+    return Array.from(roles).sort();
+  }, [rawData]);
 
   const filteredData = useMemo(() => {
     let result = rawData;
+
+    // 1. Filter by Role if selected
+    if (roleFilter !== "ALL") {
+      result = result
+        .map((item) => {
+          if (!item.stockTheses) return null;
+          // Filter stocks inside this group matching the selected role
+          const matchingStocks = (item.stocks || []).filter((sym) => {
+            const thesisObj = item.stockTheses?.[sym];
+            return thesisObj && thesisObj.role === roleFilter;
+          });
+          if (matchingStocks.length === 0) return null;
+          return {
+            ...item,
+            stocks: matchingStocks,
+            value: matchingStocks.length,
+          };
+        })
+        .filter(Boolean);
+    }
+
+    // 2. Filter by Search Term: category/theme name, stock ticker, stock company name, role, thesis, sub-catalyst, sector
     if (searchTerm.trim()) {
       const q = searchTerm.toLowerCase().trim();
-      result = result.filter(
-        (item) =>
-          item.name.toLowerCase().includes(q) ||
-          (item.stocks && item.stocks.some((s) => s.toLowerCase().includes(q)))
-      );
+      result = result
+        .map((item) => {
+          const categoryMatches = item.name.toLowerCase().includes(q);
+          const sectorMatches =
+            Array.isArray(item.sectors) &&
+            item.sectors.some((s) => (s || "").toLowerCase().includes(q));
+
+          // If category name or sector matches, keep all stocks in this group
+          if (categoryMatches || sectorMatches) {
+            return item;
+          }
+
+          // Otherwise, filter stocks matching symbol, company name, role, thesis, or catalyst
+          const matchingStocks = (item.stocks || []).filter((sym) =>
+            checkStockMatches(sym, item, q)
+          );
+
+          if (matchingStocks.length === 0) return null;
+          return {
+            ...item,
+            stocks: matchingStocks,
+            value: matchingStocks.length,
+          };
+        })
+        .filter(Boolean);
     }
+
+    // 3. Sort by count or name
     if (sortBy === "count") {
       result = [...result].sort((a, b) => b.value - a.value);
     } else {
       result = [...result].sort((a, b) => a.name.localeCompare(b.name));
     }
     return result;
-  }, [rawData, searchTerm, sortBy]);
-
-  const maxCount = useMemo(() => {
-    return rawData.length > 0 ? Math.max(...rawData.map((d) => d.value)) : 1;
-  }, [rawData]);
+  }, [rawData, roleFilter, searchTerm, sortBy]);
 
   const totalMentions = useMemo(() => {
-    return rawData.reduce((sum, d) => sum + (d.value || 0), 0);
-  }, [rawData]);
+    return filteredData.reduce((sum, d) => sum + (d.value || 0), 0);
+  }, [filteredData]);
 
   return (
     <div className="ai-scope-expanded-explorer">
@@ -916,14 +1052,13 @@ const AIScopeExpandedExplorer = ({ param, onClose, onChartClick }) => {
             <span>✨</span> {param.label} Breakdown
           </h3>
           <p className="ai-scope-exp-subtitle">
-            {rawData.length} Categories identified across portfolio • {totalMentions} total mentions
+            {filteredData.length} Categories identified across portfolio • {totalMentions} total stocks
           </p>
         </div>
 
         <div className="ai-scope-exp-controls">
           {/* Search Input */}
           <div style={{ position: "relative", display: "flex", alignItems: "center" }}>
-            {/* Icon — absolutely centred, pointer-events off so it never blocks typing */}
             <svg
               viewBox="0 0 24 24"
               fill="none"
@@ -945,12 +1080,15 @@ const AIScopeExpandedExplorer = ({ param, onClose, onChartClick }) => {
             </svg>
             <input
               type="text"
-              placeholder={`Search ${rawData.length} categories...`}
+              placeholder={`Search category, ticker, stock name...`}
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => {
+                setSearchTerm(e.target.value);
+                setCollapsedCardNames(new Set());
+              }}
               style={{
                 height: "32px",
-                width: "240px",
+                width: "250px",
                 paddingLeft: "34px",
                 paddingRight: searchTerm ? "28px" : "10px",
                 paddingTop: 0,
@@ -966,7 +1104,10 @@ const AIScopeExpandedExplorer = ({ param, onClose, onChartClick }) => {
             />
             {searchTerm && (
               <button
-                onClick={() => setSearchTerm("")}
+                onClick={() => {
+                  setSearchTerm("");
+                  setCollapsedCardNames(new Set());
+                }}
                 title="Clear search"
                 style={{
                   position: "absolute",
@@ -986,6 +1127,35 @@ const AIScopeExpandedExplorer = ({ param, onClose, onChartClick }) => {
                 ×
               </button>
             )}
+          </div>
+
+          {/* Roles Dropdown */}
+          <div className="ai-scope-exp-role-filter">
+            <select
+              value={roleFilter}
+              onChange={(e) => setRoleFilter(e.target.value)}
+              className="ai-scope-exp-role-select"
+              title="Filter by Value Chain Role"
+              aria-label="Filter by Value Chain Role"
+            >
+              <option value="ALL">All Roles</option>
+              {availableRoles.map((r) => (
+                <option key={r} value={r}>
+                  {r}
+                </option>
+              ))}
+            </select>
+            <svg
+              className="ai-scope-exp-role-arrow"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="6 9 12 15 18 9" />
+            </svg>
           </div>
 
           {/* Sort Control */}
@@ -1019,44 +1189,165 @@ const AIScopeExpandedExplorer = ({ param, onClose, onChartClick }) => {
       <div className="ai-scope-exp-body flex-1 overflow-y-auto pt-4 themed-scroll">
         {filteredData.length === 0 ? (
           <div className="py-16 text-center text-slate-400 text-sm italic">
-            No categories matching "{searchTerm}"
+            No categories matching "{searchTerm || roleFilter}"
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pb-6">
-            {filteredData.map((group, idx) => (
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3.5 pb-6 items-start">
+            {filteredData.map((group, idx) => {
+              const isCardExpanded = isSearchActive
+                ? !collapsedCardNames.has(group.name)
+                : expandedCardNames.has(group.name);
+              const totalStocks = group.stocks ? group.stocks.length : 0;
+              const maxInitial = 4;
+
+              // Ensure matching stocks are displayed first when searching so highlighted matches are immediately visible
+              const sortedStocks = isSearchActive
+                ? [...(group.stocks || [])].sort((a, b) => {
+                    const aMatch = checkStockMatches(a, group, searchTerm);
+                    const bMatch = checkStockMatches(b, group, searchTerm);
+                    if (aMatch && !bMatch) return -1;
+                    if (!aMatch && bMatch) return 1;
+                    return 0;
+                  })
+                : group.stocks || [];
+
+              const visibleStocks = isCardExpanded || totalStocks <= maxInitial
+                ? sortedStocks
+                : sortedStocks.slice(0, maxInitial);
+              const hiddenCount = totalStocks - maxInitial;
+
+              return (
                 <div
                   key={group.name}
-                  className="ai-scope-exp-card p-3.5 rounded-xl border border-slate-200 dark:border-slate-700/80 bg-slate-50/60 dark:bg-slate-800/40 hover:border-blue-500/50 dark:hover:border-blue-400/50 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between"
+                  className="ai-scope-exp-card p-4 rounded-xl border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/80 hover:border-blue-500/50 dark:hover:border-blue-400/50 hover:shadow-md transition-all cursor-pointer flex flex-col justify-between w-full h-fit"
                   onClick={(e) => onChartClick(group, e)}
                   title="Click to view full category stock details"
                 >
                   <div>
-                    {/* Card Top Row */}
+                    {/* Card Top Row: Macro theme category name / header */}
                     <div className="flex items-start justify-between gap-2 mb-3">
-                      <span className={`ai-scope-tag-pill idx-${idx % 6} text-xs font-bold px-2 py-1 rounded-md`}>
-                        {group.name}
+                      <span className={`ai-scope-tag-pill idx-${idx % 6} text-xs font-bold px-2.5 py-1 rounded-md leading-snug break-words`}>
+                        <HighlightText text={group.name} highlight={searchTerm} />
                       </span>
-                      <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-200/60 dark:bg-slate-700/60 px-2 py-0.5 rounded-md whitespace-nowrap">
+                      <span className="text-xs font-mono font-bold text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md whitespace-nowrap shrink-0 mt-0.5">
                         {group.value} {group.value === 1 ? "stock" : "stocks"}
                       </span>
                     </div>
+
+                    {/* Sub-catalyst breakdown inside card */}
+                    {group.stocks && group.stocks.length > 0 && (
+                      <div className="space-y-2 mb-3 bg-slate-50/90 dark:bg-slate-900/70 p-3 rounded-lg border border-slate-200/80 dark:border-slate-800/80">
+                        {visibleStocks.map((stockSymbol) => {
+                          const thesisObj = group.stockTheses?.[stockSymbol];
+                          const subFocus = thesisObj?.subFocus;
+                          const rawCatalysts = group.stockCatalysts?.[stockSymbol] || [];
+                          const rawScopes = group.stockScopes?.[stockSymbol] || [];
+                          // Filter out redundant catalyst matching group name
+                          const distinctCatalysts = rawCatalysts.filter(
+                            (c) => (c || "").toLowerCase().trim() !== group.name.toLowerCase().trim()
+                          );
+                          const distinctScopes = rawScopes.filter(
+                            (s) => (s || "").toLowerCase().trim() !== group.name.toLowerCase().trim()
+                          );
+                          const displayCatalyst = subFocus || distinctCatalysts[0] || distinctScopes[0] || rawCatalysts[0] || "";
+                          const remainingCount = distinctCatalysts.length > 1
+                            ? distinctCatalysts.length - 1
+                            : (rawCatalysts.length > 1 && !distinctCatalysts[0] ? rawCatalysts.length - 1 : 0);
+
+                          const role = thesisObj?.role;
+                          const thesis = thesisObj?.thesis;
+                          const companyName = group.stockNames?.[stockSymbol];
+
+                          return (
+                            <div
+                              key={stockSymbol}
+                              className="flex flex-col gap-1 py-1.5 border-b border-slate-100 dark:border-slate-800/60 last:border-0"
+                            >
+                              <div className="flex items-center justify-between gap-2 text-[11px]">
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  {/* Stock ticker symbol */}
+                                  <span
+                                    className="font-mono font-bold text-[11px] px-2.5 py-0.5 rounded-md bg-blue-50/80 dark:bg-blue-950/50 border border-blue-200 dark:border-blue-700/60 text-blue-700 dark:text-blue-400 shadow-xs shrink-0"
+                                    title={companyName || stockSymbol}
+                                  >
+                                    <HighlightText text={stockSymbol} highlight={searchTerm} />
+                                  </span>
+                                  {/* Stock company name */}
+                                  {companyName && (
+                                    <span className="text-[10px] text-slate-500 dark:text-slate-400 font-medium truncate max-w-[110px]" title={companyName}>
+                                      <HighlightText text={companyName} highlight={searchTerm} />
+                                    </span>
+                                  )}
+                                  {/* Value Chain Role badge */}
+                                  {role && (
+                                    <span className="text-[9.5px] font-semibold px-1.5 py-0.5 rounded bg-slate-100 text-slate-700 dark:bg-slate-800 dark:text-slate-300 border border-slate-200 dark:border-slate-700 shrink-0">
+                                      <HighlightText text={role} highlight={searchTerm} />
+                                    </span>
+                                  )}
+                                </div>
+                                {displayCatalyst ? (
+                                  <div className="flex items-center gap-1 overflow-hidden">
+                                    <span
+                                      className="text-[10.5px] font-medium px-2.5 py-0.5 rounded-md bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300/80 dark:border-amber-600/50 truncate max-w-[190px] inline-flex items-center shadow-xs"
+                                      title={rawCatalysts.join(", ")}
+                                    >
+                                      <span className="truncate">
+                                        <HighlightText text={displayCatalyst} highlight={searchTerm} />
+                                      </span>
+                                    </span>
+                                    {remainingCount > 0 && (
+                                      <span
+                                        className="text-[9px] font-semibold text-slate-600 dark:text-slate-300 bg-slate-200/80 dark:bg-slate-700/80 border border-slate-300/50 dark:border-slate-600/50 px-1 py-0.5 rounded-md shrink-0"
+                                        title={distinctCatalysts.slice(1).join(", ")}
+                                      >
+                                        +{remainingCount}
+                                      </span>
+                                    )}
+                                  </div>
+                                ) : null}
+                              </div>
+                              {/* AI Investment Thesis quote text */}
+                              {thesis && (
+                                <p className="text-[10px] text-slate-500 dark:text-slate-400 italic pl-0.5 leading-snug break-words" title={thesis}>
+                                  "<HighlightText text={thesis} highlight={searchTerm} />"
+                                </p>
+                              )}
+                            </div>
+                          );
+                        })}
+
+                        {/* Expand / Collapse Button for cards with > 4 stocks */}
+                        {totalStocks > maxInitial && (
+                          <button
+                            type="button"
+                            className="ai-scope-exp-more-btn"
+                            style={{ backgroundImage: "none" }}
+                            onClick={(e) => toggleCardExpand(group.name, e)}
+                          >
+                            <span style={{ color: "inherit" }}>
+                              {isCardExpanded ? "▲ Show Less" : `+${hiddenCount} more ${hiddenCount === 1 ? "stock" : "stocks"} ▼`}
+                            </span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
 
-                  {/* Stock Tickers Pills */}
-                  {group.stocks && group.stocks.length > 0 && (
-                    <div className="flex flex-wrap gap-1.5 pt-2 border-t border-slate-200/60 dark:border-slate-700/50">
-                      {group.stocks.map((stockSymbol) => (
-                        <span
-                          key={stockSymbol}
-                          className="font-mono font-bold text-[11px] px-2 py-0.5 rounded bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 text-blue-600 dark:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-900/30 transition-colors"
-                        >
-                          {stockSymbol}
-                        </span>
-                      ))}
+                  {/* Combined Sector Spread Footer */}
+                  {Array.isArray(group.sectors) && group.sectors.length > 0 && (
+                    <div className="text-[10px] text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-800/80 pt-2 flex items-center justify-between mt-auto">
+                      <span className="shrink-0 font-medium text-slate-500 dark:text-slate-400">Combined Sector Spread:</span>
+                      <span
+                        className="font-medium text-slate-700 dark:text-slate-300 truncate max-w-[170px] text-right"
+                        title={group.sectors.join(", ")}
+                      >
+                        <HighlightText text={group.sectors.join(", ")} highlight={searchTerm} />
+                      </span>
                     </div>
                   )}
                 </div>
-              ))}
+              );
+            })}
           </div>
         )}
       </div>
@@ -1557,6 +1848,8 @@ const AnalyticsDashboard = ({
     // 4. Business Scope Distribution
     const scopeCounts = {};
     filteredStocks.forEach((stock) => {
+      const sym = stock.symbol || stock.ticker || "Unknown";
+      const stockName = stock.name || "";
       const rawScope = stock.businessScope;
       const scopeArray = Array.isArray(rawScope)
         ? rawScope
@@ -1566,9 +1859,10 @@ const AnalyticsDashboard = ({
       if (scopeArray.length > 0) {
         scopeArray.forEach((scope) => {
           if (scope && scope.trim()) {
-            if (!scopeCounts[scope]) scopeCounts[scope] = { value: 0, stocks: [] };
+            if (!scopeCounts[scope]) scopeCounts[scope] = { value: 0, stocks: [], stockNames: {} };
             scopeCounts[scope].value++;
-            scopeCounts[scope].stocks.push(stock.symbol || stock.ticker || "Unknown");
+            scopeCounts[scope].stocks.push(sym);
+            if (stockName) scopeCounts[scope].stockNames[sym] = stockName;
           }
         });
       }
@@ -1584,33 +1878,75 @@ const AnalyticsDashboard = ({
         .sort((a, b) => b.value - a.value),
     });
 
-    // 5. Macro Themes / Dependent Industries Distribution
+    // 5. Consolidated Macro Themes & Sub-Catalyst Distribution
     const themeCounts = {};
     filteredStocks.forEach((stock) => {
-      const rawTheme = stock.dependentIndustries || stock.dependentThemes;
-      const themeArray = Array.isArray(rawTheme)
-        ? rawTheme
-        : typeof rawTheme === "string"
-        ? rawTheme.split(",").map((s) => s.trim()).filter(Boolean)
+      const sym = stock.symbol || stock.ticker || "Unknown";
+      const stockName = stock.name || "";
+      const vectors = extractStockThematicVectors(stock);
+
+      const rawSub = stock.dependentIndustries;
+      const subArray = Array.isArray(rawSub)
+        ? rawSub
+        : typeof rawSub === "string"
+        ? rawSub.split(",").map((s) => s.trim()).filter(Boolean)
         : [];
-      if (themeArray.length > 0) {
-        themeArray.forEach((theme) => {
-          if (theme && theme.trim()) {
-            if (!themeCounts[theme]) themeCounts[theme] = { value: 0, stocks: [] };
-            themeCounts[theme].value++;
-            themeCounts[theme].stocks.push(stock.symbol || stock.ticker || "Unknown");
+
+      vectors.forEach((v) => {
+        const themeKey = normalizeMacroTheme(v.theme) || v.theme;
+        if (!themeKey) return;
+
+        if (!themeCounts[themeKey]) {
+          themeCounts[themeKey] = {
+            value: 0,
+            stocks: [],
+            stockNames: {},
+            stockCatalysts: {},
+            stockScopes: {},
+            stockTheses: {},
+            sectors: new Set(),
+          };
+        }
+
+        if (!themeCounts[themeKey].stocks.includes(sym)) {
+          themeCounts[themeKey].value++;
+          themeCounts[themeKey].stocks.push(sym);
+          if (stockName) {
+            themeCounts[themeKey].stockNames[sym] = stockName;
           }
-        });
-      }
+          const catalystsList = v.subFocus ? [v.subFocus, ...subArray] : subArray;
+          themeCounts[themeKey].stockCatalysts[sym] = catalystsList;
+          themeCounts[themeKey].stockScopes[sym] = Array.isArray(stock.businessScope) ? stock.businessScope : [];
+          themeCounts[themeKey].stockTheses[sym] = {
+            role: v.role,
+            conviction: v.conviction,
+            thesis: v.thesis,
+            subFocus: v.subFocus || "",
+          };
+          if (stock.sector) {
+            themeCounts[themeKey].sectors.add(stock.sector);
+          }
+        }
+      });
     });
 
     systemMetrics.push({
       id: "sys_dependentThemes",
       label: "Macro Theme Distribution",
       type: "select",
-      emptyMessage: "No Macro Theme data detected yet. Run '✨ AI Scope' in Stock Grid to auto-detect dependent industries for your stocks.",
+      emptyMessage: "No Macro Theme data detected yet. Run '✨ AI Scope' in Stock Grid to auto-detect macro themes for your stocks.",
       data: Object.keys(themeCounts)
-        .map((k) => ({ name: k, paramLabel: "Macro Theme", ...themeCounts[k] }))
+        .map((k) => ({
+          name: k,
+          paramLabel: "Macro Theme",
+          value: themeCounts[k].value,
+          stocks: themeCounts[k].stocks,
+          stockNames: themeCounts[k].stockNames,
+          stockCatalysts: themeCounts[k].stockCatalysts,
+          stockScopes: themeCounts[k].stockScopes,
+          stockTheses: themeCounts[k].stockTheses,
+          sectors: Array.from(themeCounts[k].sectors)
+        }))
         .sort((a, b) => b.value - a.value),
     });
 

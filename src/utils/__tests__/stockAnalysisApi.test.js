@@ -19,7 +19,7 @@ describe('stockAnalysisApi', () => {
   describe('fetchNseEarningsDate & NSE Calendar resilience', () => {
     it('deduplicates concurrent requests and initiates cooldown on 403 Forbidden', async () => {
       let fetchCallCount = 0;
-      vi.stubGlobal('fetch', vi.fn((url) => {
+      vi.stubGlobal('fetch', vi.fn((_url) => {
         fetchCallCount++;
         // Simulate NSE blocking with 403 Forbidden
         return Promise.resolve({
@@ -72,7 +72,7 @@ describe('stockAnalysisApi', () => {
     });
 
     it('fetchNseQuarterlyResults handles symbol formatting and 403 failure cleanly', async () => {
-      vi.stubGlobal('fetch', vi.fn((url) => {
+      vi.stubGlobal('fetch', vi.fn((_url) => {
         return Promise.resolve({
           ok: false,
           status: 403

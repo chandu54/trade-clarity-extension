@@ -1,4 +1,5 @@
 import { CONFIG } from "../constants/config";
+import { CANONICAL_MACRO_THEMES, normalizeMacroTheme, normalizeThematicVectors } from "../constants/thematicCatalog";
 
 export const PROMPT_TEMPLATES = [
   {
@@ -80,13 +81,56 @@ Start directly with the report.`,
   {
     value: "business_scope",
     label: "Business Scope & Dependent Industry Discovery",
-    text: `Act as a senior equity research analyst.
-Extract the core Business Scope (key product lines/services, min 3, max 8 items) and Dependent/Beneficiary Industries & Macro Themes (top Themes - Min 3, Max 10), e.g. "AI Infrastructure", "Data Centers", "EV Supply Chain", "Defense Localization") for stock symbol: {symbol} ({name}).
+    text: `Act as a senior equity research analyst and industrial supply-chain specialist.
+Analyze company: {symbol} ({name}).
+
+Extract:
+1. "macroTheme": Overarching institutional investment theme or primary secular CapEx cycle (2-4 words in Title Case). Must align with standardized macro themes (e.g. AI & Data Centers, Aerospace & Defense, EV & Clean Mobility, Power Grid & Transmission, Renewable Energy & Clean Tech, Pharma, API & CDMO, Railways & High-Speed Transit, Specialty Chemicals & Advanced Materials, Banking & Credit Expansion, Capital Markets & Wealth Ecosystem, Telecom & Digital Networks).
+2. "thematicVectors": Array of 1 to 4 multi-thematic exposure vectors connecting this company's products to secular capital expenditure waves:
+   [
+     {
+       "theme": "Standard Macro Theme (from canonical themes e.g. AI & Data Centers, Aerospace & Defense, EV & Clean Mobility, Power Grid & Transmission, Renewable Energy & Clean Tech, Pharma, API & CDMO, Railways & High-Speed Transit, Specialty Chemicals & Advanced Materials)",
+       "subFocus": "2-4 words defining the specific product or operational niche (e.g. Data Center Connectivity (Optical), Missile Optics & Racks, 765kV Conductors & Transformer Oils, EV Traction Motors, Liquid Rocket Engines)",
+       "role": "Brand / Maker | Equipment Maker | Parts Supplier | Lender / Bank | Platform / Exchange | Utility / Grid",
+       "conviction": "High | Medium | Secondary",
+       "thesis": "1 concise sentence explaining the specific value-chain connection"
+     }
+   ]
+3. "businessScope": Detailed list of all active commercial products, manufacturing lines, specialized components, or service segments (min 3, up to 8-10 items if diverse).
+4. "dependentIndustries": The genuine downstream demand drivers, end-market applications, or industry catalysts that drive order books for these products (min 2, up to 6 items).
+
+CORE VALUE-CHAIN PRINCIPLES:
+1. CANONICAL MACRO THEMES FOR CLUSTERING:
+   - Stocks participating in the same secular wave MUST share the same canonical theme name so they cluster together (e.g. APAR, Polycab, and Siemens in "Power Grid & Transmission"; HFCL, Netweb, and Siemens in "AI & Data Centers"; Paras, MTAR, and Azad in "Aerospace & Defense").
+   - Use "subFocus" to capture the company's unique product niche (e.g. "Data Center Connectivity (Optical)", "AI GPU Server Infrastructure", "765kV Conductors & Cables").
+2. GROUNDED IN OPERATING REALITY:
+   - Base all tags strictly on verifiable products, active manufacturing, commercial order books, or loan portfolios. Never assign speculative themes without factual operations.
+3. SEPARATION OF CONGLOMERATE / GENERIC SILOS:
+   - NEVER collapse specialized businesses into blunt generic buckets like "Consumer Goods", "Retail", "Information Technology", or "Financial Services".
+   - Commercial Banks & Lenders: MUST be classified by their actual credit engine (e.g., Commercial Vehicle Credit, Housing Finance, Micro-Credit, Capital Markets).
+4. UNIVERSAL VALUE-CHAIN ROLES:
+   - Brand / Maker: End-product brand, prime contractor, or finished OEM.
+   - Equipment Maker: Capital equipment, tooling, machinery, cables, generators, process plants.
+   - Parts Supplier: Subsystems, raw chemicals, intermediate ingredients, or components.
+   - Utility / Grid: Grids, transmission lines, pipelines, toll roads, utilities.
+   - Lender / Bank: Commercial banks, NBFCs, credit underwriters.
+   - Platform / Exchange: Digital software portals, aggregators, depositories, exchanges.
+5. TRADITIONAL BUSINESSES REMAIN HONEST: Keep traditional companies strictly honest with their real drivers.
 
 Return ONLY a strict JSON object:
 {
-  "businessScope": ["Segment 1", "Segment 2", "Segment 3"],
-  "dependentIndustries": ["Theme 1", "Theme 2"]
+  "macroTheme": "Primary Macro Theme Name",
+  "thematicVectors": [
+    {
+      "theme": "Primary Macro Theme Name",
+      "subFocus": "Specific Product or Operational Niche",
+      "role": "Parts Supplier",
+      "conviction": "High",
+      "thesis": "Specific rationale connecting products to this theme"
+    }
+  ],
+  "businessScope": ["Product/Segment 1", "Product/Segment 2", "Product/Segment 3"],
+  "dependentIndustries": ["Sub-Catalyst 1", "Sub-Catalyst 2"]
 }`,
   },
 ];
@@ -502,6 +546,7 @@ async function fetchGemini(
   retries = 3,
   skipCircuitBreaker = false,
   enableFallback = true,
+  externalSignal = null,
 ) {
   // Check if AI is currently blocked
   const state = await getAiState();
@@ -526,7 +571,15 @@ async function fetchGemini(
   const url = `https://generativelanguage.googleapis.com/v1beta/models/${cleanModel}:generateContent?key=${apiKey}`;
 
   for (let attempt = 1; attempt <= retries; attempt++) {
+    if (externalSignal?.aborted) {
+      throw new Error("AI request aborted by user.");
+    }
+
     const controller = new AbortController();
+    const abortHandler = () => controller.abort();
+    if (externalSignal) {
+      externalSignal.addEventListener("abort", abortHandler, { once: true });
+    }
     // 45-second timeout per API request (prevents background fetch sockets from hanging indefinitely)
     const timeoutId = setTimeout(() => controller.abort(), 45000);
 
@@ -570,19 +623,23 @@ async function fetchGemini(
 
         const isModelUnavailable =
           response.status === 404 ||
+          response.status === 503 ||
           errMessage.includes("no longer available") ||
           errMessage.includes("is not found") ||
-          errMessage.includes("deprecated");
+          errMessage.includes("deprecated") ||
+          errMessage.includes("high demand") ||
+          errMessage.includes("overloaded") ||
+          errMessage.includes("temporarily unavailable");
 
-        // Quota Exhaustion or Deprecated Model Fallback
-        if (isQuota || isModelUnavailable) {
+        // Model Fallback on 404 (deprecated) or 503 (high demand / server overload)
+        if (isModelUnavailable) {
           if (enableFallback) {
             const fallbackChain = CONFIG.FALLBACK_MODELS || [
               "gemini-2.5-flash",
-              "gemini-3.5-flash",
+              "gemini-3.8-flash",
               "gemini-3.6-flash",
-              "gemini-flash-latest",
-              "gemini-1.5-flash",
+              "gemini-3.5-flash",
+              "gemini-2.0-flash",
             ];
             const currentIdx = fallbackChain.indexOf(cleanModel);
             const remainingModels =
@@ -592,7 +649,7 @@ async function fetchGemini(
             const nextModel = remainingModels[0];
             if (nextModel) {
               console.warn(
-                `[Model Fallback] ${isModelUnavailable ? "Model deprecated/unavailable" : "Quota limit"} on ${cleanModel}. Automatically switching request to fallback model ${nextModel}...`,
+                `[Model Fallback] Model ${cleanModel} unavailable or experiencing high demand (${response.status}: ${errMessage}). Automatically switching request to fallback model ${nextModel}...`,
               );
               if (
                 typeof chrome !== "undefined" &&
@@ -620,32 +677,32 @@ async function fetchGemini(
                 retries,
                 skipCircuitBreaker,
                 remainingModels.length > 1,
+                externalSignal,
               );
             }
           }
+        }
 
-          if (isQuota) {
-            const retryMs = parseRetryAfterMs(errMessage, 65000);
-            if (!skipCircuitBreaker) {
-              const blockedUntil = Date.now() + retryMs;
-              await updateAiState(3, blockedUntil);
-              if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
-                try {
-                  const res = chrome.runtime.sendMessage({
-                    action: "AI_LIMIT_REACHED",
-                    payload: { blockedUntil },
-                  });
-                  if (res && typeof res.catch === "function") res.catch(() => {});
-                } catch (_e) {
-                  // Ignore
-                }
+        if (isQuota) {
+          const retryMs = parseRetryAfterMs(errMessage, 65000);
+          if (!skipCircuitBreaker) {
+            const blockedUntil = Date.now() + retryMs;
+            await updateAiState(3, blockedUntil);
+            if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+              try {
+                const res = chrome.runtime.sendMessage({
+                  action: "AI_LIMIT_REACHED",
+                  payload: { blockedUntil },
+                });
+                if (res && typeof res.catch === "function") res.catch(() => {});
+              } catch (_e) {
+                // Ignore
               }
             }
-            const secs = Math.ceil(retryMs / 1000);
-            throw new Error(
-              `RESOURCE_EXHAUSTED: Gemini API Quota Limit. Retry in ${secs}s.`,
-            );
           }
+          throw new Error(
+            `RESOURCE_EXHAUSTED: Gemini API Quota Limit. ${errMessage}`,
+          );
         }
 
         throw new Error(errMessage);
@@ -657,9 +714,19 @@ async function fetchGemini(
       if (!text) throw new Error("Empty response from Gemini");
 
       await resetAiFailureCount();
+      if (externalSignal) {
+        externalSignal.removeEventListener("abort", abortHandler);
+      }
       return parseResponse(text, isCustom);
     } catch (error) {
       clearTimeout(timeoutId);
+      if (externalSignal) {
+        externalSignal.removeEventListener("abort", abortHandler);
+      }
+
+      if (externalSignal?.aborted) {
+        throw new Error("Bulk AI sector classification aborted.", { cause: error });
+      }
 
       // If it is the block error we threw on entry, don't count it as a failure
       if (error.message && error.message.includes("AI Request Limit Reached")) {
@@ -1051,8 +1118,8 @@ export async function classifySectorsInBulk(
     throw new Error("Bulk AI sector classification aborted.");
   }
 
-  // 18 stocks per prompt provides high JSON fidelity while cutting API calls by ~72%
-  const chunkSize = options.chunkSize || CONFIG.AI_CHUNK_SIZE_SECTORS || 18;
+  // 7 stocks per prompt provides deep reasoning fidelity and token headroom for value-chain tracing
+  const chunkSize = options.chunkSize || CONFIG.AI_CHUNK_SIZE_SECTORS || 7;
   const total = stocks.length;
   const combinedResults = {};
 
@@ -1076,38 +1143,93 @@ export async function classifySectorsInBulk(
     const stocksJson = JSON.stringify(chunk);
 
     const prompt = `
-    You are an expert equity research classification assistant.
-    Task: Classify the following list of stocks in market "${country}" into:
-    1. "sector": Standard industry sector (choose from User's Defined Sector Categories or suggest standard name).
-    2. "businessScope": All primary business segments, key products, or revenue drivers (array of 2-5 items).
-    3. "dependentIndustries": Upstream/downstream beneficiary macro themes or dependent industries (array of 2-4 items, e.g. "AI Infrastructure", "Data Centers", "EV Supply Chain", "Defense Localization").
-    
+    You are a Senior Equity Research Analyst and Industrial Supply-Chain Specialist for market "${country}".
+    Task: Conduct an institutional value-chain analysis for each of the following stocks.
+    Classify each into its Sector, primary Macro Theme, connected Thematic Exposure Vectors, core Business Scope, and downstream Dependent Themes / Sub-Catalysts:
+
+    1. "sector": Standard broad industry category (choose from User's Defined Sector Categories list below, or assign a standard industry name like "Defense", "Electricals", "Chemicals", "Capital Goods", "Auto", "Telecom", "IT", "Banking", "Pharma").
+
+    2. "macroTheme": Overarching primary secular CapEx cycle or structural wave funding the company's order books (2-4 words in Title Case).
+       - NEVER use generic sectors (e.g. do NOT output "Electricals", "Information Technology", "Consumer Goods", or "Textiles").
+       - DYNAMIC THEME SYNTHESIS FORMULA:
+         Synthesize dynamically using the universal formula:
+         [Specific Industry / Sub-Domain] + [Secular Driver / CapEx Wave / Structural Transition]
+         Keep it 2 to 4 words in Title Case.
+         Universal Examples across completely different sectors:
+          * Biofuel equipment / Distilleries -> "Ethanol Blending & Biofuels"
+          * Commercial Vehicle lending -> "Commercial Vehicle & Fleet Credit"
+          * Shipbuilders & drydocks -> "Shipbuilding & Maritime Logistics"
+          * Fine jewelry retail -> "Branded Jewellery Formalization"
+          * Pathology lab chains -> "Preventive Diagnostics & Healthcare"
+          * Cement / RMC -> "Civil Infrastructure & Housing CapEx"
+          * High-voltage transmission cables -> "Power Grid 765kV & Transmission"
+          * AI accelerator chips -> "AI Foundation Compute & Accelerators"
+          * Wafer fab equipment & lithography -> "Semiconductor Equipment, EDA & Fabless IP"
+          * Enterprise SaaS / CRM / Cloud software -> "Enterprise SaaS & Cloud Platforms"
+          * Cybersecurity / Zero Trust / SIEM -> "Cloud Resiliency & Cybersecurity"
+          * Biotech / Gene Editing / mRNA -> "Biotech, Genomics & Rare Diseases"
+          * AdTech / Programmatic ads / CTV -> "Digital AdTech, Streaming & Connected Media"
+          * Defense Tech / Autonomy / Counter-drone -> "Defense Tech & Autonomous Systems"
+          * Single-family homebuilders -> "Residential Homebuilding & Building Products"
+          * Buy Now Pay Later / Payment gateways -> "Fintech Lending, Payments & Digital Wallets"
+          * Laminated tube packaging -> "Specialized Industrial & FMCG Packaging"
+          * Sugar & Agritech -> "Sugar Agritech & Ethanol Expansion"
+       - ANTI-COLLAPSE MANDATE:
+         * NEVER collapse distinct industries into blunt generic buckets like "Consumer Goods", "Retail", or "Financial Services".
+         * Commercial Banks & Lenders: MUST be tagged by their actual lending exposure (e.g. Commercial Vehicle Credit, Housing Finance, Micro-Credit, Capital Markets). NEVER classify a bank or lender as "Consumer, Retail & Lifestyle"!
+
+    3. "thematicVectors": Array of 1 to 4 multi-thematic exposure vectors connecting this company's products to secular capital expenditure waves:
+       [
+         {
+           "theme": "Connected Macro Theme (2-4 words Title Case)",
+           "role": "Direct OEM | Pick-and-Shovel Enabler | Component Supplier | Infrastructure Provider | Financier / Capital Provider | Platform / Marketplace",
+           "conviction": "High | Medium | Secondary",
+           "thesis": "1 concise sentence explaining the specific value-chain connection"
+         }
+       ]
+       - UNIVERSAL VALUE-CHAIN ROLES:
+         * Direct OEM: End-product brand or prime contractor.
+         * Pick-and-Shovel Enabler: Tooling, machinery, cables, process plants enabling the sector.
+         * Component Supplier: Subsystems, raw chemicals, intermediate ingredients, or parts.
+         * Infrastructure Provider: Utilities, grids, pipelines, toll roads, depositories.
+         * Financier / Capital Provider: Commercial banks, NBFCs, credit underwriters.
+         * Platform / Marketplace: Digital software portals, aggregators, exchanges.
+
+    4. "businessScope": Comprehensive array of active commercial products, manufacturing lines, specialized components, or service segments (min 3, up to 8-10 items if the company has diverse operations). Keep granular, factual, and detailed.
+    5. "dependentIndustries": Array of genuine downstream micro-catalysts, specific demand drivers, or end-market applications that drive order books for these products (min 2, up to 6 items). Keep granular and specific.
+
     Stocks to Classify (JSON format):
     ${stocksJson}
-    
+
     User's Defined Sector Categories:
     [${sectorsList}]
-    
-    Classification Rules:
-    1. Map each stock to the MOST appropriate category from the User's Defined Sector Categories list.
-    2. If none of the defined categories fit, suggest a concise standard sector name (e.g. "Defense", "Infrastructure", "Electricals").
-    3. Ensure sector names, business scope, and dependent themes are clean, concise, and standard title case.
-    
-    You MUST respond with a valid JSON object mapping symbol to an object with "sector", "businessScope", and "dependentIndustries".
-    Example output format:
-    {
-      "TCS": {
-        "sector": "IT",
-        "businessScope": ["IT Consulting", "Cloud Services", "AI Enterprise"],
-        "dependentIndustries": ["Enterprise AI", "Cloud Computing"]
-      },
-      "ADANIPORTS": {
-        "sector": "Infrastructure",
-        "businessScope": ["Port Management", "Logistics Parks", "SEZ Development"],
-        "dependentIndustries": ["Global Trade", "Logistics"]
-      }
-    }
-    
+
+    CORE PRINCIPLES & GUIDELINES:
+    1. GROUNDED IN FACTUAL COMMERCIAL REALITY:
+       - Base all tags strictly on verifiable products, active manufacturing, commercial customer order books, or stated CapEx.
+       - If a company operates in traditional lines (e.g. standard home textiles, paper packaging, basic cement), keep it completely honest with its genuine economic drivers.
+
+    2. TRACE VALUE CHAINS & CAPEX CYCLES:
+       - Analyze what broader capital expenditure cycles or structural demand trends drive the company's primary commercial order books and revenue.
+
+    3. CLEAN, STANDARDIZED TAXONOMY:
+       - Output clean, concise, Title Case tags suitable for grouping and filtering across a portfolio.
+
+    You MUST respond with a valid JSON object mapping each symbol to {
+      "sector": "Sector Name",
+      "macroTheme": "Primary Macro Theme",
+      "thematicVectors": [
+        {
+          "theme": "Macro Theme Name",
+          "role": "Pick-and-Shovel Enabler",
+          "conviction": "High",
+          "thesis": "Specific rationale"
+        }
+      ],
+      "businessScope": ["Core Product 1", "Core Product 2"],
+      "dependentIndustries": ["Downstream Catalyst 1", "Downstream Catalyst 2"]
+    }.
+
     Respond ONLY with the raw JSON string, do not wrap in markdown or include any other text.
     `;
 
@@ -1116,6 +1238,8 @@ export async function classifySectorsInBulk(
     let attempts = 0;
     const maxChunkAttempts = 3;
 
+    let lastChunkError = null;
+
     while (attempts < maxChunkAttempts) {
       if (signal?.aborted) {
         throw new Error("Bulk AI sector classification aborted.");
@@ -1123,13 +1247,33 @@ export async function classifySectorsInBulk(
       try {
         attempts++;
         // Use skipCircuitBreaker=true so transient bulk errors do NOT lock out single-stock analysis
-        const res = await fetchGemini(apiKey, prompt, modelToUse, false, 2, true);
+        const res = await fetchGemini(apiKey, prompt, modelToUse, false, 2, true, true, signal);
         if (res && typeof res === "object") {
+          for (const sym of Object.keys(res)) {
+            if (res[sym]) {
+              if (res[sym].macroTheme) {
+                res[sym].macroTheme = normalizeMacroTheme(res[sym].macroTheme);
+              }
+              if (Array.isArray(res[sym].thematicVectors)) {
+                res[sym].thematicVectors = normalizeThematicVectors(res[sym].thematicVectors);
+              } else if (res[sym].macroTheme) {
+                res[sym].thematicVectors = [{
+                  theme: res[sym].macroTheme,
+                  role: "Pick-and-Shovel Enabler",
+                  conviction: "High",
+                  thesis: Array.isArray(res[sym].dependentIndustries) && res[sym].dependentIndustries.length > 0
+                    ? `Primary exposure driven by ${res[sym].dependentIndustries[0]}`
+                    : `Core commercial exposure to ${res[sym].macroTheme}`,
+                }];
+              }
+            }
+          }
           chunkResults = res;
           Object.assign(combinedResults, res);
         }
         break; // Success: exit retry loop
       } catch (error) {
+        lastChunkError = error;
         const errStr = error?.message || String(error);
         const is429 =
           errStr.includes("429") ||
@@ -1146,11 +1290,11 @@ export async function classifySectorsInBulk(
           const stepWait = isTest ? 0 : 1000;
           for (let s = retrySecs; s > 0; s--) {
             if (signal?.aborted) {
-              throw new Error("Bulk AI sector classification aborted.");
+              throw new Error("Bulk AI sector classification aborted.", { cause: error });
             }
             if (onProgress) {
               onProgress({
-                completed: i,
+                completed: Object.keys(combinedResults).length,
                 total,
                 statusText: `Quota limit reached. Auto-resuming in ${s}s...`,
                 isWaitingForQuota: true,
@@ -1169,16 +1313,43 @@ export async function classifySectorsInBulk(
       }
     }
 
+    if (!chunkResults) {
+      const errStr = lastChunkError?.message || String(lastChunkError || "");
+      const isQuota =
+        errStr.includes("429") ||
+        errStr.includes("RESOURCE_EXHAUSTED") ||
+        errStr.includes("Quota") ||
+        errStr.includes("quota");
+      if (isQuota) {
+        console.warn(
+          "[classifySectorsInBulk] Quota exhausted across all retries. Stopping bulk loop early.",
+        );
+        if (onProgress) {
+          onProgress({
+            completed: Object.keys(combinedResults).length,
+            total,
+            statusText: "Quota limit reached. Stopped.",
+            isWaitingForQuota: false,
+          });
+        }
+        throw new Error(
+          `Gemini API Quota Limit (429) reached: ${errStr}. Please check your Google Gemini quota or wait for the quota to reset.`,
+          { cause: lastChunkError },
+        );
+      }
+      break;
+    }
+
     if (onProgress) {
       onProgress({
-        completed: Math.min(i + chunkSize, total),
+        completed: Object.keys(combinedResults).length,
         total,
         chunkResults,
       });
     }
 
-    // Pacing delay between chunks (only when more chunks remain and delay > 0)
-    if (i + chunkSize < total && pacingDelayMs > 0 && !signal?.aborted) {
+    // Pacing delay between chunks (only when more chunks remain and delay > 0 and current chunk succeeded)
+    if (chunkResults && i + chunkSize < total && pacingDelayMs > 0 && !signal?.aborted) {
       const waitSecs = Math.ceil(pacingDelayMs / 1000);
       const stepWait = isTest ? 0 : 1000;
       for (let s = waitSecs; s > 0; s--) {
@@ -1187,7 +1358,7 @@ export async function classifySectorsInBulk(
         }
         if (onProgress) {
           onProgress({
-            completed: Math.min(i + chunkSize, total),
+            completed: Object.keys(combinedResults).length,
             total,
             chunkResults: null,
             statusText: `Chunk ${Math.floor(i / chunkSize) + 1} complete. Pacing next chunk in ${s}s...`,
@@ -1212,20 +1383,89 @@ export async function enrichStockMetadataAI(
   sector = "",
 ) {
   if (!apiKey || !symbol) return null;
-  const prompt = `Act as an expert equity research analyst.
-Identify the core Business Scope (key product lines/business segments, max 4-5 items) and Dependent/Beneficiary Industries & Macro Themes (top 2-4 themes, e.g. "AI Infrastructure", "Data Centers", "EV Supply Chain", "Defense Localization") for stock symbol "${symbol}" (${name || symbol}), Sector: "${sector || "N/A"}".
+  const prompt = `Act as a senior equity research analyst and industrial supply-chain specialist.
+Conduct an institutional value-chain analysis for stock symbol "${symbol}" (${name || symbol}), Sector: "${sector || "N/A"}".
+Identify the primary Macro Theme, connected Thematic Exposure Vectors, core Business Scope, and downstream Dependent Themes & Sub-Catalysts.
+
+OUTPUT SPECIFICATIONS:
+1. "macroTheme": Overarching primary secular CapEx cycle or structural wave funding the company's order books (2-4 words in Title Case). Never use generic sectors like "Information Technology" or "Consumer Goods".
+2. "thematicVectors": Array of 1 to 4 multi-thematic exposure vectors connecting this company's products to secular capital expenditure waves:
+   [
+     {
+       "theme": "Macro Theme Name (2-4 words Title Case)",
+       "role": "Direct OEM | Pick-and-Shovel Enabler | Component Supplier | Infrastructure Provider | Financier / Capital Provider | Platform / Marketplace",
+       "conviction": "High | Medium | Secondary",
+       "thesis": "1 concise sentence explaining the specific value-chain connection"
+     }
+   ]
+3. "businessScope": Comprehensive array of active commercial products, manufacturing lines, specialized components, or service segments (min 3, up to 8-10 items).
+4. "dependentIndustries": Array of genuine downstream micro-catalysts, specific demand drivers, or end-market applications that drive order books for these products (min 2, up to 6 items).
+
+CORE VALUE-CHAIN PRINCIPLES (Applicable to ANY Industry or Company):
+- Base all tags strictly on verifiable products, active manufacturing, commercial order books, or loan portfolios. Never assign speculative themes without factual operations.
+- DYNAMIC THEME SYNTHESIS FORMULA:
+  Synthesize the overarching macro theme dynamically using the universal formula:
+  [Specific Industry / Sub-Domain] + [Secular Driver / CapEx Wave / Structural Transition]
+  Keep it 2 to 4 words in Title Case.
+  Examples of the dynamic formula across completely different sectors:
+  * Biofuel equipment / Distilleries -> "Ethanol Blending & Biofuels"
+  * Pre-owned truck financing -> "Commercial Vehicle & Fleet Credit"
+  * Shipbuilders & drydocks -> "Shipbuilding & Maritime Logistics"
+  * Fine jewelry retail -> "Branded Jewellery Formalization"
+  * Pathology lab chains -> "Preventive Diagnostics & Healthcare"
+  * Cement / RMC -> "Civil Infrastructure & Housing CapEx"
+  * High-voltage transmission cables -> "Power Grid 765kV & Transmission"
+  * AI accelerator chips -> "AI Foundation Compute & Accelerators"
+  * Laminated tube packaging -> "Specialized Industrial & FMCG Packaging"
+- SEPARATION OF CONGLOMERATE / GENERIC SILOS:
+  * NEVER collapse specialized businesses into blunt generic buckets like "Consumer Goods", "Retail", "Information Technology", or "Financial Services".
+  * Commercial Banks & Lenders: MUST be classified by their actual credit engine (e.g. Commercial Vehicle Credit, Housing Finance, Micro-Credit, Capital Markets). Never tag a bank under consumer retail!
+- UNIVERSAL VALUE-CHAIN ROLES:
+  * Direct OEM: End-product brand or prime contractor.
+  * Pick-and-Shovel Enabler: Capital equipment, tooling, machinery, cables, process plants.
+  * Component Supplier: Subsystems, raw chemicals, intermediate ingredients, or parts.
+  * Infrastructure Provider: Grids, pipelines, utilities, toll roads, depositories.
+  * Financier / Capital Provider: Commercial banks, NBFCs, credit underwriters.
+  * Platform / Marketplace: Digital software portals, aggregators, exchanges.
+- TRADITIONAL BUSINESSES REMAIN HONEST: If the company operates in traditional sectors, keep it strictly honest with its real drivers. Do not force high-tech themes where none exist.
 
 Return ONLY a strict JSON object format without markdown block:
 {
-  "businessScope": ["Segment 1", "Segment 2"],
-  "dependentIndustries": ["Theme 1", "Theme 2"]
+  "macroTheme": "Primary Macro Theme Name",
+  "thematicVectors": [
+    {
+      "theme": "Primary Macro Theme Name",
+      "role": "Pick-and-Shovel Enabler",
+      "conviction": "High",
+      "thesis": "Specific rationale"
+    }
+  ],
+  "businessScope": ["Product/Segment 1", "Product/Segment 2", "Product/Segment 3"],
+  "dependentIndustries": ["Sub-Catalyst 1", "Sub-Catalyst 2"]
 }`;
 
   let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;
   try {
     const res = await fetchGemini(apiKey, prompt, modelToUse, false, 3, true);
     if (res && typeof res === "object") {
+      const macroTheme = typeof res.macroTheme === "string" ? normalizeMacroTheme(res.macroTheme.trim()) : "";
+      let thematicVectors = Array.isArray(res.thematicVectors)
+        ? normalizeThematicVectors(res.thematicVectors)
+        : [];
+      if (thematicVectors.length === 0 && macroTheme) {
+        thematicVectors = [{
+          theme: macroTheme,
+          role: "Pick-and-Shovel Enabler",
+          conviction: "High",
+          thesis: Array.isArray(res.dependentIndustries) && res.dependentIndustries.length > 0
+            ? `Primary exposure driven by ${res.dependentIndustries[0]}`
+            : `Core commercial exposure to ${macroTheme}`,
+        }];
+      }
+
       return {
+        macroTheme,
+        thematicVectors,
         businessScope: Array.isArray(res.businessScope)
           ? res.businessScope
           : [],
