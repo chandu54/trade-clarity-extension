@@ -208,7 +208,7 @@ export default function EditStockModal({
   onDeleteStock = null,
   position = null,
   journals = null,
-  initialActiveRightTab = 'position'
+  initialActiveRightTab = null
 }) {
   const { showToast } = useToast();
   const [formData, setFormData] = useState(() => stock ? structuredClone(stock) : null);
@@ -503,22 +503,59 @@ export default function EditStockModal({
     leftWidthRef.current = leftWidth;
   }, [topHeight, leftWidth]);
 
-  // AI & Position Dock State Restoration
+  // AI & Position Overlay Popover State
   const [aiAnalysis, setAiAnalysis] = useState(null);
   const [aiAnalysisDate, setAiAnalysisDate] = useState(null);
   const [loadingAi, setLoadingAi] = useState(false);
   const [aiError, setAiError] = useState(null);
   const [activeRightTab, setActiveRightTab] = useState(initialActiveRightTab || 'position');
+  const [isPopoverOpen, setIsPopoverOpen] = useState(() => Boolean(initialActiveRightTab));
   const [prevTabProp, setPrevTabProp] = useState(initialActiveRightTab);
   const [prevSymbolProp, setPrevSymbolProp] = useState(formData?.symbol);
   const [summaryData, setSummaryData] = useState(null);
   const [sidebarStockData, setSidebarStockData] = useState({});
+  const popoverRef = useRef(null);
+  const railRef = useRef(null);
 
   if (initialActiveRightTab !== prevTabProp || formData?.symbol !== prevSymbolProp) {
     setPrevTabProp(initialActiveRightTab);
     setPrevSymbolProp(formData?.symbol);
-    setActiveRightTab(initialActiveRightTab || 'position');
+    if (initialActiveRightTab) {
+      setActiveRightTab(initialActiveRightTab);
+      setIsPopoverOpen(true);
+    }
   }
+
+  // Handle ESC key to close popover before modal
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleEscKey = (e) => {
+      if (e.key === "Escape" && isPopoverOpen) {
+        e.preventDefault();
+        e.stopPropagation();
+        setIsPopoverOpen(false);
+      }
+    };
+    window.addEventListener("keydown", handleEscKey, true);
+    return () => window.removeEventListener("keydown", handleEscKey, true);
+  }, [isOpen, isPopoverOpen]);
+
+  // Handle outside click to close popover
+  useEffect(() => {
+    if (!isPopoverOpen) return;
+    const handleOutsideClick = (e) => {
+      if (
+        popoverRef.current &&
+        !popoverRef.current.contains(e.target) &&
+        railRef.current &&
+        !railRef.current.contains(e.target)
+      ) {
+        setIsPopoverOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handleOutsideClick);
+    return () => document.removeEventListener("mousedown", handleOutsideClick);
+  }, [isPopoverOpen]);
 
   useEffect(() => {
     if (!isOpen || !formData?.symbol) return;
@@ -1333,7 +1370,9 @@ export default function EditStockModal({
   // The Modal itself handles its own null rendering via the isOpen prop.
   // However, we still need formData to render the content, so we gate the interior.
 
-  const handleSave = () => {
+  const [justSaved, setJustSaved] = useState(false);
+
+  const handleSave = (shouldClose = true) => {
     const finalData = {
       ...formData,
       aiAnalysis,
@@ -1343,10 +1382,16 @@ export default function EditStockModal({
 
     if (onUpdateStock) {
       onUpdateStock(finalData);
-    } else {
+    } else if (onSave) {
       onSave(finalData);
     }
-    onClose();
+
+    if (shouldClose) {
+      onClose();
+    } else {
+      setJustSaved(true);
+      setTimeout(() => setJustSaved(false), 2000);
+    }
   };
 
   const handleDeleteStockItem = useCallback(async (targetSymbol) => {
@@ -1383,6 +1428,12 @@ export default function EditStockModal({
     if (!isOpen) return;
 
     const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        handleSave(false);
+        return;
+      }
+
       if (e.key === "Delete" || e.key === "Del") {
         const activeTag = document.activeElement?.tagName;
         const isEditingInput = activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT";
@@ -1396,7 +1447,7 @@ export default function EditStockModal({
 
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, handleDelete]);
+  }, [isOpen, handleDelete, handleSave]);
 
   const [selectedPromptId, setSelectedPromptId] = useState(aiSettings?.promptLibrary?.defaults?.stock || "default");
 
@@ -2421,7 +2472,6 @@ export default function EditStockModal({
                 >
               <style>{`
                 .deep-view-top { --top-section-height: ${!isParamsCollapsed ? `${topHeight}px` : '0px'}; }
-                .deep-view-bottom { --grid-split: ${leftWidth}% 6px 1fr; }
               `}</style>
               <div className="section-header-row">
                 <button
@@ -3032,128 +3082,222 @@ export default function EditStockModal({
                 </div>
               </div>
 
-              <div
-                className="resizer-h-handle"
-                onMouseDown={() => setIsResizingH(true)}
-                title="Resize Workspace"
-              />
+              {/* TradingView-Style Right Edge Rail Dock */}
+              <div className="tv-chart-rail-dock" ref={railRef}>
+                <button
+                  type="button"
+                  className={`tv-rail-btn ${activeRightTab === 'position' && isPopoverOpen ? 'active' : ''}`}
+                  onClick={() => {
+                    if (isPopoverOpen && activeRightTab === 'position') {
+                      setIsPopoverOpen(false);
+                    } else {
+                      setActiveRightTab('position');
+                      setIsPopoverOpen(true);
+                    }
+                  }}
+                  title={positionMetrics ? `Position (P&L: ${(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent) >= 0 ? '+' : ''}${(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent).toFixed(1)}%)` : "Position Tracker"}
+                  aria-label="Position"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="2" y="7" width="20" height="14" rx="2" ry="2"/>
+                    <path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/>
+                  </svg>
+                  <span className="sr-only">Position</span>
+                  {positionMetrics && (
+                    <span className={`tv-rail-badge ${(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent) >= 0 ? 'green' : 'red'}`}>
+                      {(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent) >= 0 ? '+' : ''}{(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent).toFixed(0)}%
+                    </span>
+                  )}
+                  <span className="tv-rail-tooltip">Position Details</span>
+                </button>
 
-              <div className="deep-view-right-panel themed-scroll">
-                <div className="panel-header">
-                  <div className="dock-header-tab-bar">
-                    <button
-                      type="button"
-                      className={`dock-tab-btn ${activeRightTab === 'position' ? 'active' : ''}`}
-                      onClick={() => setActiveRightTab('position')}
-                      title="View position details and P&L"
-                    >
-                      <span>Position</span>
-                      {positionMetrics && (
-                        <span className={`dock-tab-badge ${(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent) >= 0 ? 'badge-green' : 'badge-red'}`}>
-                          {(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent) >= 0 ? '+' : ''}{(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent).toFixed(1)}%
-                        </span>
-                      )}
-                    </button>
-                    <button
-                      type="button"
-                      className={`dock-tab-btn ai-tab-btn ${activeRightTab === 'ai' ? 'active' : ''}`}
-                      onClick={() => setActiveRightTab('ai')}
-                      title="Run AI analysis on this stock"
-                    >
-                      <span className="ai-tab-icon">
-                        <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                          <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
-                        </svg>
-                      </span>
-                      <span>AI Analysis</span>
-                    </button>
-                  </div>
-                </div>
+                <button
+                  type="button"
+                  className={`tv-rail-btn ai-tool ${activeRightTab === 'ai' && isPopoverOpen ? 'active' : ''} ${loadingAi ? 'is-analyzing' : ''}`}
+                  onClick={() => {
+                    if (isPopoverOpen && activeRightTab === 'ai') {
+                      setIsPopoverOpen(false);
+                    } else {
+                      setActiveRightTab('ai');
+                      setIsPopoverOpen(true);
+                    }
+                  }}
+                  title={loadingAi ? "AI Analysis in progress..." : "AI Analysis & Deep Dive"}
+                  aria-label="AI Deep Dive"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m12 3-1.912 5.813a2 2 0 0 1-1.275 1.275L3 12l5.813 1.912a2 2 0 0 1 1.275 1.275L12 21l1.912-5.813a2 2 0 0 1 1.275-1.275L21 12l-5.813-1.912a2 2 0 0 1-1.275-1.275L12 3Z" />
+                  </svg>
+                  <span className="sr-only">AI Analysis</span>
+                  <span className={`tv-rail-badge ai ${loadingAi ? 'radium-pulse-badge' : ''}`}>{loadingAi ? '⚡' : '✨'}</span>
+                  <span className="tv-rail-tooltip">{loadingAi ? 'Analyzing...' : 'AI Deep Dive'}</span>
+                </button>
+              </div>
 
-                {activeRightTab === 'ai' && (
-                  <div className="ai-strategy-toolbar">
-                    <div className="strategy-select-wrapper" title="Select AI Strategy Prompt">
-                      <select 
-                        value={selectedPromptId} 
-                        onChange={e => setSelectedPromptId(e.target.value)}
-                        className="strategy-select-compact"
-                      >
-                        {allStrategies.map(p => (
-                          <option key={p.id} value={p.id}>{p.label.replace(/\s*\(Active\)\s*/, '')}</option>
-                        ))}
-                      </select>
-                    </div>
-                    {!loadingAi && (() => {
-                      const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
-                      return (
+              {/* Dedicated Floating Popover Overlay Panel */}
+              {isPopoverOpen && (
+                <div
+                  className={`deep-view-popover-panel ${activeRightTab === 'position' ? 'popover-position-mode' : 'popover-ai-mode'} ${activeRightTab === 'ai' && loadingAi ? 'ai-radium-glow' : ''}`}
+                  ref={popoverRef}
+                >
+                  {/* Position Dedicated Popover */}
+                  {activeRightTab === 'position' && (
+                    <>
+                      <div className="popover-header-bar position-card-header">
+                        <div className="popover-title-row">
+                          <span className="popover-header-icon position-icon">💼</span>
+                          <div className="popover-title-text-group">
+                            <span className="popover-main-title">Position Details</span>
+                            <span className="popover-subtitle">{formData.symbol}</span>
+                          </div>
+                          {positionMetrics && (
+                            <span className={`popover-status-badge ${positionMetrics.isOpen ? 'badge-open' : 'badge-closed'}`}>
+                              {positionMetrics.isOpen ? 'OPEN' : 'CLOSED'}
+                            </span>
+                          )}
+                        </div>
+
                         <button
-                          onClick={handleRunAi}
-                          disabled={isAiBlocked}
-                          className="btn-ai-gradient strategy-btn-compact"
-                          style={isAiBlocked ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
-                          title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : "Analyze stock with AI"}
+                          type="button"
+                          className="popover-close-btn"
+                          onClick={() => setIsPopoverOpen(false)}
+                          title="Close Popover (Esc)"
+                          aria-label="Close Popover"
                         >
-                          Analyze
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
                         </button>
-                      );
-                    })()}
-                  </div>
-                )}
+                      </div>
 
-                <div className="ai-content-area">
-                  {activeRightTab === 'position' && renderPositionTabContent()}
+                      <div className="popover-content-scroll themed-scroll">
+                        {renderPositionTabContent()}
+                      </div>
+                    </>
+                  )}
+
+                  {/* AI Analysis Dedicated Popover */}
                   {activeRightTab === 'ai' && (
                     <>
-                  {loadingAi && (
-                    <div className="ai-loading-shimmer-v2">
-                      <div className="shimmer-bone-title" />
-                      <div className="shimmer-bone-body" />
-                      <div className="shimmer-bone-body short" />
-                      <p className="loading-txt-premium">Analysing...</p>
-                    </div>
-                  )}
+                      <div className="popover-header-bar ai-card-header">
+                        <div className="popover-title-row">
+                          <span className="popover-header-icon ai-icon">✨</span>
+                          <div className="popover-title-text-group">
+                            <span className="popover-main-title">AI Deep Dive</span>
+                            <span className="popover-subtitle">{formData.symbol}</span>
+                          </div>
+                          {loadingAi && (
+                            <span className="ai-radium-indicator-compact">
+                              <span className="radium-pulse-dot" /> Analyzing...
+                            </span>
+                          )}
+                        </div>
 
-                  {aiError && (
-                    <div className="ai-inline-warning-card">
-                      <div className="ai-inline-warning-header">
-                        <span>⚠️</span>
-                        <span>Gemini API Notice</span>
-                      </div>
-                      <div className="ai-inline-warning-body">
-                        {aiError}
-                      </div>
-                      <div className="ai-inline-warning-actions">
-                        <a 
-                          href="https://aistudio.google.com/" 
-                          target="_blank" 
-                          rel="noopener noreferrer" 
-                          className="ai-limit-link-btn"
+                        <button
+                          type="button"
+                          className="popover-close-btn"
+                          onClick={() => setIsPopoverOpen(false)}
+                          title="Close Popover (Esc)"
+                          aria-label="Close Popover"
                         >
-                          Check Plan & Quota ↗
-                        </a>
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
                       </div>
-                    </div>
-                  )}
 
-                  <div className="ai-analysis-container themed-scroll">
-                    {renderAiAnalysis()}
-                    {aiAnalysis && (
-                      <div className="ai-disclaimer-v2 ai-analysis-disclaimer-box">
-                         AI can make mistakes. Verify with your own research. For informational purposes only.
+                      <div className="ai-strategy-toolbar">
+                        <div className="strategy-select-wrapper" title="Select AI Strategy Prompt">
+                          <select 
+                            value={selectedPromptId} 
+                            onChange={e => setSelectedPromptId(e.target.value)}
+                            className="strategy-select-compact"
+                            disabled={loadingAi}
+                          >
+                            {allStrategies.map(p => (
+                              <option key={p.id} value={p.id}>{p.label.replace(/\s*\(Active\)\s*/, '')}</option>
+                            ))}
+                          </select>
+                        </div>
+                        {loadingAi ? (
+                          <button
+                            type="button"
+                            disabled
+                            className="btn-ai-gradient strategy-btn-compact is-loading-active"
+                            title="AI Analysis in progress..."
+                          >
+                            <span className="radium-orbit-spinner-mini" /> Analyzing...
+                          </button>
+                        ) : (() => {
+                          const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
+                          return (
+                            <button
+                              onClick={handleRunAi}
+                              disabled={isAiBlocked}
+                              className="btn-ai-gradient strategy-btn-compact"
+                              style={isAiBlocked ? { opacity: 0.5, cursor: 'not-allowed' } : undefined}
+                              title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : "Analyze stock with AI"}
+                            >
+                              Analyze
+                            </button>
+                          );
+                        })()}
                       </div>
-                    )}
-                  </div>
 
-                  {!aiAnalysis && !loadingAi && !aiError && (
-                    <div className="action-placeholder-deep-dive">
-                      <div className="sparkle-icon-wrapper">✨</div>
-                      <p className="placeholder-secondary">Select <strong>'Analyze'</strong> above to begin deep search.</p>
-                    </div>
-                  )}
+                      <div className="popover-content-scroll ai-content-area themed-scroll">
+                        {loadingAi && (
+                          <div className="ai-loading-shimmer-v2">
+                            <div className="shimmer-bone-title" />
+                            <div className="shimmer-bone-body" />
+                            <div className="shimmer-bone-body short" />
+                            <p className="loading-txt-premium">Analysing...</p>
+                          </div>
+                        )}
+
+                        {aiError && (
+                          <div className="ai-inline-warning-card">
+                            <div className="ai-inline-warning-header">
+                              <span>⚠️</span>
+                              <span>Gemini API Notice</span>
+                            </div>
+                            <div className="ai-inline-warning-body">
+                              {aiError}
+                            </div>
+                            <div className="ai-inline-warning-actions">
+                              <a 
+                                href="https://aistudio.google.com/" 
+                                target="_blank" 
+                                rel="noopener noreferrer" 
+                                className="ai-limit-link-btn"
+                              >
+                                Check Plan & Quota ↗
+                              </a>
+                            </div>
+                          </div>
+                        )}
+
+                        <div className="ai-analysis-container themed-scroll">
+                          {renderAiAnalysis()}
+                          {aiAnalysis && (
+                            <div className="ai-disclaimer-v2 ai-analysis-disclaimer-box">
+                               AI can make mistakes. Verify with your own research. For informational purposes only.
+                            </div>
+                          )}
+                        </div>
+
+                        {!aiAnalysis && !loadingAi && !aiError && (
+                          <div className="action-placeholder-deep-dive">
+                            <div className="sparkle-icon-wrapper">✨</div>
+                            <p className="placeholder-secondary">Select <strong>'Analyze'</strong> above to begin deep search.</p>
+                          </div>
+                        )}
+                      </div>
                     </>
                   )}
                 </div>
-              </div>
+              )}
               </div>
             </div>
           </div>
@@ -3182,8 +3326,23 @@ export default function EditStockModal({
                     Log Position
                   </button>
                 )}
-                <button onClick={onClose} className="btn-premium-secondary">Cancel</button>
-                <button onClick={handleSave} className="btn-premium-primary">Save</button>
+                <button type="button" onClick={onClose} className="btn-premium-secondary">Cancel</button>
+                <button 
+                  type="button" 
+                  onClick={() => handleSave(false)} 
+                  className={`btn-premium-secondary ${justSaved ? 'btn-saved-highlight' : ''}`}
+                  title="Save changes without closing modal (Ctrl+S)"
+                >
+                  {justSaved ? '✓ Saved' : 'Save'}
+                </button>
+                <button 
+                  type="button" 
+                  onClick={() => handleSave(true)} 
+                  className="btn-premium-primary"
+                  title="Save changes and close terminal"
+                >
+                  Save & Close
+                </button>
               </div>
             </div>
           </>
@@ -3214,8 +3373,23 @@ export default function EditStockModal({
                   Log Position
                 </button>
               )}
-              <button onClick={onClose} className="btn-premium-secondary">Cancel</button>
-              <button onClick={handleSave} className="btn-premium-primary">Save Changes</button>
+              <button type="button" onClick={onClose} className="btn-premium-secondary">Cancel</button>
+              <button 
+                type="button" 
+                onClick={() => handleSave(false)} 
+                className={`btn-premium-secondary ${justSaved ? 'btn-saved-highlight' : ''}`}
+                title="Save changes without closing modal (Ctrl+S)"
+              >
+                {justSaved ? '✓ Saved' : 'Save'}
+              </button>
+              <button 
+                type="button" 
+                onClick={() => handleSave(true)} 
+                className="btn-premium-primary"
+                title="Save changes and close modal"
+              >
+                Save & Close
+              </button>
             </div>
           </div>
         )}

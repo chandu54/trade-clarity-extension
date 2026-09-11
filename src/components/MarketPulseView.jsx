@@ -245,6 +245,21 @@ const getSectorRotationSignal = (dailyChangePct, periodChangePct) => {
   };
 };
 
+const PRIMARY_TIMEFRAMES = [
+  { id: '1d', label: '1D' },
+  { id: '1w', label: '1W' },
+  { id: '1mo', label: '1M' },
+  { id: '3mo', label: '3M' },
+  { id: '1y', label: '1Y' },
+];
+
+const OVERFLOW_TIMEFRAMES = [
+  { id: '6mo', label: '6M', title: '6 Months' },
+  { id: 'ytd', label: 'YTD', title: 'Year to Date' },
+  { id: '2y', label: '2Y', title: '2 Years' },
+  { id: '5y', label: '5Y', title: '5 Years' },
+];
+
 export default function MarketPulseView({ country, aiSettings }) {
   const [subTab, setSubTab] = useState('snapshot'); // snapshot | intelligence | heatmap
   const [data, setData] = useState([]);
@@ -259,6 +274,8 @@ export default function MarketPulseView({ country, aiSettings }) {
   const [fullScreenIndex, setFullScreenIndex] = useState(null);
   const [sortBy, setSortBy] = useState('custom'); // custom | performance | momentum | name | favorites
   const [showSortMenu, setShowSortMenu] = useState(false);
+  const [showDurationMenu, setShowDurationMenu] = useState(false);
+  const activeOverflow = OVERFLOW_TIMEFRAMES.find(ot => ot.id === timeframe);
   const [favorites, setFavorites] = useState({}); // { symbol: true }
   const [matrixFilter, setMatrixFilter] = useState('all'); // all | bull | pullback | bear
   const searchInputRef = React.useRef(null);
@@ -640,51 +657,30 @@ export default function MarketPulseView({ country, aiSettings }) {
     <>
       <div className="pulse-container">
         <header className="pulse-header">
-          <div className="sleek-segmented-control">
-            <button 
-              onClick={() => setSubTab('snapshot')}
-              className={subTab === 'snapshot' ? 'active' : ''}
-            >
-              Snapshot
-            </button>
-            <button 
-              onClick={() => setSubTab('intelligence')}
-              className={subTab === 'intelligence' ? 'active' : ''}
-            >
-              Trend Matrix
-            </button>
-            <button 
-              onClick={() => setSubTab('heatmap')}
-              className={subTab === 'heatmap' ? 'active' : ''}
-            >
-              Sector Heatmap
-            </button>
+          <div className="pulse-header-left">
+            <div className="sleek-segmented-control">
+              <button 
+                onClick={() => setSubTab('snapshot')}
+                className={subTab === 'snapshot' ? 'active' : ''}
+              >
+                Snapshot
+              </button>
+              <button 
+                onClick={() => setSubTab('intelligence')}
+                className={subTab === 'intelligence' ? 'active' : ''}
+              >
+                Trend Matrix
+              </button>
+              <button 
+                onClick={() => setSubTab('heatmap')}
+                className={subTab === 'heatmap' ? 'active' : ''}
+              >
+                Sector Heatmap
+              </button>
+            </div>
           </div>
 
-          <div className="pulse-last-updated">
-            {loading ? (
-              data.length > 0 ? (
-                <span className="sync-status syncing">
-                  <span className="sync-pulse"></span>
-                  Syncing live data...
-                </span>
-              ) : (
-                <span className="sync-status">Fetching data...</span>
-              )
-            ) : (
-              lastUpdated ? (
-                <span className="sync-status">
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: '6px', opacity: 0.7 }}>
-                    <path d="M21 12a9 9 0 1 1-9-9c2.52 0 4.93 1 6.74 2.74L21 8"/><polyline points="21 3 21 8 16 8"/>
-                  </svg>
-                  Last updated: {lastUpdated.toLocaleTimeString()}
-                </span>
-              ) : null
-            )}
-            <span className="region-badge">Region: {country === 'IN' ? 'India' : 'US'}</span>
-          </div>
-
-          <div className="pulse-controls">
+          <div className="pulse-header-center">
             <div className="custom-dropdown" style={{ position: 'relative' }}>
               <div className="custom-dropdown-trigger" onClick={() => setShowSortMenu(!showSortMenu)}>
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
@@ -723,8 +719,8 @@ export default function MarketPulseView({ country, aiSettings }) {
               )}
             </div>
 
-            <div className="pulse-search-wrapper" style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-              <svg style={{ position: 'absolute', left: '10px', color: 'var(--muted)', width: '14px', height: '14px' }} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <div className="pulse-search-wrapper">
+              <svg className="pulse-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="11" cy="11" r="8"></circle><line x1="21" y1="21" x2="16.65" y2="16.65"></line>
               </svg>
               <input 
@@ -733,43 +729,95 @@ export default function MarketPulseView({ country, aiSettings }) {
                 placeholder="Search index..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                style={{
-                  background: 'var(--bg)',
-                  border: '1px solid var(--border)',
-                  borderRadius: '8px',
-                  padding: '8px 46px 8px 32px',
-                  color: 'var(--text)',
-                  fontSize: '13px',
-                  width: '200px',
-                  outline: 'none',
-                  transition: 'all 0.2s',
-                }}
-                onFocus={(e) => { e.target.style.borderColor = 'var(--primary)'; e.target.style.boxShadow = '0 0 0 2px rgba(59, 130, 246, 0.1)'; }}
-                onBlur={(e) => { e.target.style.borderColor = 'var(--border)'; e.target.style.boxShadow = 'none'; }}
               />
-              <div style={{ position: 'absolute', right: '8px', pointerEvents: 'none', display: 'flex', alignItems: 'center', gap: '3px' }}>
-                <kbd style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: '4px', padding: '2px 5px', fontSize: '10px', color: 'var(--muted)', fontFamily: 'system-ui, sans-serif', fontWeight: 600, boxShadow: '0 1px 1px rgba(0,0,0,0.1)' }}>Ctrl</kbd>
-                <kbd style={{ background: 'var(--panel)', border: '1px solid var(--border)', borderRadius: '4px', padding: '2px 5px', fontSize: '10px', color: 'var(--muted)', fontFamily: 'system-ui, sans-serif', fontWeight: 600, boxShadow: '0 1px 1px rgba(0,0,0,0.1)' }}>K</kbd>
+              <div className="pulse-search-kbd">
+                <kbd>Ctrl</kbd>
+                <kbd>K</kbd>
+              </div>
+            </div>
+          </div>
+
+          <div className="pulse-header-right">
+            <div className="timeframe-toggles">
+              {PRIMARY_TIMEFRAMES.map(tf => (
+                <button 
+                  key={tf.id} 
+                  className={`tf-btn ${timeframe === tf.id ? 'active' : ''}`}
+                  onClick={() => {
+                    setTimeframe(tf.id);
+                    setShowDurationMenu(false);
+                  }}
+                >
+                  {tf.label}
+                </button>
+              ))}
+
+              <div className="custom-dropdown" style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  className={`tf-btn tf-more-btn ${activeOverflow ? 'active' : ''}`}
+                  onClick={() => setShowDurationMenu(!showDurationMenu)}
+                  title="More Timeframes"
+                >
+                  <span>{activeOverflow ? activeOverflow.label : 'More'}</span>
+                  <svg width="8" height="8" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round" style={{ transform: showDurationMenu ? 'rotate(180deg)' : 'none', transition: 'transform 0.15s' }}>
+                    <path d="m6 9 6 6 6-6"/>
+                  </svg>
+                </button>
+
+                {showDurationMenu && (
+                  <>
+                    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', zIndex: 998 }} onClick={() => setShowDurationMenu(false)} />
+                    <div className="custom-dropdown-menu dur-dropdown-menu">
+                      {OVERFLOW_TIMEFRAMES.map(opt => (
+                        <div 
+                          key={opt.id}
+                          onClick={() => { setTimeframe(opt.id); setShowDurationMenu(false); }}
+                          className={`sort-option ${timeframe === opt.id ? 'active' : ''}`}
+                          style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}
+                        >
+                          <span>{opt.title}</span>
+                          <span style={{ fontSize: '10px', opacity: 0.7, fontWeight: 700 }}>{opt.label}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </>
+                )}
               </div>
             </div>
 
-            <div className="timeframe-toggles">
-              {['1d', '1w', '1mo', '3mo', '6mo', 'ytd', '1y', '2y', '5y'].map(tf => (
-                <button 
-                  key={tf} 
-                  className={`tf-btn ${timeframe === tf ? 'active' : ''}`}
-                  onClick={() => setTimeframe(tf)}
-                >
-                  {tf}
-                </button>
-              ))}
+            <div className="pulse-last-updated">
+              {loading ? (
+                data.length > 0 ? (
+                  <span className="sync-status syncing">
+                    <span className="sync-pulse"></span>
+                    <span className="sync-text">Syncing...</span>
+                  </span>
+                ) : (
+                  <span className="sync-status">Fetching data...</span>
+                )
+              ) : (
+                lastUpdated ? (
+                  <span className="sync-status" title={`Last updated: ${lastUpdated.toLocaleTimeString()}`}>
+                    <span className="pulse-live-dot"></span>
+                    <span className="last-updated-prefix">Last updated: </span>
+                    <span className="sync-time">{lastUpdated.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}</span>
+                  </span>
+                ) : null
+              )}
+              <span className="region-badge" title={`Region: ${country === 'IN' ? 'India' : 'US'}`}>
+                <span className="region-flag">{country === 'IN' ? '🇮🇳' : '🇺🇸'}</span>
+                <span className="region-code">{country === 'IN' ? 'IN' : 'US'}</span>
+              </span>
             </div>
-            
+
             <button 
               className={`sleek-refresh-btn ${loading ? 'opacity-50 pointer-events-none' : ''}`} 
               onClick={loadData}
+              title="Refresh Market Pulse data"
             >
-              <span style={{ marginRight: '6px', fontSize: '14px' }}>{loading ? '⌛' : '↻'}</span> Refresh
+              <span className="refresh-icon">{loading ? '⌛' : '↻'}</span>
+              <span className="refresh-label">Refresh</span>
             </button>
           </div>
         </header>

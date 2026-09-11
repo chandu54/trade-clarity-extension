@@ -49,7 +49,7 @@ export default function ChartDrawingToolbar({
   return (
     <div 
       ref={containerRef}
-      className="chart-drawing-toolbar-overlay relative z-30 flex items-center gap-1.5 px-2 py-0.5 rounded-lg bg-slate-900/90 text-slate-200 text-xs border border-slate-700/80 shadow-lg select-none"
+      className="chart-drawing-toolbar-overlay relative z-30 flex items-center gap-1.5 select-none"
       onClick={(e) => e.stopPropagation()}
     >
       {/* 1. DRAWING TOOL DROPDOWN */}
@@ -57,9 +57,7 @@ export default function ChartDrawingToolbar({
         <button
           type="button"
           className={`drawing-dropdown-btn flex items-center gap-1.5 px-2.5 py-1 rounded-lg border text-xs font-semibold transition-all ${
-            activeTool !== 'select'
-              ? 'bg-sky-600 border-sky-500 text-white shadow-md'
-              : 'bg-slate-800/90 border-slate-700 text-slate-300 hover:text-white hover:bg-slate-700/80'
+            activeTool !== 'select' ? 'active' : ''
           }`}
           onClick={() => {
             setShowToolDropdown(!showToolDropdown);
@@ -90,13 +88,11 @@ export default function ChartDrawingToolbar({
         </button>
 
         {showToolDropdown && (
-          <div className="drawing-dropdown-menu absolute top-full left-0 mt-1.5 w-44 p-1 rounded-xl bg-slate-900/98 border border-slate-700/90 shadow-2xl z-50 backdrop-blur-lg flex flex-col gap-0.5">
+          <div className="drawing-dropdown-menu absolute top-full left-0 mt-1.5 w-44 p-1 rounded-xl shadow-2xl z-50 backdrop-blur-lg flex flex-col gap-0.5">
             <button
               type="button"
               className={`dropdown-option flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                activeTool === 'horizontal'
-                  ? 'bg-sky-950/70 text-sky-400 font-semibold'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                activeTool === 'horizontal' ? 'active' : ''
               }`}
               onClick={() => {
                 onToolChange('horizontal');
@@ -110,15 +106,13 @@ export default function ChartDrawingToolbar({
                 </svg>
                 <span>Horizontal Line</span>
               </div>
-              {activeTool === 'horizontal' && <span className="text-sky-400 font-bold">✓</span>}
+              {activeTool === 'horizontal' && <span className="active-check font-bold">✓</span>}
             </button>
 
             <button
               type="button"
               className={`dropdown-option flex items-center justify-between px-2.5 py-1.5 rounded-lg text-xs font-medium transition-colors ${
-                activeTool === 'trend'
-                  ? 'bg-sky-950/70 text-sky-400 font-semibold'
-                  : 'text-slate-300 hover:bg-slate-800 hover:text-white'
+                activeTool === 'trend' ? 'active' : ''
               }`}
               onClick={() => {
                 onToolChange('trend');
@@ -133,19 +127,19 @@ export default function ChartDrawingToolbar({
                 </svg>
                 <span>Trendline</span>
               </div>
-              {activeTool === 'trend' && <span className="text-sky-400 font-bold">✓</span>}
+              {activeTool === 'trend' && <span className="active-check font-bold">✓</span>}
             </button>
           </div>
         )}
       </div>
 
-      <div className="h-4 w-px bg-slate-700/60 mx-0.5" />
+      <div className="drawing-toolbar-divider h-4 w-px mx-0.5" />
 
       {/* 2. CONSOLIDATED LINE STYLE & COLOR POPOVER BUTTON (Modeled after MA Settings Popover) */}
       <div className="relative">
         <button
           type="button"
-          className="style-popover-trigger-btn flex items-center gap-1.5 px-2 py-1 rounded-lg bg-slate-800/90 border border-slate-700 hover:bg-slate-700/80 transition-colors text-xs font-medium"
+          className="style-popover-trigger-btn flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors text-xs font-medium"
           onClick={() => {
             setShowStylePopover(!showStylePopover);
             setShowToolDropdown(false);
@@ -153,35 +147,35 @@ export default function ChartDrawingToolbar({
           title="Line Style & Color Settings"
         >
           <span 
-            className="w-3.5 h-3.5 rounded-full border border-slate-500 shadow-inner flex-shrink-0"
+            className="w-3.5 h-3.5 rounded-full border shadow-inner flex-shrink-0"
             style={{ backgroundColor: selectedColor }}
           />
-          <span className="text-slate-300 font-semibold text-[11px]">{selectedWidth}px</span>
-          <span className="text-slate-400 text-[10px] uppercase font-mono tracking-wider">
+          <span className="style-meta-width font-semibold text-[11px]">{selectedWidth}px</span>
+          <span className="style-meta-pattern text-[10px] uppercase font-mono tracking-wider">
             {selectedStyle === 'dashed' ? '--' : '—'}
           </span>
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="text-slate-400">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" className="style-meta-gear">
             <circle cx="12" cy="12" r="3"/>
             <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
           </svg>
         </button>
 
         {showStylePopover && (
-          <div className="style-popover-panel absolute top-full right-0 mt-1.5 w-52 p-3 rounded-xl bg-slate-900/98 border border-slate-700/90 shadow-2xl z-50 backdrop-blur-xl flex flex-col gap-3">
-            <div className="text-[11px] font-bold text-slate-300 tracking-wider uppercase border-b border-slate-800 pb-1.5">
+          <div className="style-popover-panel absolute top-full right-0 mt-1.5 w-52 p-3 rounded-xl shadow-2xl z-50 backdrop-blur-xl flex flex-col gap-3">
+            <div className="style-popover-title text-[11px] font-bold tracking-wider uppercase pb-1.5">
               Line Style Properties
             </div>
 
             {/* Line Color Swatches */}
             <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-semibold text-slate-400">Line Color</span>
+              <span className="style-section-label text-[10px] font-semibold">Line Color</span>
               <div className="grid grid-cols-6 gap-1.5">
                 {COLORS.map((c) => (
                   <button
                     key={c.hex}
                     type="button"
                     className={`color-option-btn w-6 h-6 rounded-full border transition-transform hover:scale-110 flex items-center justify-center ${
-                      selectedColor === c.hex ? 'ring-2 ring-sky-400 border-white' : 'border-slate-700'
+                      selectedColor === c.hex ? 'ring-2 ring-sky-400 border-white' : 'border-slate-400/40'
                     }`}
                     style={{ backgroundColor: c.hex }}
                     onClick={() => onColorChange(c.hex)}
@@ -197,16 +191,14 @@ export default function ChartDrawingToolbar({
 
             {/* Thickness Selector */}
             <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-semibold text-slate-400">Thickness</span>
-              <div className="grid grid-cols-3 gap-1 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60">
+              <span className="style-section-label text-[10px] font-semibold">Thickness</span>
+              <div className="thickness-selector-grid grid grid-cols-3 gap-1 p-1 rounded-lg">
                 {THICKNESSES.map((w) => (
                   <button
                     key={w}
                     type="button"
                     className={`thickness-option-btn py-1 text-xs font-bold rounded-md transition-colors ${
-                      selectedWidth === w
-                        ? 'bg-sky-600 text-white shadow-sm'
-                        : 'text-slate-400 hover:text-slate-200'
+                      selectedWidth === w ? 'active' : ''
                     }`}
                     onClick={() => onWidthChange(w)}
                   >
@@ -218,14 +210,12 @@ export default function ChartDrawingToolbar({
 
             {/* Pattern Selector */}
             <div className="flex flex-col gap-1.5">
-              <span className="text-[10px] font-semibold text-slate-400">Pattern</span>
-              <div className="grid grid-cols-2 gap-1 bg-slate-800/80 p-1 rounded-lg border border-slate-700/60">
+              <span className="style-section-label text-[10px] font-semibold">Pattern</span>
+              <div className="style-selector-grid grid grid-cols-2 gap-1 p-1 rounded-lg">
                 <button
                   type="button"
                   className={`style-option-btn py-1 text-xs font-semibold rounded-md transition-colors ${
-                    selectedStyle === 'solid'
-                      ? 'bg-sky-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
+                    selectedStyle === 'solid' ? 'active' : ''
                   }`}
                   onClick={() => onStyleChange('solid')}
                 >
@@ -234,9 +224,7 @@ export default function ChartDrawingToolbar({
                 <button
                   type="button"
                   className={`style-option-btn py-1 text-xs font-semibold rounded-md transition-colors ${
-                    selectedStyle === 'dashed'
-                      ? 'bg-sky-600 text-white shadow-sm'
-                      : 'text-slate-400 hover:text-slate-200'
+                    selectedStyle === 'dashed' ? 'active' : ''
                   }`}
                   onClick={() => onStyleChange('dashed')}
                 >
@@ -251,10 +239,10 @@ export default function ChartDrawingToolbar({
       {/* 3. DELETE ALL DRAWINGS BUTTON */}
       {drawingCount > 0 && (
         <>
-          <div className="h-4 w-px bg-slate-700/60 mx-0.5" />
+          <div className="drawing-toolbar-divider h-4 w-px mx-0.5" />
           <button
             type="button"
-            className="clear-all-drawings-btn flex items-center gap-1.5 px-2 py-1 rounded-lg bg-rose-950/40 border border-rose-800/60 text-rose-300 hover:bg-rose-900/60 hover:text-rose-100 transition-colors text-xs font-medium"
+            className="clear-all-drawings-btn flex items-center gap-1.5 px-2 py-1 rounded-lg transition-colors text-xs font-medium"
             onClick={onClearAll}
             title={`Clear all ${drawingCount} drawings on this symbol`}
           >

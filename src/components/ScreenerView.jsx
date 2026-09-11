@@ -7,7 +7,7 @@ import { checkNumericFilterCondition } from '../utils/paramUtils';
 
 export default function ScreenerView({
   country = 'IN',
-  onSwitchCountry,
+  _onSwitchCountry,
   _currentWeekKey,
   currentWeekStocks = {},
   onImportStocks,
@@ -33,6 +33,14 @@ export default function ScreenerView({
   const [sortBy, setSortBy] = useState('listing_desc'); // listing_desc, listing_asc, change_desc, adr_desc, liquidity_desc, listing_gain_desc, since_listing_desc, symbol_asc
   
   // UI & Pagination states
+  const [prevCountry, setPrevCountry] = useState(country);
+  if (prevCountry !== country) {
+    setPrevCountry(country);
+    setSeriesFilter('ALL');
+    setLiquidityFilter('');
+    setCurrentPage(1);
+  }
+
   const [showDrawer, setShowDrawer] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
   const [pageSize, setPageSize] = useState(25);
@@ -161,12 +169,6 @@ export default function ScreenerView({
     });
   }, [country, loadDirectoryAndHydrate]);
 
-  // Reset country-specific filters when country changes
-  useEffect(() => {
-    setSeriesFilter('ALL');
-    setLiquidityFilter('');
-    setCurrentPage(1);
-  }, [country]);
 
   // Advances & Declines computation
   const advancesAndDeclines = useMemo(() => {
@@ -306,7 +308,7 @@ export default function ScreenerView({
 
       return true;
     });
-  }, [hydratedIpos, rawIpos, searchQuery, priceTrendFilter, ageFilter, seriesFilter, setupFilter, adrFilter, liquidityFilter, maConditions]);
+  }, [hydratedIpos, rawIpos, country, searchQuery, priceTrendFilter, ageFilter, seriesFilter, setupFilter, adrFilter, liquidityFilter, maConditions]);
 
   // Sorted items
   const sortedItems = useMemo(() => {
@@ -419,7 +421,7 @@ export default function ScreenerView({
       filters.push({ key: 'search', label: `Search: "${searchQuery}"`, clear: () => setSearchQuery('') });
     }
     return filters;
-  }, [priceTrendFilter, ageFilter, seriesFilter, setupFilter, adrFilter, liquidityFilter, maConditions, searchQuery]);
+  }, [country, priceTrendFilter, ageFilter, seriesFilter, setupFilter, adrFilter, liquidityFilter, maConditions, searchQuery]);
 
   const handleClearAllFilters = () => {
     setSearchQuery('');

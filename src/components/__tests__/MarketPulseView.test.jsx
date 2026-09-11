@@ -112,4 +112,49 @@ describe('MarketPulseView', () => {
 
     expect(screen.getByText('Market Regime is Structural Bull.')).toBeInTheDocument();
   });
+
+  it('renders optimized primary timeframes and supports overflow dropdown selection', async () => {
+    vi.mocked(fetchMarketPulseData).mockResolvedValue(mockData);
+    render(<MarketPulseView country="US" />);
+
+    await act(async () => {
+      await Promise.resolve();
+    });
+
+    // Check primary timeframes (1D, 1W, 1M, 3M, 1Y)
+    expect(screen.getByRole('button', { name: /^1D$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^1W$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^1M$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^3M$/i })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^1Y$/i })).toBeInTheDocument();
+
+    // Click on 1M
+    const btn1M = screen.getByRole('button', { name: /^1M$/i });
+    await act(async () => {
+      fireEvent.click(btn1M);
+    });
+    expect(fetchMarketPulseData).toHaveBeenCalledWith('US', '1mo');
+
+    // Click "More" to open dropdown
+    const moreBtn = screen.getByRole('button', { name: /More/i });
+    await act(async () => {
+      fireEvent.click(moreBtn);
+    });
+
+    // Dropdown should show 6 Months, Year to Date, etc.
+    expect(screen.getByText('Year to Date')).toBeInTheDocument();
+    expect(screen.getByText('6 Months')).toBeInTheDocument();
+
+    // Select YTD
+    const ytdOption = screen.getByText('Year to Date');
+    await act(async () => {
+      fireEvent.click(ytdOption);
+    });
+    expect(fetchMarketPulseData).toHaveBeenCalledWith('US', 'ytd');
+
+    // The more button now displays YTD as active label
+    expect(screen.getByRole('button', { name: /YTD/i })).toBeInTheDocument();
+  });
 });
+
+
