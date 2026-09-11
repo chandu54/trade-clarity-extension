@@ -231,3 +231,69 @@ export function getActualParamKeyAndDef(defs, defaultKey, labelName, countryCode
     }
     return fallbackMatch || { key: defaultKey, def: null };
 }
+
+/**
+ * Checks whether a numeric value matches a user-entered free-form filter condition.
+ * Supports:
+ * - Numerical ranges: "10-20", "50 - 60", "3-5"
+ * - Comparison operators: ">50", ">=20", "<3", "<=10", "=5", "==5"
+ * - Plain numeric equality: "5", "50"
+ * - Forgiving on partial typing (e.g. ">" or "<")
+ *
+ * @param {number|string} value - The numeric value to test
+ * @param {string} filterStr - The user-entered filter expression
+ * @returns {boolean} - Whether the value matches the condition
+ */
+export function checkNumericFilterCondition(value, filterStr) {
+  if (filterStr === undefined || filterStr === null) return true;
+  const str = String(filterStr).trim();
+  if (str === "") return true;
+
+  const num = typeof value === 'number' ? value : parseFloat(String(value || '').replace(/[^0-9.-]/g, ''));
+  if (isNaN(num)) return false;
+
+  // 1. Numerical Range (e.g. "10-20", "50 - 60", "3 - 5")
+  if (
+    str.includes("-") &&
+    !str.startsWith("-") &&
+    !str.startsWith("<") &&
+    !str.startsWith(">") &&
+    !str.startsWith("=")
+  ) {
+    const parts = str.split("-");
+    if (parts.length === 2) {
+      const minStr = parts[0].trim().replace(/[^0-9.-]/g, '');
+      const maxStr = parts[1].trim().replace(/[^0-9.-]/g, '');
+      const min = parseFloat(minStr);
+      const max = parseFloat(maxStr);
+      if (!isNaN(min) && !isNaN(max)) {
+        return num >= min && num <= max;
+      }
+    }
+  }
+
+  // 2. Comparison Operators (>=, <=, >, <, ==, =)
+  const operators = [">=", "<=", ">", "<", "==", "="];
+  for (const op of operators) {
+    if (str.startsWith(op)) {
+      const targetStr = str.slice(op.length).trim().replace(/[^0-9.-]/g, '');
+      if (targetStr === "") return true; // incomplete typing like ">"
+      const target = parseFloat(targetStr);
+      if (isNaN(target)) return true;
+      if (op === ">=") return num >= target;
+      if (op === "<=") return num <= target;
+      if (op === ">") return num > target;
+      if (op === "<") return num < target;
+      if (op === "==" || op === "=") return num === target;
+    }
+  }
+
+  // 3. Plain numeric equality (or prefix match)
+  const plainNum = parseFloat(str.replace(/[^0-9.-]/g, ''));
+  if (!isNaN(plainNum)) {
+    return num === plainNum;
+  }
+
+  return true;
+}
+

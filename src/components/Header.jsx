@@ -181,6 +181,7 @@ export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll
         {[
           { id: 'watchlists', label: 'Watchlists' },
           { id: 'market-pulse', label: 'Market Pulse' },
+          { id: 'screener', label: 'IPO Radar' },
           { id: 'journal', label: 'Journal' }
         ].map((tab) => (
           <button

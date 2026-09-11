@@ -1,3 +1,5 @@
+import { getActualParamKeyAndDef } from "./paramUtils";
+
 export function mapAdrBucket(avgAdr, adrDef) {
   if (adrDef?.type === "number") {
     return avgAdr.toFixed(2);
@@ -127,3 +129,78 @@ export function mapMovingAverageBucket(closes, currentPrice) {
   
   return `Above ${above.join(", ")}`;
 }
+
+/**
+ * Calculates unified ADR and Liquidity metrics from candle bars,
+ * matching background.js and StockGrid canonical logic.
+ * 
+ * @param {Array} validDays - Array of chronological candle objects { high, low, close, volume, rawClose }
+ * @param {string} country - Country code ('IN' | 'US')
+ * @param {Object} paramDefs - Parameter definitions object
+ * @param {number} adrDays - Window for ADR (default: 20)
+ * @param {number} liquidityDays - Window for Liquidity (default: 20)
+ */
+export function calculateStockMetricsFromCandles(
+  validDays,
+  country = "IN",
+  paramDefs = null,
+  adrDays = 20,
+  liquidityDays = 20
+) {
+  if (!validDays || validDays.length === 0) {
+    return {
+      avgAdr: 0,
+      formattedAdr: "",
+      liquidityValue: 0,
+      turnoverCr: 0,
+      formattedLiquidity: "",
+      adrKey: "adr",
+      liquidityKey: "liquidity",
+    };
+  }
+
+  // 1. ADR Calculation (using exactly day.low as denominator, matching background.js)
+  const effectiveAdrDays = Math.min(adrDays, validDays.length);
+  const adrPeriod = validDays.slice(-effectiveAdrDays);
+  let totalAdr = 0;
+  adrPeriod.forEach((day) => {
+    const high = day.high || day.close;
+    const low = day.low || day.close;
+    if (low > 0) {
+      totalAdr += ((high - low) / low) * 100;
+    }
+  });
+  const avgAdr = adrPeriod.length > 0 ? totalAdr / adrPeriod.length : 0;
+
+  // 2. Liquidity Calculation (using volume * (rawClose || close), matching background.js)
+  const effectiveLiqDays = Math.min(liquidityDays, validDays.length);
+  const liqPeriod = validDays.slice(-effectiveLiqDays);
+  let totalTurnover = 0;
+  liqPeriod.forEach((day) => {
+    const vol = day.volume || 0;
+    const px = day.rawClose || day.close || 0;
+    totalTurnover += vol * px;
+  });
+  const liquidityValue = liqPeriod.length > 0 ? totalTurnover / liqPeriod.length : 0;
+  const turnoverCr = country === "IN" ? liquidityValue / 10000000 : liquidityValue / 1000000;
+
+  // 3. Resolve definitions & format using canonical buckets
+  const adrMatch = getActualParamKeyAndDef(paramDefs, "adr", "adr", country);
+  const liqMatch = getActualParamKeyAndDef(paramDefs, "liquidity", "liquidity", country);
+
+  const formattedAdr = mapAdrBucket(avgAdr, adrMatch?.def);
+  const formattedLiquidity = mapLiquidityBucket(liquidityValue, liqMatch?.def, country);
+
+  return {
+    avgAdr,
+    formattedAdr,
+    liquidityValue,
+    turnoverCr,
+    formattedLiquidity,
+    adrKey: adrMatch?.key,
+    liquidityKey: liqMatch?.key,
+    effectiveAdrDays,
+    effectiveLiqDays,
+  };
+}
+

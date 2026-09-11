@@ -17,6 +17,7 @@ describe('MainNavigation', () => {
     render(<MainNavigation {...props} />);
     expect(screen.getByText('Watchlists')).toBeInTheDocument();
     expect(screen.getByText('Market Pulse')).toBeInTheDocument();
+    expect(screen.getByText('IPO Radar')).toBeInTheDocument();
     expect(screen.getByText('Journal')).toBeInTheDocument();
   });
 

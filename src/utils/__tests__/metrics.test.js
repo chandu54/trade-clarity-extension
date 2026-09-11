@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { mapLiquidityBucket, mapAdrBucket } from "../metrics";
+import { mapLiquidityBucket, mapAdrBucket, calculateStockMetricsFromCandles } from "../metrics";
 
 describe("mapAdrBucket", () => {
   it("should format as number if type is number", () => {
@@ -61,4 +61,40 @@ describe("mapLiquidityBucket", () => {
     expect(mapLiquidityBucket(150000000, null, "US")).toBe("150.00M");
   });
 });
+
+describe("calculateStockMetricsFromCandles (Young IPOs & Regular)", () => {
+  it("should gracefully handle empty or null candles", () => {
+    const res = calculateStockMetricsFromCandles([], "IN");
+    expect(res.avgAdr).toBe(0);
+    expect(res.liquidityValue).toBe(0);
+    expect(res.turnoverCr).toBe(0);
+  });
+
+  it("should calculate ADR and Liquidity based on actual IPO age when history is less than configured days", () => {
+    // IPO listed only 4 days ago (age = 4 days < 20 days)
+    const youngIpoCandles = [
+      { high: 105, low: 100, close: 102, volume: 1000000 }, // ADR: (5/100)*100 = 5%, Turnover: 102,000,000
+      { high: 110, low: 100, close: 108, volume: 1000000 }, // ADR: (10/100)*100 = 10%, Turnover: 108,000,000
+      { high: 115, low: 105, close: 110, volume: 1000000 }, // ADR: (10/105)*100 = 9.5238%, Turnover: 110,000,000
+      { high: 120, low: 110, close: 115, volume: 1000000 }, // ADR: (10/110)*100 = 9.0909%, Turnover: 115,000,000
+    ];
+
+    const res = calculateStockMetricsFromCandles(youngIpoCandles, "IN", null, 20, 20);
+
+    // Effective days should equal the available 4 days
+    expect(res.effectiveAdrDays).toBe(4);
+    expect(res.effectiveLiqDays).toBe(4);
+
+    // Expected ADR is average over those 4 days
+    const expectedAdr = (5 + 10 + (10 / 105) * 100 + (10 / 110) * 100) / 4;
+    expect(res.avgAdr).toBeCloseTo(expectedAdr, 4);
+
+    // Expected turnover average over those 4 days
+    const totalTurnover = (102 + 108 + 110 + 115) * 1000000;
+    const expectedTurnover = totalTurnover / 4;
+    expect(res.liquidityValue).toBeCloseTo(expectedTurnover, 0);
+    expect(res.turnoverCr).toBeCloseTo(expectedTurnover / 10000000, 2);
+  });
+});
+
 

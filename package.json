@@ -1,7 +1,7 @@
 {
   "name": "trade-clarity-market",
   "private": true,
-  "version": "3.1.0",
+  "version": "3.1.1",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -15,6 +15,7 @@
     "test:settings": "vitest run --config vite.config.js Settings",
     "test:utils": "vitest run --config vite.config.js utils",
     "test:e2e": "vitest run --config vite.config.js e2e",
+    "test:ipo-live": "vite-node scripts/testIpoScreenerLive.js",
     "update-metadata-db": "node scripts/generateMetadataDb.js"
   },
   "dependencies": {

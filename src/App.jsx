@@ -31,6 +31,7 @@ import { isParamRelevantForCountry, scrubParamDefinitions } from "./utils/paramU
 
 import MarketPulseView from "./components/MarketPulseView";
 import JournalView from "./components/JournalView";
+import ScreenerView from "./components/ScreenerView";
 import AiLimitBanner from "./components/AiLimitBanner";
 
 function AppContent() {
@@ -461,6 +462,114 @@ function AppContent() {
     });
   };
 
+  const handleImportIpoStocks = (selectedIpoStocks) => {
+    if (!selectedIpoStocks || selectedIpoStocks.length === 0) return;
+
+    let targetWeek = weekKey;
+    if (!targetWeek) {
+      const todayStr = getLocalDateString(new Date());
+      targetWeek = getSundayOfWeek(todayStr);
+    }
+
+    setData((prev) => {
+      const currentData = structuredClone(prev);
+      if (!currentData.watchlists) currentData.watchlists = [];
+
+      // Ensure system IPO watchlist exists
+      let ipoWatchlist = currentData.watchlists.find(
+        (w) => w.id === "wl_ipo" || (w.name && w.name.toLowerCase() === "ipo")
+      );
+
+      if (!ipoWatchlist) {
+        ipoWatchlist = {
+          id: "wl_ipo",
+          name: "IPO",
+          isDefault: false,
+          visibleParams: Object.keys(currentData.paramDefinitions || {}),
+          visibleFilters: Object.keys(currentData.paramDefinitions || {}).filter(
+            (k) => currentData.paramDefinitions[k]?.filterable
+          ),
+        };
+        currentData.watchlists.push(ipoWatchlist);
+      }
+
+      if (!currentData.weeks) currentData.weeks = {};
+      if (!currentData.weeks[country]) currentData.weeks[country] = {};
+      if (!currentData.weeks[country][targetWeek]) {
+        currentData.weeks[country][targetWeek] = { stocks: {} };
+      }
+
+      const weekStocks = { ...(currentData.weeks[country][targetWeek].stocks || {}) };
+
+      selectedIpoStocks.forEach((item) => {
+        const symUpper = item.symbol.toUpperCase();
+        const existing = weekStocks[symUpper];
+
+        // Collect tags
+        const tagsToAdd = [item.defaultTag || "Young IPO"];
+        if (item.isIpoBase) tagsToAdd.push("IPO Base");
+        if (item.vcpTight) tagsToAdd.push("VCP Tight");
+
+        const mergedTags = Array.from(
+          new Set([...(existing?.tags || []), ...tagsToAdd])
+        );
+
+        const mergedWatchlists = Array.from(
+          new Set([...(existing?.watchlists || []), ipoWatchlist.id])
+        );
+
+        const baseParams = existing?.params || {};
+        const updatedParams = {
+          ...baseParams,
+          ...(item.priceVal ? { close: item.priceVal } : {}),
+          ...(item.dailyChangeNum !== undefined ? { changePercent: item.dailyChangeNum } : {}),
+          ...(item.adrNum !== undefined ? { adrPercent: item.adrNum } : {}),
+          ...(item.liquidity ? { liquidity: item.liquidity } : {}),
+          ...(item.listingDateStr ? { listingDate: item.listingDateStr } : {}),
+          ...(item.movingAverages ? { movingAverages: item.movingAverages } : {}),
+        };
+
+        weekStocks[symUpper] = {
+          symbol: symUpper,
+          name: item.name || existing?.name || "",
+          sector: item.sector || existing?.sector || (item.isSme ? "SME" : ""),
+          macroTheme: existing?.macroTheme || "",
+          thematicVectors: existing?.thematicVectors || [],
+          businessScope: existing?.businessScope || [],
+          dependentIndustries: existing?.dependentIndustries || [],
+          tradable: existing?.tradable || false,
+          notes: existing?.notes || `Listing Date: ${item.listingDateStr} (${item.daysAgo}d ago)${item.ipoBaseResult?.pattern ? ` | ${item.ipoBaseResult.pattern}` : ''}`,
+          tags: mergedTags,
+          watchlists: mergedWatchlists,
+          params: updatedParams,
+        };
+      });
+
+      currentData.weeks[country][targetWeek].stocks = weekStocks;
+      return currentData;
+    });
+
+    showToast(
+      `Successfully tagged & imported ${selectedIpoStocks.length} stock(s) to IPO Watchlist.`,
+      "success"
+    );
+
+    // Trigger background price & metrics hydration
+    if (chrome?.runtime?.sendMessage) {
+      chrome.runtime.sendMessage({
+        action: "FETCH_STOCK_METRICS",
+        payload: {
+          symbols: selectedIpoStocks.map((s) => s.symbol),
+          country,
+          weekKey: targetWeek,
+          paramDefs: data?.paramDefinitions,
+          adrDays: data?.uiConfig?.adrDays || 20,
+          liquidityDays: data?.uiConfig?.liquidityDays || 20,
+        },
+      });
+    }
+  };
+
   /* =========================
      CONDITIONAL RENDERING (Late Exit)
   ========================= */
@@ -554,6 +663,24 @@ function AppContent() {
         </>
       ) : activeTab === 'market-pulse' ? (
         <MarketPulseView country={country} aiSettings={data.aiSettings} />
+      ) : activeTab === 'screener' ? (
+        <ScreenerView
+          country={country}
+          onSwitchCountry={handleCountryChange}
+          currentWeekKey={weekKey}
+          currentWeekStocks={data.weeks?.[country]?.[weekKey]?.stocks || {}}
+          onImportStocks={handleImportIpoStocks}
+          onNavigateToWatchlist={() => {
+            const ipoWl = data.watchlists?.find(
+              (w) => w.id === 'wl_ipo' || (w.name && w.name.toLowerCase() === 'ipo')
+            );
+            if (ipoWl) {
+              setSelectedWatchlistId(ipoWl.id);
+            }
+            setActiveTab('watchlists');
+          }}
+          data={data}
+        />
       ) : (
         <JournalView 
           country={country} 

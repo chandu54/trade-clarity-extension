@@ -4,6 +4,7 @@ export default function MainNavigation({ activeTab, onTabChange }) {
   const tabs = [
     { id: 'watchlists', label: 'Watchlists' },
     { id: 'market-pulse', label: 'Market Pulse' },
+    { id: 'screener', label: 'IPO Radar' },
     { id: 'journal', label: 'Journal' },
   ];
 
