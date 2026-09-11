@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { fetchNseIpoDirectory, hydrateIpoMetricsList } from '../services/nseIpoService';
+import { fetchUsIpoDirectory, hydrateUsIpoMetricsList } from '../services/usIpoService';
 import { MovingAverageRibbon } from './MovingAverageRibbon';
 import { MovingAverageFilter } from './StockGrid';
 import { checkNumericFilterCondition } from '../utils/paramUtils';
@@ -38,10 +39,8 @@ export default function ScreenerView({
   const [lastScanTime, setLastScanTime] = useState(null);
   const [errorMessage, setErrorMessage] = useState(null);
   const [justImportedCount, setJustImportedCount] = useState(null);
-  const [isProgressMinimized, setIsProgressMinimized] = useState(false);
   const drawerRef = useRef(null);
   const isHydratingRef = useRef(false);
-
   // Sync paramDefs & config without triggering full hydration loops
   const paramDefsRef = useRef(data?.paramDefinitions || null);
   const adrDaysRef = useRef(data?.uiConfig?.adrDays || 20);
@@ -78,7 +77,6 @@ export default function ScreenerView({
 
   // 1. Initial Load / Refresh Handler (Stabilized: depends ONLY on country to prevent continuous loops)
   const loadDirectoryAndHydrate = useCallback(async (forceRefresh = false) => {
-    if (country !== 'IN') return;
     if (isHydratingRef.current) return;
     isHydratingRef.current = true;
 
@@ -87,7 +85,11 @@ export default function ScreenerView({
     setJustImportedCount(null);
 
     try {
-      const directory = await fetchNseIpoDirectory(forceRefresh);
+      const isUs = country === 'US';
+      const directory = isUs
+        ? await fetchUsIpoDirectory(forceRefresh)
+        : await fetchNseIpoDirectory(forceRefresh);
+
       setRawIpos(directory);
       setLoadingDirectory(false);
       setLastScanTime(new Date());
@@ -105,26 +107,37 @@ export default function ScreenerView({
         const adrDays = adrDaysRef.current;
         const liquidityDays = liquidityDaysRef.current;
 
-        const hydrated = await hydrateIpoMetricsList(
-          directory,
-          'IN',
-          (current, total, batchHydratedMap) => {
-            setHydrationProgress({ current, total });
-            if (batchHydratedMap && Object.keys(batchHydratedMap).length > 0) {
-              setHydratedIpos((prev) => {
-                const prevMap = new Map((prev || []).map((item) => [item.symbol, item]));
-                Object.entries(batchHydratedMap).forEach(([sym, updatedItem]) => {
-                  prevMap.set(sym, updatedItem);
-                });
-                return directory.map((d) => prevMap.get(d.symbol) || d);
+        const onProgressCallback = (current, total, batchHydratedMap) => {
+          setHydrationProgress({ current, total });
+          if (batchHydratedMap && Object.keys(batchHydratedMap).length > 0) {
+            setHydratedIpos((prev) => {
+              const prevMap = new Map((prev || []).map((item) => [item.symbol, item]));
+              Object.entries(batchHydratedMap).forEach(([sym, updatedItem]) => {
+                prevMap.set(sym, updatedItem);
               });
-            }
-          },
-          paramDefs,
-          adrDays,
-          liquidityDays,
-          forceRefresh
-        );
+              return directory.map((d) => prevMap.get(d.symbol) || d);
+            });
+          }
+        };
+
+        const hydrated = isUs
+          ? await hydrateUsIpoMetricsList(
+              directory,
+              onProgressCallback,
+              paramDefs,
+              adrDays,
+              liquidityDays,
+              forceRefresh
+            )
+          : await hydrateIpoMetricsList(
+              directory,
+              'IN',
+              onProgressCallback,
+              paramDefs,
+              adrDays,
+              liquidityDays,
+              forceRefresh
+            );
 
         setHydratedIpos(hydrated);
         setHydrating(false);
@@ -134,7 +147,7 @@ export default function ScreenerView({
       }
     } catch (err) {
       console.error('[ScreenerView] Error loading directory:', err);
-      setErrorMessage(err.message || 'Failed to fetch NSE IPO directory.');
+      setErrorMessage(err.message || `Failed to fetch ${country === 'US' ? 'US' : 'NSE'} IPO directory.`);
       setLoadingDirectory(false);
       setHydrating(false);
     } finally {
@@ -143,12 +156,17 @@ export default function ScreenerView({
   }, [country]);
 
   useEffect(() => {
-    if (country === 'IN') {
-      Promise.resolve().then(() => {
-        loadDirectoryAndHydrate(false);
-      });
-    }
+    Promise.resolve().then(() => {
+      loadDirectoryAndHydrate(false);
+    });
   }, [country, loadDirectoryAndHydrate]);
+
+  // Reset country-specific filters when country changes
+  useEffect(() => {
+    setSeriesFilter('ALL');
+    setLiquidityFilter('');
+    setCurrentPage(1);
+  }, [country]);
 
   // Advances & Declines computation
   const advancesAndDeclines = useMemo(() => {
@@ -243,9 +261,15 @@ export default function ScreenerView({
         return false;
       }
 
-      // 4. Series filter
-      if (seriesFilter === 'EQ' && item.isSme) return false;
-      if (seriesFilter === 'SM' && !item.isSme) return false;
+      // 4. Series / Exchange filter
+      if (seriesFilter !== 'ALL') {
+        if (country === 'US') {
+          if (item.series !== seriesFilter) return false;
+        } else {
+          if (seriesFilter === 'EQ' && item.isSme) return false;
+          if (seriesFilter === 'SM' && !item.isSme) return false;
+        }
+      }
 
       // 5. Setup criteria
       if (setupFilter === 'IPO_BASE' && !item.isIpoBase) return false;
@@ -370,7 +394,12 @@ export default function ScreenerView({
       filters.push({ key: 'age', label, clear: () => setAgeFilter('365') });
     }
     if (seriesFilter !== 'ALL') {
-      filters.push({ key: 'series', label: seriesFilter === 'EQ' ? 'Series: Mainboard (EQ)' : 'Series: SME (SM)', clear: () => setSeriesFilter('ALL') });
+      const label = country === 'US'
+        ? `Exchange: ${seriesFilter}`
+        : seriesFilter === 'EQ'
+        ? 'Series: Mainboard (EQ)'
+        : 'Series: SME (SM)';
+      filters.push({ key: 'series', label, clear: () => setSeriesFilter('ALL') });
     }
     if (setupFilter !== 'ALL') {
       const label = setupFilter === 'IPO_BASE' ? 'Setup: IPO Base' : setupFilter === 'TIGHT_VCP' ? 'Setup: Tight VCP' : 'Setup: Above 10, 20 EMA';
@@ -380,7 +409,8 @@ export default function ScreenerView({
       filters.push({ key: 'adr', label: `ADR: ${adrFilter.trim()}%`, clear: () => setAdrFilter('') });
     }
     if (liquidityFilter.trim()) {
-      filters.push({ key: 'liquidity', label: `Liquidity: ${liquidityFilter.trim()} Cr`, clear: () => setLiquidityFilter('') });
+      const unit = country === 'US' ? 'M' : 'Cr';
+      filters.push({ key: 'liquidity', label: `Liquidity: ${liquidityFilter.trim()} ${unit}`, clear: () => setLiquidityFilter('') });
     }
     if (Object.keys(maConditions).length > 0) {
       filters.push({ key: 'ma', label: 'Moving Averages Filter', clear: () => setMaConditions({}) });
@@ -444,45 +474,13 @@ export default function ScreenerView({
   };
 
   /* =========================================================================
-     US PLACEHOLDER VIEW (Clean, Shippable State)
-     ========================================================================= */
-  if (country === 'US') {
-    return (
-      <div className="flex flex-col items-center justify-center min-h-[500px] p-8 text-center max-w-2xl mx-auto">
-        <div className="w-16 h-16 rounded-2xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-5 text-3xl shadow-inner">
-          🇺🇸
-        </div>
-        <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-amber-500/10 border border-amber-500/20 text-amber-500 dark:text-amber-400 text-xs font-semibold mb-3">
-          <span>⚡ Under Active Development</span>
-        </div>
-        <h2 className="text-xl font-bold text-[var(--foreground)] mb-2">
-          US IPO Radar Coming Soon (v3.2)
-        </h2>
-        <p className="text-sm text-[var(--muted-foreground)] leading-relaxed mb-6">
-          We are currently integrating automated SEC EDGAR &amp; NASDAQ/NYSE IPO feeds for US equities.
-          In the meantime, the 1-Year IPO Master Radar is fully live and hydrated for Indian Equities (NSE Mainboard &amp; SME).
-        </p>
-        <div className="flex items-center gap-3">
-          <button
-            onClick={() => onSwitchCountry && onSwitchCountry('IN')}
-            className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-semibold text-xs shadow-lg shadow-blue-600/30 transition-all flex items-center gap-2 cursor-pointer"
-          >
-            <span>Switch to India (NSE) Radar</span>
-            <span>→</span>
-          </button>
-        </div>
-      </div>
-    );
-  }
-
-  /* =========================================================================
-     INDIA (NSE) IPO MASTER RADAR VIEW
+     IPO MASTER RADAR VIEW (Country Aware: IN & US)
      ========================================================================= */
   const isAllSelected = sortedItems.length > 0 && selectedSymbols.size === sortedItems.length;
   const isPartiallySelected = selectedSymbols.size > 0 && selectedSymbols.size < sortedItems.length;
 
   return (
-    <div className="w-full space-y-3 font-sans pb-8">
+    <div className="w-full space-y-3 font-sans pb-8 px-4" style={{ zoom: '0.95' }}>
       {/* 1. TOP COMMAND BAR (Matches StockGrid Pattern) */}
       <div className="grid-header">
         {/* Left Wing: Title + Status + Text on top + Last Synced + Advances & Declines + Refresh Button */}
@@ -490,7 +488,7 @@ export default function ScreenerView({
           <div className="flex items-center gap-2 mr-2 flex-wrap">
             <span className="font-bold text-xs text-[var(--foreground)] tracking-tight">IPO Master Radar</span>
             <span className="text-[10px] font-mono px-2 py-0.5 rounded-full bg-blue-500/10 text-blue-600 dark:text-blue-400 border border-blue-500/20 font-semibold">
-              NSE Official
+              {country === 'US' ? 'US Exchanges (NASDAQ & NYSE)' : 'NSE Official'}
             </span>
             <span className="text-[11px] font-mono text-[var(--muted-foreground)]">
               ({counts.all} stocks • 1-Year Master Record)
@@ -549,7 +547,11 @@ export default function ScreenerView({
               className={`force-sync-btn ${loadingDirectory || hydrating ? 'is-syncing' : ''}`}
               onClick={() => loadDirectoryAndHydrate(true)}
               disabled={loadingDirectory || hydrating}
-              title={loadingDirectory || hydrating ? 'Syncing in progress...' : 'Force rescan official NSE archives and rehydrate metrics'}
+              title={
+                loadingDirectory || hydrating
+                  ? 'Syncing in progress...'
+                  : `Force rescan official ${country === 'US' ? 'US (NASDAQ/NYSE)' : 'NSE'} archives and rehydrate metrics`
+              }
             >
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -708,70 +710,8 @@ export default function ScreenerView({
         </div>
       )}
 
-      {/* 3. STREAMING HYDRATION PROGRESS BAR (Minimizable) */}
-      {hydrating && (
-        isProgressMinimized ? (
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl px-3.5 py-1.5 flex items-center justify-between text-xs transition-all">
-            <div className="flex items-center gap-2">
-              <span className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse" />
-              <span className="text-[var(--foreground)] text-[11px] font-medium">Hydrating metrics:</span>
-              <span className="font-mono text-blue-600 dark:text-cyan-300 font-semibold text-[11px]">
-                {hydrationProgress.current} / {hydrationProgress.total} stocks ({Math.round((hydrationProgress.current / Math.max(hydrationProgress.total, 1)) * 100)}%)
-              </span>
-            </div>
-            <div className="flex items-center gap-2.5">
-              <div className="w-28 h-1 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400 transition-all duration-300 ease-out"
-                  style={{
-                    width: `${(hydrationProgress.current / Math.max(hydrationProgress.total, 1)) * 100}%`,
-                  }}
-                />
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsProgressMinimized(false)}
-                className="text-[11px] text-blue-500 hover:text-blue-400 font-medium cursor-pointer flex items-center gap-1 hover:underline"
-                title="Expand progress bar"
-              >
-                <span>Expand</span>
-                <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
-              </button>
-            </div>
-          </div>
-        ) : (
-          <div className="bg-blue-500/10 border border-blue-500/20 rounded-xl p-3 text-xs space-y-1.5 animate-fadeIn">
-            <div className="flex items-center justify-between text-[11px]">
-              <span className="font-medium text-blue-600 dark:text-blue-300 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-blue-500 animate-pulse" />
-                Hydrating live metrics (Price, ADR, MAs, VCP, Bases, Listing Gains)...
-              </span>
-              <div className="flex items-center gap-3">
-                <span className="font-mono text-blue-600 dark:text-cyan-300 font-semibold">
-                  {hydrationProgress.current} / {hydrationProgress.total} stocks
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setIsProgressMinimized(true)}
-                  className="text-[11px] text-blue-500 hover:text-blue-400 font-medium cursor-pointer flex items-center gap-1 hover:underline"
-                  title="Minimize progress bar"
-                >
-                  <span>Minimize</span>
-                  <svg className="w-3 h-3" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><line x1="5" y1="12" x2="19" y2="12"/></svg>
-                </button>
-              </div>
-            </div>
-            <div className="w-full h-1.5 bg-slate-200 dark:bg-slate-800 rounded-full overflow-hidden">
-              <div
-                className="h-full bg-gradient-to-r from-blue-500 via-cyan-400 to-emerald-400 transition-all duration-300 ease-out"
-                style={{
-                  width: `${(hydrationProgress.current / Math.max(hydrationProgress.total, 1)) * 100}%`,
-                }}
-              />
-            </div>
-          </div>
-        )
-      )}
+
+
 
       {/* Error Alert */}
       {errorMessage && (
@@ -802,9 +742,23 @@ export default function ScreenerView({
       )}
 
       {/* 4. MAIN DATA TABLE CONTAINER */}
-      <div className="bg-[var(--panel)] border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto max-h-[620px] themed-scroll">
-          <table className="w-full text-left text-xs border-collapse">
+      <div className="relative bg-[var(--panel)] border border-[var(--border)] rounded-2xl shadow-sm overflow-hidden">
+        {/* Thin progress line at top of table (StockGrid style) */}
+        {hydrating && (
+          <div
+            className={`grid-sync-progress ${!hydrating ? 'sync-finished' : ''}`}
+          >
+            <div
+              className="grid-sync-progress-bar"
+              style={{
+                width: `${(hydrationProgress.current / Math.max(hydrationProgress.total, 1)) * 100}%`,
+                background: 'linear-gradient(90deg, #3b82f6, #22d3ee, #10b981)',
+              }}
+            />
+          </div>
+        )}
+        <div className="overflow-x-auto max-h-[680px] themed-scroll">
+          <table className="w-full text-left text-xs border-collapse screener-table">
             <thead className="bg-[var(--table-header-bg,var(--panel))] sticky top-0 z-10 border-b border-[var(--border)] text-[var(--muted-foreground)] text-xs font-semibold">
               <tr>
                 <th className="py-3 px-3.5 w-10 text-center select-none" onClick={(e) => e.stopPropagation()}>
@@ -862,17 +816,23 @@ export default function ScreenerView({
                   </label>
                 </th>
                 <th
-                  className="py-3 px-3 cursor-pointer hover:text-[var(--foreground)] transition-colors group select-none"
+                  className="py-3 px-3 !text-left screener-col-symbol screener-text-left cursor-pointer hover:text-[var(--foreground)] transition-colors group select-none"
+                  style={{ textAlign: 'left' }}
                   onClick={() => handleSortToggle('symbol')}
                   title="Click to sort by Symbol (A-Z / Z-A)"
                 >
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center justify-start gap-1" style={{ justifyContent: 'flex-start' }}>
                     <span>Symbol</span>
                     {renderSortIndicator('symbol')}
                   </div>
                 </th>
-                <th className="py-3 px-3">Company Name</th>
-                <th className="py-3 px-2">Series</th>
+                <th
+                  className="py-3 px-3 !text-left screener-col-name screener-text-left"
+                  style={{ textAlign: 'left' }}
+                >
+                  Company Name
+                </th>
+                <th className="py-3 px-2">{country === 'US' ? 'Exchange' : 'Series'}</th>
                 <th
                   className="py-3 px-3 cursor-pointer hover:text-[var(--foreground)] transition-colors group select-none"
                   onClick={() => handleSortToggle('listing')}
@@ -944,10 +904,12 @@ export default function ScreenerView({
               {paginatedItems.length === 0 ? (
                 <tr>
                   <td colSpan={15} className="py-12 text-center text-[var(--muted-foreground)]">
-                    {loadingDirectory ? (
+                      {loadingDirectory ? (
                       <div className="flex flex-col items-center gap-2">
                         <span className="text-2xl animate-spin">🔄</span>
-                        <span className="font-medium text-sm">Scanning official NSE archives...</span>
+                        <span className="font-medium text-sm">
+                          {country === 'US' ? 'Scanning NASDAQ & NYSE IPO archives...' : 'Scanning official NSE archives...'}
+                        </span>
                       </div>
                     ) : (
                       <div className="space-y-1">
@@ -1014,26 +976,51 @@ export default function ScreenerView({
                       </td>
 
                       {/* Symbol */}
-                      <td className="py-2.5 px-3 font-bold text-[var(--foreground)] tracking-wide font-mono text-[13px]">
+                      <td
+                        className="py-2.5 px-3 !text-left screener-col-symbol screener-text-left font-bold text-[var(--foreground)] tracking-wide font-mono text-[13px]"
+                        style={{ textAlign: 'left' }}
+                      >
                         {item.symbol}
                       </td>
 
                       {/* Company Name */}
-                      <td className="py-2.5 px-3 text-[var(--muted-foreground)] truncate max-w-[220px]" title={item.name}>
+                      <td
+                        className="py-2.5 px-3 !text-left screener-col-name screener-text-left text-[var(--muted-foreground)] truncate max-w-[220px]"
+                        style={{ textAlign: 'left' }}
+                        title={item.name}
+                      >
                         {item.name}
                       </td>
 
-                      {/* Series Badge */}
+                      {/* Series / Exchange Badge */}
                       <td className="py-2.5 px-2">
-                        <span
-                          className={`px-1.5 py-0.5 text-[9px] rounded font-mono font-semibold ${
-                            item.isSme
-                              ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25'
-                              : 'bg-slate-200 dark:bg-slate-700/40 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600/30'
-                          }`}
-                        >
-                          {item.series || (item.isSme ? 'SM' : 'EQ')}
-                        </span>
+                        {country === 'US' ? (
+                          <span
+                            className={`px-1.5 py-0.5 text-[9px] rounded font-mono font-semibold ${
+                              item.series === 'NYSE'
+                                ? 'bg-blue-500/15 text-blue-600 dark:text-blue-400 border border-blue-500/25'
+                                : item.series === 'NASDAQ'
+                                ? 'bg-indigo-500/15 text-indigo-600 dark:text-indigo-400 border border-indigo-500/25'
+                                : item.series === 'AMEX'
+                                ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25'
+                                : item.series === 'CBOE'
+                                ? 'bg-violet-500/15 text-violet-600 dark:text-violet-400 border border-violet-500/25'
+                                : 'bg-slate-200 dark:bg-slate-700/40 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600/30'
+                            }`}
+                          >
+                            {item.series || '—'}
+                          </span>
+                        ) : (
+                          <span
+                            className={`px-1.5 py-0.5 text-[9px] rounded font-mono font-semibold ${
+                              item.isSme
+                                ? 'bg-amber-500/15 text-amber-600 dark:text-amber-400 border border-amber-500/25'
+                                : 'bg-slate-200 dark:bg-slate-700/40 text-slate-700 dark:text-slate-300 border border-slate-300 dark:border-slate-600/30'
+                            }`}
+                          >
+                            {item.series || (item.isSme ? 'SM' : 'EQ')}
+                          </span>
+                        )}
                       </td>
 
                       {/* Listing Date */}
@@ -1114,7 +1101,7 @@ export default function ScreenerView({
                           }`}
                           title={
                             item.listingDayOpen && item.listingDayClose
-                              ? `Day 1 Open: ₹${item.listingDayOpen.toFixed(2)} → Day 1 Close: ₹${item.listingDayClose.toFixed(2)}`
+                              ? `Day 1 Open: ${country === 'US' ? '$' : '₹'}${item.listingDayOpen.toFixed(2)} → Day 1 Close: ${country === 'US' ? '$' : '₹'}${item.listingDayClose.toFixed(2)}`
                               : undefined
                           }
                         >
@@ -1134,7 +1121,7 @@ export default function ScreenerView({
                           }`}
                           title={
                             item.listingDayClose && item.priceVal
-                              ? `Listing Day Close: ₹${item.listingDayClose.toFixed(2)} → Current: ₹${item.priceVal.toFixed(2)}`
+                              ? `Listing Day Close: ${country === 'US' ? '$' : '₹'}${item.listingDayClose.toFixed(2)} → Current: ${country === 'US' ? '$' : '₹'}${item.priceVal.toFixed(2)}`
                               : undefined
                           }
                         >
@@ -1168,11 +1155,17 @@ export default function ScreenerView({
                           className="font-semibold text-[var(--foreground)] text-xs"
                           title={
                             item.turnoverCr > 0
-                              ? `Daily Turnover: ₹${item.turnoverCr >= 1 ? `${item.turnoverCr.toFixed(2)}Cr` : `${(item.turnoverCr * 100).toFixed(0)}L`}/day (${item.effectiveLiqDays || item.validDaysCount || 20}d avg)`
+                              ? country === 'US'
+                                ? `Daily Turnover: $${item.turnoverCr >= 1000 ? `${(item.turnoverCr / 1000).toFixed(2)}B` : `${item.turnoverCr.toFixed(2)}M`}/day (${item.effectiveLiqDays || item.validDaysCount || 20}d avg)`
+                                : `Daily Turnover: ₹${item.turnoverCr >= 1 ? `${item.turnoverCr.toFixed(2)}Cr` : `${(item.turnoverCr * 100).toFixed(0)}L`}/day (${item.effectiveLiqDays || item.validDaysCount || 20}d avg)`
                               : undefined
                           }
                         >
-                          {item.liquidity || (item.turnoverCr > 0 ? `₹${item.turnoverCr.toFixed(1)}Cr` : '—')}
+                          {item.liquidity || (item.turnoverCr > 0
+                            ? country === 'US'
+                              ? `$${item.turnoverCr.toFixed(1)}M`
+                              : `₹${item.turnoverCr.toFixed(1)}Cr`
+                            : '—')}
                         </span>
                       </td>
 
@@ -1423,19 +1416,27 @@ export default function ScreenerView({
                 </div>
               </div>
 
-              {/* SECTION 3: MARKET SERIES */}
+              {/* SECTION 3: MARKET SERIES / EXCHANGES */}
               <div className="drawer-section space-y-2">
                 <div className="drawer-section-header">
                   <h4 className="text-xs font-bold text-[var(--foreground)] uppercase tracking-wider">
-                    Market Series
+                    {country === 'US' ? 'Exchange' : 'Market Series'}
                   </h4>
                 </div>
-                <div className="grid grid-cols-3 gap-2">
-                  {[
-                    { id: 'ALL', label: 'All Series' },
-                    { id: 'EQ', label: 'Mainboard (EQ)' },
-                    { id: 'SM', label: 'SME (SM)' },
-                  ].map((ser) => {
+                <div className={`grid gap-2 ${country === 'US' ? 'grid-cols-2' : 'grid-cols-3'}`}>
+                  {(country === 'US'
+                    ? [
+                        { id: 'ALL', label: 'All Exchanges' },
+                        { id: 'NASDAQ', label: 'NASDAQ' },
+                        { id: 'NYSE', label: 'NYSE' },
+                        { id: 'AMEX', label: 'AMEX' },
+                      ]
+                    : [
+                        { id: 'ALL', label: 'All Series' },
+                        { id: 'EQ', label: 'Mainboard (EQ)' },
+                        { id: 'SM', label: 'SME (SM)' },
+                      ]
+                  ).map((ser) => {
                     const active = seriesFilter === ser.id;
                     return (
                       <button
@@ -1499,7 +1500,7 @@ export default function ScreenerView({
               <div className="drawer-section space-y-1.5">
                 <div className="drawer-section-header flex items-center justify-between">
                   <h4 className="text-xs font-bold text-[var(--foreground)] uppercase tracking-wider">
-                    Liquidity (₹ Cr / day)
+                    {country === 'US' ? 'Liquidity ($ Millions / day)' : 'Liquidity (₹ Cr / day)'}
                   </h4>
                   <span
                     className="text-[10px] text-[var(--muted-foreground)] font-mono"
@@ -1516,7 +1517,7 @@ export default function ScreenerView({
                       setLiquidityFilter(e.target.value);
                       setCurrentPage(1);
                     }}
-                    placeholder="Filter turnover in Cr (e.g. >50, 50-60, >=20)..."
+                    placeholder={country === 'US' ? 'Filter turnover in $M (e.g. >50, 20-50, >=10)...' : 'Filter turnover in Cr (e.g. >50, 50-60, >=20)...'}
                     className="w-full bg-[var(--card-bg,var(--panel))] text-[var(--foreground)] border border-[var(--border)] rounded-xl px-3 py-2 pr-8 text-xs focus:outline-none focus:border-blue-500 font-mono"
                   />
                   {liquidityFilter && (

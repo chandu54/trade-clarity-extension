@@ -2,7 +2,7 @@
   "name": "TradeClarity.market",
   "description": "Professional swing trading research terminal. Organize watchlists weekly, quantify setups, Journaling and get AI insights.",
   "author": "TradeClarity Team",
-  "version": "3.1.1",
+  "version": "3.2.0",
   "manifest_version": 3,
   "permissions": [
     "storage",
@@ -18,7 +18,8 @@
     "https://generativelanguage.googleapis.com/*",
     "https://www.niftyindices.com/*",
     "https://www.nseindia.com/*",
-    "https://archives.nseindia.com/*"
+    "https://archives.nseindia.com/*",
+    "https://api.nasdaq.com/*"
   ],
 
   "action": {

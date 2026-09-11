@@ -47,6 +47,10 @@ describe('UserGuideModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Market Pulse/i }));
     expect(screen.getByRole('heading', { name: /Market Pulse Guide/i })).toBeDefined();
 
+    // Click IPO Master Radar
+    fireEvent.click(screen.getByRole('button', { name: /IPO Master Radar/i }));
+    expect(screen.getByRole('heading', { name: /IPO Master Radar Guide/i })).toBeDefined();
+
     // Click Trading Journal
     fireEvent.click(screen.getByRole('button', { name: /Trading Journal/i }));
     expect(screen.getByRole('heading', { name: /Trading Journal Guide/i })).toBeDefined();

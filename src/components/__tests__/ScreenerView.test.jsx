@@ -3,10 +3,16 @@ import { describe, it, vi, beforeEach, expect } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import ScreenerView from '../ScreenerView';
 import * as nseIpoService from '../../services/nseIpoService';
+import * as usIpoService from '../../services/usIpoService';
 
 vi.mock('../../services/nseIpoService', () => ({
   fetchNseIpoDirectory: vi.fn(),
   hydrateIpoMetricsList: vi.fn(),
+}));
+
+vi.mock('../../services/usIpoService', () => ({
+  fetchUsIpoDirectory: vi.fn(),
+  hydrateUsIpoMetricsList: vi.fn(),
 }));
 
 describe('ScreenerView', () => {
@@ -120,15 +126,60 @@ describe('ScreenerView', () => {
     vi.clearAllMocks();
     nseIpoService.fetchNseIpoDirectory.mockResolvedValue(mockDirectory);
     nseIpoService.hydrateIpoMetricsList.mockResolvedValue(mockHydrated);
+    usIpoService.fetchUsIpoDirectory.mockResolvedValue([
+      {
+        symbol: 'RDDT',
+        name: 'Reddit, Inc.',
+        series: 'NYSE',
+        isSme: false,
+        listingDateStr: '21-MAR-2024',
+        listingTimestamp: Date.now() - 170 * 86400000,
+        daysAgo: 170,
+        defaultTag: 'Active IPO',
+      },
+    ]);
+    usIpoService.hydrateUsIpoMetricsList.mockResolvedValue([
+      {
+        symbol: 'RDDT',
+        name: 'Reddit, Inc.',
+        series: 'NYSE',
+        isSme: false,
+        price: '$65.50',
+        priceVal: 65.5,
+        dailyChangePct: '+3.20%',
+        dailyChangeNum: 3.2,
+        listingDateStr: '21-MAR-2024',
+        listingTimestamp: Date.now() - 170 * 86400000,
+        daysAgo: 170,
+        defaultTag: 'Active IPO',
+        listingDayGainPct: '+48.0%',
+        listingDayGainNum: 48.0,
+        gainSinceListingPct: '+30.0%',
+        gainSinceListingNum: 30.0,
+        adr: '5.5%',
+        adrNum: 5.5,
+        liquidity: '$250.0M/day',
+        turnoverCr: 250.0,
+        isIpoBase: true,
+        vcpTight: true,
+        above10: true,
+        above21: true,
+        above50: true,
+      },
+    ]);
   });
 
-  it('renders US placeholder when country is US', () => {
+  it('fetches and renders US IPO list when country is US', async () => {
     render(<ScreenerView {...defaultProps} country="US" />);
-    expect(screen.getByText(/US IPO Radar Coming Soon/i)).toBeInTheDocument();
-    expect(screen.getByText(/Switch to India \(NSE\) Radar/i)).toBeInTheDocument();
+    expect(screen.getByText('IPO Master Radar')).toBeInTheDocument();
+    expect(screen.getByText(/US Exchanges/i)).toBeInTheDocument();
 
-    fireEvent.click(screen.getByText(/Switch to India \(NSE\) Radar/i));
-    expect(defaultProps.onSwitchCountry).toHaveBeenCalledWith('IN');
+    await waitFor(() => {
+      expect(screen.getByText('RDDT')).toBeInTheDocument();
+    });
+
+    expect(screen.getByText('$65.50')).toBeInTheDocument();
+    expect(screen.getByText('NYSE')).toBeInTheDocument();
   });
 
   it('fetches and renders India IPO list on mount', async () => {

@@ -3886,6 +3886,18 @@ tr:hover .sticky-col {
   white-space: normal;
 }
 
+.screener-col-symbol,
+.screener-col-name,
+.screener-text-left {
+  text-align: left !important;
+}
+
+.screener-col-symbol > div,
+.screener-col-name > div {
+  justify-content: flex-start !important;
+  text-align: left !important;
+}
+
 .notes-col {
   width: 90px;
 }

@@ -99,6 +99,12 @@ export default function UserGuideModal({
             <span>Market Pulse</span>
           </button>
           <button
+            onClick={() => setActiveTab("ipo_radar")}
+            className={`guide-menu-btn ${activeTab === "ipo_radar" ? "active" : ""}`}
+          >
+            <span>IPO Master Radar</span>
+          </button>
+          <button
             onClick={() => setActiveTab("journal")}
             className={`guide-menu-btn ${activeTab === "journal" ? "active" : ""}`}
           >
@@ -957,6 +963,132 @@ export default function UserGuideModal({
                 <ul className="guide-list">
                   <li>
                     This is an automated analysis summarizing the daily tape, structural trends, leading sectors, and key tactical action plans based on the current matrix data.
+                  </li>
+                </ul>
+              </Section>
+            </>
+          )}
+
+          {activeTab === "ipo_radar" && (
+            <>
+              <h2 className="guide-tab-title">IPO Master Radar Guide</h2>
+
+              <div className="guide-intro">
+                <p>
+                  The <strong>IPO Master Radar</strong> provides comprehensive discovery and tracking for all equities listed within the last 365 days across both Indian and United States markets. It combines official exchange calendar feeds with institutional candle hydration to evaluate IPO bases, volatility contraction, listing gains, and daily liquidity.
+                </p>
+              </div>
+
+              <Section title="1. Horizon & Master Records" icon="🎯">
+                <p>
+                  Newly listed companies often produce powerful multimonth trends as institutions accumulate initial float. The IPO Master Radar maintains a rolling <strong>1-Year Master Record</strong>:
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Continuous 365-Day Window:</strong> Tracks every stock from its listing date through its first full year of trading history, updating dynamically each session.
+                  </li>
+                  <li>
+                    <strong>Adaptive Lookback for Young IPOs:</strong> When an IPO has fewer trading sessions than configured (e.g. listed 4 days ago), metrics like ADR and Liquidity automatically calculate across its exact available history (e.g. 4d average) rather than distorting figures with zero-padding.
+                  </li>
+                  <li>
+                    <strong>Background Streaming Hydration:</strong> Downloads and hydrates historical daily candles using smooth non-blocking batching with a sleek top-mounted progress line.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="2. Multi-Region Exchange Coverage" icon="🌐">
+                <p>
+                  TradeClarity operates cleanly across regional markets with country-specific exchange pipelines:
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>India (NSE):</strong> Official National Stock Exchange archives capturing both <strong>Mainboard (EQ)</strong> and <strong>SME (SM)</strong> listings. Color-coded badges distinguish established corporate IPOs from high-beta emerging SME offerings.
+                  </li>
+                  <li>
+                    <strong>United States (NASDAQ & NYSE):</strong> Aggregated calendar feed directly capturing <strong>NASDAQ</strong>, <strong>NYSE</strong>, and <strong>AMEX</strong> common equity listings. Automatically filters out non-equity instruments like SPAC warrants, units, and rights.
+                  </li>
+                  <li>
+                    <strong>Seamless Country Switching:</strong> Toggling the header region switcher instantly switches data feeds, currency formatting, and exchange-specific filter options.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="3. Country-Aware Metrics Engine" icon="⚡">
+                <p>
+                  All valuation, price change, and liquidity metrics are rendered in canonical regional standards:
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Price & Daily % Change:</strong> Real-time quote snapshots formatted in <strong>₹</strong> for India and <strong>$</strong> for US equities, color-coded by positive (emerald) and negative (rose) price action.
+                  </li>
+                  <li>
+                    <strong>Listing Day Gain % (Day 1 Open vs Close):</strong> Calculates the performance on the initial listing session. Hovering reveals the exact Day 1 opening print and closing auction price.
+                  </li>
+                  <li>
+                    <strong>Return Since Listing %:</strong> Measures the cumulative gain or loss from the listing day's closing price to the current market price.
+                  </li>
+                  <li>
+                    <strong>ADR Volatility %:</strong> Average Daily Range percentage over the configured window (default 20 days), measuring typical intraday expansion for position sizing.
+                  </li>
+                  <li>
+                    <strong>Daily Turnover Liquidity:</strong> Average daily trading volume multiplied by price. Displayed in <strong>₹ Cr / day</strong> (or Lakhs) for India and <strong>$ Millions / day</strong> (or Billions) for US equities.
+                  </li>
+                  <li>
+                    <strong>Moving Averages Ribbon:</strong> Compact visual status showing whether price is above or below the 10 EMA, 21 EMA, and 50 SMA.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="4. Technical Setup & Pattern Detectors" icon="📊">
+                <p>
+                  Filter specifically for institutional chart patterns and constructive technical structures:
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>IPO Base:</strong> Highlights stocks consolidating in a disciplined base within 15% to 25% of their post-listing highs.
+                  </li>
+                  <li>
+                    <strong>Tight VCP:</strong> Detects Volatility Contraction Patterns where price ranges narrow sequentially on declining volume, preparing for high-probability breakouts.
+                  </li>
+                  <li>
+                    <strong>Above Moving Averages:</strong> Instantly isolates stocks trading constructively above both short-term momentum guides (10 EMA & 21 EMA).
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="5. Free-Form Numeric & Exchange Filtering" icon="🔍">
+                <p>
+                  The slide-out <strong>Filters Drawer</strong> enables rapid drill-down into your preferred criteria:
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Free-Form Numeric Inputs:</strong> Type flexible expressions directly into the ADR Volatility and Liquidity boxes (e.g. <code>&gt;50</code>, <code>20-50</code>, <code>&lt;=4</code>, <code>&gt;=10</code>).
+                  </li>
+                  <li>
+                    <strong>Market Series & Exchange Chips:</strong> One-click toggles between Mainboard and SME for India, or NASDAQ, NYSE, and AMEX for US.
+                  </li>
+                  <li>
+                    <strong>Listing Horizon Selector:</strong> Filter stocks by age: 30 days (Recent IPOs), 60 days, 180 days, or full 365 days.
+                  </li>
+                  <li>
+                    <strong>Active Filter Chips:</strong> Every applied criterion appears as an active badge at the top of the radar with single-click dismissal (<code>✕</code>).
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="6. Watchlist & Pipeline Integration" icon="📋">
+                <p>
+                  Turn screener discoveries into actionable trading setups without manual re-entry:
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Select & Tag:</strong> Use individual row checkboxes or the header <em>Select All</em> checkbox to choose stocks of interest.
+                  </li>
+                  <li>
+                    <strong>Tag & Import to Current Week:</strong> Click the top <em>+ Tag & Import</em> action button to automatically populate selected IPOs into your active week's Watchlist tagged as <strong>IPO</strong>.
+                  </li>
+                  <li>
+                    <strong>Deep Technical & AI Review:</strong> Once imported, evaluate setup checklist scores, run custom Gemini AI prompts, and track trades in the Trading Journal.
                   </li>
                 </ul>
               </Section>

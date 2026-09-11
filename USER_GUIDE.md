@@ -449,3 +449,49 @@ The mini editor allows you to type custom analysis instructions. To inject real-
 - **Clone / Duplicate (📋)**: Copy any strategy, including system templates, to create a customizable copy without losing the original.
 - **Edit / Update (📝)**: Modify prompt names and text inline, with a character counter to monitor length.
 - **Delete (🗑️)**: Safely delete custom strategies. Active defaults are protected to prevent accidental deletion.
+
+---
+
+## 13. IPO Master Radar (1-Year Master Record & Discovery)
+
+The **IPO Master Radar** is a specialized institutional discovery terminal dedicated to tracking newly listed public companies over their critical first year of trading history. It bridges official exchange listing calendars with real-time candle hydration to help swing traders identify early Stage 2 breakouts, tight volatility contractions, and emerging institutional market leaders.
+
+### 🎯 1. Overview & 1-Year Horizon
+- **Rolling 365-Day Window**: Continuously scans, archives, and tracks every stock listed within the past 365 days.
+- **Clean Pipeline**: Filters out legacy listings while keeping high-growth newly public companies on your active radar.
+- **Non-Blocking Streaming Hydration**: Automatically fetches and computes technical indicators via background candle hydration with an elegant top progress indicator that leaves the terminal completely responsive.
+
+### 🌐 2. Multi-Region Exchange Support
+TradeClarity's IPO Radar operates with separate, country-aware exchange pipelines:
+- **India (NSE)**: Direct integration with official National Stock Exchange archives.
+  - **Mainboard (EQ)**: Large, established corporate offerings.
+  - **SME (SM)**: High-beta small & medium enterprise IPOs, distinguished with color-coded amber badges.
+- **United States (NASDAQ & NYSE)**: Direct aggregation across **NASDAQ**, **NYSE**, and **AMEX** exchanges via NASDAQ's unified IPO calendar.
+  - **Equity Isolation**: Automatically filters out SPAC warrants (`W`, `WS`), units (`U`, `UN`), and rights, ensuring only tradable common equities appear.
+- **Regional Toggle**: Switch between Indian and US markets directly from the top header; data caches and filter sets adapt instantly.
+
+### ⚡ 3. Country-Aware Metrics & Adaptive Sizing
+All valuation, price, and turnover metrics automatically render in canonical market standards:
+- **Pricing & Daily % Change**: Displayed in **₹** (India) or **$** (US), with emerald/rose daily percent change badges.
+- **Listing Day Gain %**: Measures performance on the initial listing day (Day 1 Open vs Day 1 Close). Hovering reveals exact auction opening and closing prices.
+- **Return Since Listing %**: Tracks cumulative performance from listing day close to current price.
+- **ADR Volatility %**: Average Daily Range percentage over the configured window (default 20 days), measuring typical intraday expansion for position sizing.
+- **Daily Turnover / Liquidity**: Multiplies average volume by price to evaluate institutional tradability. Displayed in **₹ Cr / day** (or Lakhs) for India and **$ Millions / day** (or Billions) for US.
+- **Adaptive Young IPO Handling**: If a company listed only 4 days ago, ADR and Liquidity automatically calculate across its exact available trading days (e.g. 4d average) rather than distorting figures with zero-padded averages. Tooltips clearly report the exact history window.
+
+### 📊 4. Setup & Pattern Detectors
+- **IPO Base**: Identifies stocks forming a compact consolidation base within 15% to 25% of their post-listing highs.
+- **Tight VCP**: Volatility Contraction Pattern detector identifying narrowing price swings with volume dry-ups preceding breakouts.
+- **Moving Average Ribbon**: Compact visual indicator checking price posture relative to the 10 EMA, 21 EMA, and 50 SMA.
+
+### 🔍 5. Filter Drawer & Free-Form Filtering
+- **Free-Form Numeric Inputs**: Type flexible numeric expressions into the ADR Volatility and Liquidity boxes (e.g. `>50`, `20-50`, `<=4`, `>=10`).
+- **Series & Exchange Filters**: Toggle between Mainboard and SME for India, or NASDAQ, NYSE, and AMEX for US.
+- **Listing Horizon**: Quickly filter by listing age: 30 days (Recent IPOs), 60 days, 180 days, or 365 days.
+- **Active Filter Badges**: Every applied filter is visible as an interactive pill at the top of the radar with single-click dismissal (`✕`).
+
+### 📋 6. Pipeline Integration: Tag & Import to Watchlist
+- **High-Contrast Selection**: Select individual rows or use the header *Select All* checkbox.
+- **Tag & Import**: Click **+ Tag & Import to Current Week** to immediately copy selected IPOs into your active week's Watchlist tagged as **IPO**.
+- **Unified Routine**: Once imported, evaluate setup checklist scores, run custom Gemini AI prompts, and track execution in the Trading Journal.
+

@@ -10,6 +10,13 @@ TradeClarity.market is a powerful React-based application designed for swing tra
 
 - **Weekly Watchlists**: Organize your stock ideas by week. Navigate through history to review past setups.
 - **Multi-Region Support**: Switch seamlessly between **US** 🇺🇸 and **India** 🇮🇳 markets with isolated data contexts.
+- **IPO Master Radar (US & India)**: A dedicated institutional discovery terminal tracking all newly listed companies over their 1-year horizon across US (NASDAQ, NYSE, AMEX) and India (NSE Mainboard & SME):
+  - **1-Year Master Record**: Rolling 365-day archive tracking initial post-listing accumulation.
+  - **Live Candle Hydration**: Computes Day 1 listing gains, gain since listing close, ADR % volatility, and daily turnover liquidity.
+  - **Country-Aware Valuation**: Formatted in canonical regional standards (₹ Cr / day for India, $ Millions / day for US).
+  - **Technical Setup Detectors**: Automatically identifies IPO Bases, Tight VCP contractions, and Moving Average alignments.
+  - **Free-Form Numeric Filtering**: Rapidly drill down with custom expressions (e.g. `>50`, `20-50`, `<=4`).
+  - **1-Click Watchlist Import**: Seamlessly tag and import high-conviction IPO setups into your active weekly Watchlist.
 - **Customizable Parameters**: Define your own technical criteria (e.g., "Relative Strength", "Stage 2", "VCP Pattern") using Text, Dropdown, or Checkbox inputs.
 - **Smart Filtering, Sorting & Search**: Quickly find stocks by symbol or notes. Filter by Sector, Tags, Tradable status, or any of your custom parameters.
 - **AI-Powered Analysis**: Integrated with **Google Gemini** and **OpenAI** to generate professional market summaries, identify top sectors, and highlight actionable setups based on your watchlist data.
