@@ -64,6 +64,8 @@ export default function MiniCandlestickChart({
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
   const seriesRef = useRef(null);
+  const rsSeriesRef = useRef(null);
+  const benchSeriesRef = useRef(null);
   const maSeriesMapRef = useRef({});
   const maSettingsRef = useRef(maSettings);
   const allCandlesRef = useRef([]);
@@ -117,10 +119,36 @@ export default function MiniCandlestickChart({
       isUserInteractingRef.current = true;
     };
 
+    const handleWheel = (e) => {
+      // Zoom with mousewheel ONLY when Ctrl (or Cmd) is pressed, or when trackpad pinch gesture triggers (which sends ctrlKey in Chromium)
+      if (interactive && !disableZoom && (e.ctrlKey || e.metaKey)) {
+        e.preventDefault();
+        e.stopPropagation();
+        if (!chartRef.current) return;
+        const ts = chartRef.current.timeScale();
+        const range = ts.getVisibleLogicalRange();
+        if (!range) return;
+        isUserInteractingRef.current = true;
+        const span = range.to - range.from;
+        const zoomDelta = e.deltaY > 0 ? 0.08 : -0.08;
+        const change = span * zoomDelta;
+        const newFrom = range.from - change / 2;
+        const newTo = range.to + change / 2;
+        if (newTo - newFrom >= 5) {
+          ts.setVisibleLogicalRange({ from: newFrom, to: newTo });
+        }
+      }
+      // When Ctrl/Cmd is not pressed:
+      // DO NOT call preventDefault or stopPropagation!
+      // This allows natural two-finger vertical scrolling on mousepad/touchpad
+      // to scroll the parent container (e.g. EditStockModal left panel) vertically
+      // without modifying chart content or hijacking scroll.
+    };
+
     if (containerEl) {
       containerEl.addEventListener('pointerdown', handlePointerInteraction, { passive: true });
       containerEl.addEventListener('touchstart', handlePointerInteraction, { passive: true });
-      containerEl.addEventListener('wheel', handlePointerInteraction, { passive: true });
+      containerEl.addEventListener('wheel', handleWheel, { passive: false });
     }
 
     const {
@@ -156,6 +184,11 @@ export default function MiniCandlestickChart({
         attributionLogo: false,
         fontSize: 10,
         fontFamily: "'Inter', sans-serif",
+        panes: {
+          enableResize: true,
+          separatorColor: isDark ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+          separatorHoverColor: 'rgba(56, 189, 248, 0.4)',
+        },
       },
       grid: {
         vertLines: { visible: false },
@@ -197,13 +230,13 @@ export default function MiniCandlestickChart({
         },
       },
       handleScroll: {
-        mouseWheel: interactive,
+        mouseWheel: false,
         pressedMouseMove: interactive,
         horzTouchDrag: interactive,
         vertTouchDrag: interactive,
       },
       handleScale: {
-        mouseWheel: interactive && !disableZoom,
+        mouseWheel: false,
         pinch: interactive && !disableZoom,
         axisPressedMouseMove: interactive,
       },
@@ -242,6 +275,7 @@ export default function MiniCandlestickChart({
           priceLineVisible: false,
         });
         benchSeries.setData(benchmarkSeries);
+        benchSeriesRef.current = benchSeries;
 
         series.createPriceLine({
           price: 0,
@@ -261,37 +295,50 @@ export default function MiniCandlestickChart({
         });
         series.setData(visibleCandlesticks);
 
-        // If RS Ratio mode active: Add Mansfield RS line in separate bottom pane
+        // If RS Ratio mode active: Add Mansfield RS line in dedicated separate bottom pane (Pane 1)
         if (isBenchmarkActive && benchmarkMode === 'rs') {
           const { rsSeries } = calculateRsRatioSeries(visibleCandlesticks, benchmarkCandles);
           if (rsSeries.length > 0) {
-            // Keep Candlesticks in top 70% of chart
-            chart.priceScale('right').applyOptions({
-              scaleMargins: {
-                top: 0.05,
-                bottom: 0.32,
-              },
-            });
+            // Candlesticks in Pane 0 use standard comfortable margins (no artificial bottom cutoff needed)
+            if (typeof chart.priceScale === 'function') {
+              try {
+                chart.priceScale('right').applyOptions({
+                  scaleMargins: {
+                    top: 0.05,
+                    bottom: 0.08,
+                  },
+                });
+              } catch (_e) {
+                // Safe fallback
+              }
+            }
 
-            // Put RS line in bottom 25% pane on separate scale
+            // Put RS line in dedicated lower pane (paneIndex: 1)
             const rsLineSeries = chart.addSeries(LineSeries, {
               color: rsLineColor || '#a855f7', // RS Line accent
               lineWidth: 2,
-              priceScaleId: 'rs-scale',
               priceFormat: {
                 type: 'custom',
                 formatter: (val) => `RS ${val >= 0 ? '+' : ''}${val.toFixed(1)}%`,
               },
               priceLineVisible: false,
-            });
+            }, 1);
 
-            chart.priceScale('rs-scale').applyOptions({
-              scaleMargins: {
-                top: 0.72,
-                bottom: 0.05,
-              },
-              entireTextOnly: true,
-            });
+            // Configure Pane 1's price scale independently
+            if (typeof chart.priceScale === 'function') {
+              try {
+                chart.priceScale('right', 1).applyOptions({
+                  scaleMargins: {
+                    top: 0.12,
+                    bottom: 0.12,
+                  },
+                  entireTextOnly: true,
+                  alignLabels: true,
+                });
+              } catch (_err) {
+                // Fallback if priceScale with paneIndex is not supported by mock
+              }
+            }
 
             rsLineSeries.setData(rsSeries);
             rsLineSeries.createPriceLine({
@@ -301,6 +348,22 @@ export default function MiniCandlestickChart({
               lineStyle: 2,
               title: 'RS 0%',
             });
+
+            rsSeriesRef.current = rsLineSeries;
+
+            // Set height proportion: RS sub-pane gets ~26% of container height (min 70px, max 110px)
+            if (typeof chart.panes === 'function') {
+              try {
+                const panes = chart.panes();
+                if (panes && panes.length >= 2 && typeof panes[1]?.setHeight === 'function') {
+                  const containerHeight = chartContainerRef.current?.clientHeight || 340;
+                  const rsHeight = Math.min(110, Math.max(70, Math.round(containerHeight * 0.26)));
+                  panes[1].setHeight(rsHeight);
+                }
+              } catch (_e) {
+                // Safe fallback
+              }
+            }
           }
         }
       }
@@ -486,9 +549,26 @@ export default function MiniCandlestickChart({
           if (addedCount > 0) {
             allCandlesRef.current = updatedCandles;
 
-            if (seriesRef.current && typeof seriesRef.current.setData === 'function') {
-              if (!isPctMode) {
+            if (isPctMode) {
+              if (benchmarkCandles && benchmarkCandles.length > 0) {
+                const { stockSeries, benchmarkSeries } = calculateNormalizedPctSeries(updatedCandles, benchmarkCandles);
+                if (seriesRef.current && typeof seriesRef.current.setData === 'function') {
+                  seriesRef.current.setData(stockSeries);
+                }
+                if (benchSeriesRef.current && typeof benchSeriesRef.current.setData === 'function') {
+                  benchSeriesRef.current.setData(benchmarkSeries);
+                }
+              }
+            } else {
+              if (seriesRef.current && typeof seriesRef.current.setData === 'function') {
                 seriesRef.current.setData(updatedCandles);
+              }
+
+              if (rsSeriesRef.current && typeof rsSeriesRef.current.setData === 'function' && benchmarkCandles && benchmarkCandles.length > 0) {
+                const { rsSeries: updatedRs } = calculateRsRatioSeries(updatedCandles, benchmarkCandles);
+                if (updatedRs && updatedRs.length > 0) {
+                  rsSeriesRef.current.setData(updatedRs);
+                }
               }
             }
 
@@ -572,7 +652,12 @@ export default function MiniCandlestickChart({
           const isDarkNow = document.documentElement.getAttribute('data-theme') === 'dark';
           const newTextColor = getComputedStyle(document.documentElement).getPropertyValue('--text').trim() || '#0f172a';
           chartRef.current.applyOptions({
-            layout: { textColor: newTextColor },
+            layout: { 
+              textColor: newTextColor,
+              panes: {
+                separatorColor: isDarkNow ? 'rgba(255, 255, 255, 0.08)' : 'rgba(0, 0, 0, 0.08)',
+              },
+            },
             grid: { horzLines: { color: isDarkNow ? 'rgba(255, 255, 255, 0.05)' : 'rgba(0, 0, 0, 0.05)' } }
           });
         }
@@ -593,13 +678,15 @@ export default function MiniCandlestickChart({
       if (containerEl) {
         containerEl.removeEventListener('pointerdown', handlePointerInteraction);
         containerEl.removeEventListener('touchstart', handlePointerInteraction);
-        containerEl.removeEventListener('wheel', handlePointerInteraction);
+        containerEl.removeEventListener('wheel', handleWheel);
       }
       if (ts && typeof ts.unsubscribeVisibleTimeScaleChange === 'function') {
         ts.unsubscribeVisibleTimeScaleChange(handleTimeScaleChange);
       }
       resizeObserver.disconnect();
       themeObserver.disconnect();
+      rsSeriesRef.current = null;
+      benchSeriesRef.current = null;
       chart.remove();
     };
   }, [data, interactive, disableZoom, maSettings, timeframe, selectedBenchmark, benchmarkMode, benchmarkCandles, stockLineColor, benchmarkLineColor, rsLineColor, country]);

@@ -310,7 +310,8 @@ export default function EditStockModal({
       return () => { isMounted = false; };
     }
 
-    fetchBenchmarkCandles(country, selectedBenchmark, timeframe).then(candles => {
+    const benchTf = ['1mo', '3mo', '6mo', 'ytd', '1y'].includes(timeframe) ? '2y' : timeframe;
+    fetchBenchmarkCandles(country, selectedBenchmark, benchTf).then(candles => {
       if (isMounted) {
         setBenchmarkCandles(candles);
       }
@@ -497,6 +498,7 @@ export default function EditStockModal({
 
   const topHeightRef = useRef(topHeight);
   const leftWidthRef = useRef(leftWidth);
+  const deepViewTopRef = useRef(null);
 
   useEffect(() => {
     topHeightRef.current = topHeight;
@@ -569,7 +571,17 @@ export default function EditStockModal({
     const hasNews = (customNewsList && customNewsList.length > 0) || (summaryData?.catalysts?.newsFeed && summaryData.catalysts.newsFeed.length > 0);
     if (hasNews || newsFetchedSymbol === formData.symbol || loadingNews) return;
 
-    handleRefreshNews();
+    let isMounted = true;
+    const timer = setTimeout(() => {
+      if (isMounted) {
+        handleRefreshNews();
+      }
+    }, 0);
+
+    return () => {
+      isMounted = false;
+      clearTimeout(timer);
+    };
   }, [isOpen, formData?.symbol, activeRightTab, isPopoverOpen, customNewsList, summaryData, newsFetchedSymbol, loadingNews, handleRefreshNews]);
 
   if (initialActiveRightTab !== prevTabProp || formData?.symbol !== prevSymbolProp) {
@@ -1027,6 +1039,72 @@ export default function EditStockModal({
   };
 
   // Watchlist Navigation & Workspace State
+  const DEFAULT_SIDEBAR_WIDTH = 260;
+  const MIN_SIDEBAR_WIDTH = 180;
+  const MAX_SIDEBAR_WIDTH = 480;
+
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tradeclarity_edit_modal_sidebar_width');
+      if (saved) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= MIN_SIDEBAR_WIDTH && parsed <= MAX_SIDEBAR_WIDTH) {
+          return parsed;
+        }
+      }
+    } catch (_e) {
+      // fallback
+    }
+    return DEFAULT_SIDEBAR_WIDTH;
+  });
+  const isResizingSidebarRef = useRef(false);
+
+  const handleSidebarResizeStart = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    isResizingSidebarRef.current = true;
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+    let currentWidth = startWidth;
+
+    document.body.classList.add('resizing-col');
+
+    const handleMouseMove = (moveEvent) => {
+      if (!isResizingSidebarRef.current) return;
+      const deltaX = moveEvent.clientX - startX;
+      const maxLimit = Math.min(MAX_SIDEBAR_WIDTH, Math.floor(window.innerWidth * 0.45));
+      const nextWidth = Math.max(MIN_SIDEBAR_WIDTH, Math.min(maxLimit, startWidth + deltaX));
+      currentWidth = nextWidth;
+      setSidebarWidth(nextWidth);
+    };
+
+    const handleMouseUp = () => {
+      isResizingSidebarRef.current = false;
+      document.body.classList.remove('resizing-col');
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      try {
+        localStorage.setItem('tradeclarity_edit_modal_sidebar_width', String(currentWidth));
+      } catch (_err) {
+        // ignore
+      }
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [sidebarWidth]);
+
+  const handleSidebarResetWidth = useCallback((e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setSidebarWidth(DEFAULT_SIDEBAR_WIDTH);
+    try {
+      localStorage.setItem('tradeclarity_edit_modal_sidebar_width', String(DEFAULT_SIDEBAR_WIDTH));
+    } catch (_err) {
+      // ignore
+    }
+  }, []);
+
   const [isSidebarCollapsed, setIsSidebarCollapsed] = useState(false);
   const [navSearchQuery, setNavSearchQuery] = useState("");
   const [isNavDropdownOpen, setIsNavDropdownOpen] = useState(false);
@@ -1270,7 +1348,11 @@ export default function EditStockModal({
     const handleMouseMove = (e) => {
       if (isResizingV) {
         // Calculate relative to modal top
-        const newTop = Math.max(80, Math.min(500, e.clientY - 120));
+        const rect = deepViewTopRef.current ? deepViewTopRef.current.getBoundingClientRect() : null;
+        const offsetTop = rect ? rect.top : 60;
+        const calculated = e.clientY - offsetTop;
+        const maxAllowed = Math.max(280, Math.round(window.innerHeight * 0.48));
+        const newTop = Math.max(140, Math.min(maxAllowed, calculated));
         setTopHeight(newTop);
         topHeightRef.current = newTop;
       }
@@ -1429,7 +1511,7 @@ export default function EditStockModal({
 
   const [justSaved, setJustSaved] = useState(false);
 
-  const handleSave = (shouldClose = true) => {
+  const handleSave = useCallback((shouldClose = true) => {
     const finalData = {
       ...formData,
       aiAnalysis,
@@ -1449,7 +1531,7 @@ export default function EditStockModal({
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2000);
     }
-  };
+  }, [formData, aiAnalysis, aiAnalysisDate, stock?.aiTaggedAt, onUpdateStock, onSave, onClose]);
 
   const handleDeleteStockItem = useCallback(async (targetSymbol) => {
     if (!onDeleteStock || !targetSymbol) return;
@@ -2174,7 +2256,7 @@ export default function EditStockModal({
               </div>
             </div>
 
-            <div className="workspace-main-wrapper">
+            <div className="workspace-main-wrapper" style={{ '--sidebar-width': `${sidebarWidth}px` }}>
               {sortedStocks && sortedStocks.length > 0 && isSidebarCollapsed && (
                 <div
                   className="watchlist-sidebar-collapsed-trigger-premium"
@@ -2523,8 +2605,21 @@ export default function EditStockModal({
                 </div>
               )}
 
+              {sortedStocks && sortedStocks.length > 0 && !isSidebarCollapsed && (
+                <div
+                  className="sidebar-resize-handle"
+                  onMouseDown={handleSidebarResizeStart}
+                  onDoubleClick={handleSidebarResetWidth}
+                  title="Drag to resize stocks list, double-click to reset"
+                  role="separator"
+                  aria-orientation="vertical"
+                  aria-label="Resize stocks sidebar"
+                />
+              )}
+
               <div className="workspace-content-premium">
                 <div
+                  ref={deepViewTopRef}
                   className={`deep-view-top ${isParamsCollapsed ? 'collapsed' : ''}`}
                 >
               <style>{`
@@ -2707,7 +2802,19 @@ export default function EditStockModal({
               <div
                 className="resizer-v-handle"
                 onMouseDown={() => setIsResizingV(true)}
-                title="Resize Parameters"
+                onDoubleClick={() => {
+                  setTopHeight(320);
+                  topHeightRef.current = 320;
+                  try {
+                    localStorage.setItem('tradeclarity_modal_top_height', '320');
+                  } catch (err) {
+                    console.warn("Failed to reset top height:", err);
+                  }
+                }}
+                role="separator"
+                aria-orientation="horizontal"
+                aria-label="Resize parameters"
+                title="Drag to resize parameters | Double-click to reset (320px)"
               />
             )}
 
@@ -3152,7 +3259,6 @@ export default function EditStockModal({
                       setIsPopoverOpen(true);
                     }
                   }}
-                  title={positionMetrics ? `Position (P&L: ${(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent) >= 0 ? '+' : ''}${(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent).toFixed(1)}%)` : "Position Tracker"}
                   aria-label="Position"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3165,7 +3271,11 @@ export default function EditStockModal({
                       {(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent) >= 0 ? '+' : ''}{(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent).toFixed(0)}%
                     </span>
                   )}
-                  <span className="tv-rail-tooltip">Position Details</span>
+                  <span className="tv-rail-tooltip">
+                    {positionMetrics
+                      ? `Position (P&L: ${(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent) >= 0 ? '+' : ''}${(positionMetrics.isOpen ? positionMetrics.unrealizedPnLPercent : positionMetrics.realizedPnLPercent).toFixed(1)}%)`
+                      : "Position Tracker"}
+                  </span>
                 </button>
 
                 <button
@@ -3179,7 +3289,6 @@ export default function EditStockModal({
                       setIsPopoverOpen(true);
                     }
                   }}
-                  title={loadingAi ? "AI Analysis in progress..." : "AI Analysis & Deep Dive"}
                   aria-label="AI Deep Dive"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
@@ -3187,7 +3296,7 @@ export default function EditStockModal({
                   </svg>
                   <span className="sr-only">AI Analysis</span>
                   <span className={`tv-rail-badge ai ${loadingAi ? 'radium-pulse-badge' : ''}`}>{loadingAi ? '⚡' : '✨'}</span>
-                  <span className="tv-rail-tooltip">{loadingAi ? 'Analyzing...' : 'AI Deep Dive'}</span>
+                  <span className="tv-rail-tooltip">{loadingAi ? 'AI Analyzing...' : 'AI Analysis & Deep Dive'}</span>
                 </button>
 
                 <button
@@ -3201,7 +3310,6 @@ export default function EditStockModal({
                       setIsPopoverOpen(true);
                     }
                   }}
-                  title="Catalysts & News Feed"
                   aria-label="News & Catalysts"
                 >
                   <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -3214,7 +3322,7 @@ export default function EditStockModal({
                   {activeNewsFeed && activeNewsFeed.length > 0 && (
                     <span className="tv-rail-badge news">{activeNewsFeed.length}</span>
                   )}
-                  <span className="tv-rail-tooltip">News & Catalysts</span>
+                  <span className="tv-rail-tooltip">Catalysts & News Feed</span>
                 </button>
               </div>
 
