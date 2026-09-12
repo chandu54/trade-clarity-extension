@@ -557,6 +557,175 @@ export function formatLargeNumber(val, country = 'US') {
   }
 }
 
+export function formatRelativeTime(timestamp) {
+  if (!timestamp) return 'Recent';
+  const diffMs = Date.now() - timestamp;
+  if (diffMs < 0) return 'Just now';
+  const mins = Math.floor(diffMs / 60000);
+  if (mins < 1) return 'Just now';
+  if (mins < 60) return `${mins}m ago`;
+  const hours = Math.floor(mins / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days === 1) return 'Yesterday';
+  if (days < 7) return `${days}d ago`;
+  return new Date(timestamp).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+}
+
+export async function fetchStockNews(symbol, country = 'US') {
+  if (!symbol) return [];
+
+  const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
+  const cleanSymbol = symbol.replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
+  const effectiveCountry = (country === 'IN' || symbol.endsWith('.NS') || symbol.endsWith('.BO')) ? 'IN' : 'US';
+  const yahooBaseUrl = isLocalhost ? '/yahoo-api' : 'https://query2.finance.yahoo.com';
+  const googleBaseUrl = isLocalhost ? '/google-news' : 'https://news.google.com';
+
+  const isTest = typeof process !== 'undefined' && process.env && (process.env.NODE_ENV === 'test' || process.env.VITEST);
+  const timeoutMs = isTest ? 2000 : 7000;
+
+  const allItems = [];
+  const symbolWordRegex = new RegExp(`\\b${cleanSymbol}\\b`, 'i');
+
+  // 1. Google News RSS with cascading time filter (when:14d -> when:30d -> all)
+  const gController = new AbortController();
+  const gTimerId = setTimeout(() => gController.abort(), timeoutMs);
+  try {
+    const hl = effectiveCountry === 'IN' ? 'en-IN' : 'en-US';
+    const gl = effectiveCountry === 'IN' ? 'IN' : 'US';
+    const ceid = effectiveCountry === 'IN' ? 'IN:en' : 'US:en';
+    const baseQuery = effectiveCountry === 'IN' ? `${cleanSymbol} India stock` : `${cleanSymbol} stock`;
+
+    for (const timeFilter of ['when:14d', 'when:30d', '']) {
+      if (gController.signal.aborted) break;
+      const queryStr = timeFilter ? `${baseQuery} ${timeFilter}` : baseQuery;
+      const rssUrl = `${googleBaseUrl}/rss/search?q=${encodeURIComponent(queryStr)}&hl=${hl}&gl=${gl}&ceid=${ceid}`;
+
+      try {
+        const res = await fetch(rssUrl, { signal: gController.signal });
+        if (!res.ok) continue;
+        const xmlText = await res.text();
+        const itemsXml = xmlText.split('<item>').slice(1);
+        const googleBatch = [];
+
+        for (const itemXml of itemsXml) {
+          const titleMatch = itemXml.match(/<title>(.*?)<\/title>/);
+          const linkMatch = itemXml.match(/<link>(.*?)<\/link>/);
+          const pubDateMatch = itemXml.match(/<pubDate>(.*?)<\/pubDate>/);
+          const sourceMatch = itemXml.match(/<source[^>]*>(.*?)<\/source>/);
+          if (!titleMatch) continue;
+
+          const source = (sourceMatch?.[1] || 'News').replace(/&amp;/g, '&').trim();
+          let rawTitle = (titleMatch[1] || '')
+            .replace(/&amp;/g, '&')
+            .replace(/&lt;/g, '<')
+            .replace(/&gt;/g, '>')
+            .replace(/&quot;/g, '"')
+            .replace(/&#39;/g, "'")
+            .trim();
+
+          if (source && source !== 'News') {
+            const escapedSource = source.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            rawTitle = rawTitle.replace(new RegExp(`\\s*-\\s*${escapedSource}$`, 'i'), '').trim();
+          }
+
+          const link = linkMatch?.[1] || '';
+          const pubDateStr = pubDateMatch?.[1] || '';
+          const pubTimestamp = pubDateStr ? new Date(pubDateStr).getTime() : null;
+
+          googleBatch.push({
+            id: link || rawTitle,
+            title: rawTitle,
+            publisher: source,
+            timestamp: pubTimestamp,
+            link,
+            relatedTickers: [cleanSymbol]
+          });
+        }
+
+        if (googleBatch.length >= 2) {
+          allItems.push(...googleBatch);
+          break;
+        }
+      } catch (_batchErr) {
+        // proceed to next time filter
+      }
+    }
+  } catch (gErr) {
+    console.warn(`[stockAnalysisApi] Google RSS news fetch failed for ${symbol}:`, gErr.message);
+  } finally {
+    clearTimeout(gTimerId);
+  }
+
+  // 2. Yahoo Finance Search (for US stocks or additional corporate announcements)
+  const controller = new AbortController();
+  const timerId = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const searchTicker = effectiveCountry === 'IN' ? cleanSymbol : symbol;
+    const newsUrl = `${yahooBaseUrl}/v1/finance/search?q=${encodeURIComponent(searchTicker)}&newsCount=15`;
+    const res = await fetch(newsUrl, { credentials: 'include', signal: controller.signal });
+    if (res.ok) {
+      const json = await res.json();
+      const rawNews = json.news || [];
+      const filtered = rawNews.filter(n => {
+        const tickers = (n.relatedTickers || []).map(t => t.toUpperCase());
+        const title = (n.title || '');
+        if (tickers.includes(cleanSymbol) || tickers.includes(`${cleanSymbol}.NS`) || tickers.includes(`${cleanSymbol}.BO`)) return true;
+        if (symbolWordRegex.test(title)) return true;
+        return false;
+      });
+
+      filtered.forEach(n => {
+        const pubMs = n.providerPublishTime ? n.providerPublishTime * 1000 : null;
+        allItems.push({
+          id: n.uuid || n.link,
+          title: n.title,
+          publisher: n.publisher || 'Yahoo Finance',
+          timestamp: pubMs,
+          link: n.link,
+          relatedTickers: n.relatedTickers || [cleanSymbol]
+        });
+      });
+    }
+  } catch (e) {
+    console.warn(`[stockAnalysisApi] Yahoo news fetch failed for ${symbol}:`, e.message);
+  } finally {
+    clearTimeout(timerId);
+  }
+
+  // 3. Deduplicate by normalized title
+  const seen = new Set();
+  const deduped = [];
+  for (const item of allItems) {
+    const key = (item.title || '').toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 32);
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    deduped.push(item);
+  }
+
+  // 4. Strict Chronological Sort: newest news ALWAYS first
+  deduped.sort((a, b) => (b.timestamp || 0) - (a.timestamp || 0));
+
+  // 5. Purge stale news from months ago if recent news exists
+  const now = Date.now();
+  const hasRecentArticles = deduped.some(item => item.timestamp && (now - item.timestamp < 30 * 24 * 60 * 60 * 1000));
+  const finalFiltered = hasRecentArticles
+    ? deduped.filter(item => !item.timestamp || (now - item.timestamp <= 45 * 24 * 60 * 60 * 1000))
+    : deduped;
+
+  // 6. Format timestamps and return top 10 freshest articles
+  return finalFiltered.slice(0, 10).map(item => ({
+    id: item.id,
+    title: item.title,
+    publisher: item.publisher,
+    timestamp: item.timestamp,
+    date: item.timestamp ? new Date(item.timestamp).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A',
+    timeAgo: item.timestamp ? formatRelativeTime(item.timestamp) : 'Recent',
+    link: item.link,
+    relatedTickers: item.relatedTickers
+  }));
+}
+
 export async function fetchStockSummary(symbol, country = 'US', forceRefresh = false) {
   if (!symbol) return null;
 
@@ -574,7 +743,6 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
   const baseUrl = isLocalhost ? '/yahoo-api' : 'https://query2.finance.yahoo.com';
 
   let rawSummary = null;
-  let rawNews = [];
   let rawEvents = {};
 
   try {
@@ -621,16 +789,15 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
     console.warn(`[stockAnalysisApi] Failed quoteSummary fetch for ${ticker}:`, e.message);
   }
 
+  const cleanSymbol = ticker.replace(/\.(NS|BO)$/, '').toUpperCase();
+  const effectiveCountry = (country === 'IN' || ticker?.endsWith('.NS') || ticker?.endsWith('.BO') || symbol?.endsWith('.NS') || symbol?.endsWith('.BO')) ? 'IN' : 'US';
+
   // 2. Fetch News Catalysts
+  let finalNews = [];
   try {
-    const newsUrl = `${baseUrl}/v1/finance/search?q=${encodeURIComponent(ticker)}&newsCount=10`;
-    const newsRes = await fetch(newsUrl, { credentials: 'include' });
-    if (newsRes.ok) {
-      const newsJson = await newsRes.json();
-      rawNews = newsJson.news || [];
-    }
+    finalNews = await fetchStockNews(cleanSymbol, effectiveCountry);
   } catch (e) {
-    console.warn(`[stockAnalysisApi] Failed news fetch for ${ticker}:`, e.message);
+    console.warn(`[stockAnalysisApi] Failed news fetch for ${cleanSymbol}:`, e.message);
   }
 
   // 3. Fetch Chart Events (Dividends & Splits)
@@ -666,8 +833,6 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
     }
     isEarningsEstimate = !!calendarEvents.earnings?.isEarningsDateEstimate;
   }
-
-  const effectiveCountry = (country === 'IN' || ticker?.endsWith('.NS') || ticker?.endsWith('.BO') || symbol?.endsWith('.NS') || symbol?.endsWith('.BO')) ? 'IN' : 'US';
 
   // NSE India fallback: if Yahoo gave us no earningsDate and this is an Indian stock,
   // look it up in the NSE event calendar (fetched once and cached for 4 hours).
@@ -906,16 +1071,6 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
     effectiveCountry
   };
 
-  // Strict news relevance filtering: Only include news where symbol/ticker is related or in title
-  const cleanSymbol = ticker.replace(/\.(NS|BO)$/, '').toUpperCase();
-  const filteredNews = rawNews.filter(n => {
-    const tickers = (n.relatedTickers || []).map(t => t.toUpperCase());
-    const title = (n.title || '').toUpperCase();
-    if (tickers.includes(ticker.toUpperCase()) || tickers.includes(cleanSymbol)) return true;
-    if (title.includes(cleanSymbol) || title.includes(symbol.toUpperCase())) return true;
-    return false;
-  });
-
   const catalysts = {
     earningsDate: earningsDateStr,
     earningsDaysAway,
@@ -923,13 +1078,7 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
     dividendYield: summaryDetail.dividendYield?.fmt || (summaryDetail.dividendYield?.raw ? `${(summaryDetail.dividendYield.raw * 100).toFixed(2)}%` : null),
     latestDividend: latestDiv,
     splits: splitsList,
-    newsFeed: filteredNews.slice(0, 5).map(n => ({
-      id: n.uuid || n.link,
-      title: n.title,
-      publisher: n.publisher,
-      date: n.providerPublishTime ? new Date(n.providerPublishTime * 1000).toLocaleString(undefined, { month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'N/A',
-      link: n.link
-    }))
+    newsFeed: finalNews.slice(0, 10)
   };
 
   const hasRawData = !!rawSummary || (quarterlyHistory && quarterlyHistory.length > 0);

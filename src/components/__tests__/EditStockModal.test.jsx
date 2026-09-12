@@ -709,6 +709,7 @@ describe('EditStockModal', () => {
       // Verify dock tab buttons
       expect(screen.getByText('Position')).toBeDefined();
       expect(screen.getByText('AI Analysis')).toBeDefined();
+      expect(screen.getByRole('button', { name: /News & Catalysts/i })).toBeDefined();
 
       // Verify Position tab content
       expect(screen.getByText('Transaction Ledger (1)')).toBeDefined();
@@ -723,6 +724,10 @@ describe('EditStockModal', () => {
       // Switch to AI Analysis tab
       fireEvent.click(screen.getByText('AI Analysis'));
       expect(screen.getByRole('button', { name: 'Analyze' })).toBeDefined();
+
+      // Switch to News & Catalysts tab
+      fireEvent.click(screen.getByRole('button', { name: /News & Catalysts/i }));
+      expect(screen.getByText(`${props.stock.symbol} Catalysts & News`)).toBeDefined();
     });
 
     it('renders closed trade fallback metrics and outcome badge correctly', () => {

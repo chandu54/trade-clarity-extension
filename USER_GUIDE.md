@@ -221,7 +221,40 @@ Hover over the **"i" icon** next to the week dropdown.
 
 ---
 
-## 8. Data Management
+## 8. Deep View Workspace & Modular Tools Dock
+
+Click any stock symbol in the interactive grid to open the **Deep View Workspace**. This focused modal provides a candlestick chart, moving average overlays, watchlist grouping, and a non-blocking right-side rail dock for rapid trade analysis.
+
+### 📊 1. Candlestick Charting & Infinity Backfill
+- **Interactive Candlestick Charting**: Displays crisp candlestick price action with custom timeframe selectors (1d, 1w, 1m).
+- **Moving Average Customization**: Click the **Gear (MAs)** icon to toggle 5, 10, 21, 50, and 200 SMAs/EMAs, customize hex colors, and adjust line thicknesses from 1px to 4px.
+- **Infinity Data Backfill**: Continuously scroll left on any chart to dynamically backfill and load older historical price candles on demand.
+- **Header Water-Drop Pills**: Displays real-time Average Daily Range (**ADR %**) and Daily Turnover (**Liquidity**) directly in the header ribbon.
+
+### 🎛️ 2. Modular Right Rail Dock
+A persistent vertical dock docked cleanly to the right side of the chart gives you instant access to three modular analytical tools without obscuring or blurring the active candlestick chart:
+1. **💼 Position Ledger**:
+   - Inspect transaction history, open share quantities, average entry cost basis, and current trailing stop-loss levels.
+   - For closed positions, reveals locked R-multiples and win/loss performance badges.
+2. **✨ AI Micro-Analysis**:
+   - Executes institutional single-stock technical analysis powered by Google Gemini.
+   - Features animated **Radium motion pulse** feedback around the popover border while analysis is actively processing.
+3. **📰 News & Catalysts Radar**:
+   - Floating, non-blocking popover overlay displaying real-time company catalysts and breaking market headlines.
+
+### 📰 3. News & Catalysts Radar Engine
+- **Strict Chronological Ranking (Newest First)**: Every headline is mathematically sorted in descending order by publication timestamp (`timestamp = pubMs || pubTimestamp`). Breaking developments (e.g. *2h ago*, *12h ago*, *Yesterday*) are guaranteed to appear at the top, preventing stale historical news from pushing breaking catalysts down.
+- **Cascading Freshness Filters (`when:14d` → `when:30d`)**: Applies dynamic 14-day recency filters directly into the news query engine. If a less liquid stock has fewer than 2 headlines in 14 days, the engine automatically expands the window to 30 days.
+- **Stale Archive Purging**: If recent articles (< 30 days) exist, the engine automatically filters out any article older than 45 days.
+- **Word-Boundary Ticker Isolation**: Employs strict word-boundary matching (`\bSYMBOL\b`) to ensure short symbols like `ABB` never match unrelated corporate tickers like AbbVie (`ABBV`) or Abbott Laboratories (`ABT`).
+- **Multi-Source Regional Depth**:
+  - **Indian Stocks (NSE/BSE)**: Aggregates real-time feeds from *LiveMint, The Economic Times, Moneycontrol, BusinessLine, CNBC-TV18, Univest, and Financial Express*.
+  - **US Stocks**: Aggregates top institutional financial media (*Reuters, Bloomberg, Benzinga, Stocktwits, Yahoo Finance*).
+- **Instant Background Auto-Fetch**: Opening the news tool automatically fetches fresh headlines in the background with an animated shimmer loading skeleton, caching results locally for instant recall when browsing between stocks.
+
+---
+
+## 9. Data Management
 
 ### 💾 Backup & Restore (Full App)
 
@@ -254,7 +287,7 @@ As your database grows over many months, you may want to clean up old data to ke
 
 ---
 
-## 9. Configuration Tips
+## 10. Configuration Tips
 
 - **Manage Sectors**: Go to **Settings > Sectors** to customize the dropdown list to match your preferred taxonomy.
 - **Column Visibility**: Go to **Settings > Columns** to hide parameters you don't need to see in the main grid every day.
@@ -271,9 +304,9 @@ As your database grows over many months, you may want to clean up old data to ke
 5.  **Run AI Analysis** to get a macro view of your list.
 6.  **Export** the "Tradable" list to your broker.
 
-# TradeClarity User Guide
+---
 
-## TradingView Widget
+## 11. TradingView Widget
 
 The TradeClarity Widget allows you to manage your weekly watchlist directly from TradingView.
 
@@ -322,7 +355,7 @@ Once the correct symbol is detected, you can input your trade plan:
 
 ---
 
-## 10. Market Pulse Guide
+## 12. Market Pulse Guide
 
 The **Market Pulse** dashboard acts as your bird's-eye view of indices and sector performance. Rather than evaluating tickers in isolation, you should first look here to understand the broader market trend, momentum strength, and system risk levels.
 
@@ -353,7 +386,7 @@ At the bottom of the Snapshot page, the system displays the **Technical Thesis**
 
 ---
 
-## 11. Trading Journal Guide
+## 13. Trading Journal Guide
 
 A professional trading journal enforces discipline. Recording your setups, risk-reward parameters, and scaling points prevents impulsive decisions, provides audit trails, and lets you calculate performance stats objectively. Treating trading as a business requires tracking every unit of risk and analyzing your performance parameters over time.
 
@@ -409,7 +442,7 @@ An analytical dashboard to audit your system edge.
 
 ---
 
-## 12. AI Settings & Prompt Library
+## 14. AI Settings & Prompt Library
 
 TradeClarity.market lets you integrate institutional-grade AI analysis (powered securely by the Google Gemini API) directly into your trading workflow. Instead of relying on generic prompts, you can create and manage a proprietary strategy library to dictate exactly how the AI evaluates your watchlists, sectors, and individual setups.
 
@@ -452,7 +485,7 @@ The mini editor allows you to type custom analysis instructions. To inject real-
 
 ---
 
-## 13. IPO Master Radar (1-Year Master Record & Discovery)
+## 15. IPO Master Radar (1-Year Master Record & Discovery)
 
 The **IPO Master Radar** is a specialized institutional discovery terminal dedicated to tracking newly listed public companies over their critical first year of trading history. It bridges official exchange listing calendars with real-time candle hydration to help swing traders identify early Stage 2 breakouts, tight volatility contractions, and emerging institutional market leaders.
 

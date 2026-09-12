@@ -6,7 +6,7 @@ import { getBenchmarkOptions, fetchBenchmarkCandles, calculateStockRsForCandles 
 import { getSingleStockAnalysis, PROMPT_TEMPLATES, enrichStockMetadataAI } from "../services/ai";
 import { isParamRelevantForCountry, getActualParamKeyAndDef } from "../utils/paramUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
-import { fetchStockSummary, globalFundamentalsCache, fetchNseEarningsDate, calculateDaysAway } from "../utils/stockAnalysisApi";
+import { fetchStockSummary, fetchStockNews, globalFundamentalsCache, fetchNseEarningsDate, calculateDaysAway } from "../utils/stockAnalysisApi";
 
 import ChartDrawingToolbar from "./ChartDrawingToolbar";
 import { useToast } from "./ToastContext";
@@ -514,12 +514,69 @@ export default function EditStockModal({
   const [prevSymbolProp, setPrevSymbolProp] = useState(formData?.symbol);
   const [summaryData, setSummaryData] = useState(null);
   const [sidebarStockData, setSidebarStockData] = useState({});
+  const [customNewsList, setCustomNewsList] = useState(null);
+  const [loadingNews, setLoadingNews] = useState(false);
+  const [newsFetchedSymbol, setNewsFetchedSymbol] = useState(null);
   const popoverRef = useRef(null);
   const railRef = useRef(null);
+
+  const activeNewsFeed = useMemo(() => {
+    if (customNewsList !== null) return customNewsList;
+    return summaryData?.catalysts?.newsFeed || [];
+  }, [customNewsList, summaryData]);
+
+  const handleRefreshNews = useCallback(async () => {
+    if (!formData?.symbol) return;
+    setLoadingNews(true);
+    try {
+      const refreshed = await fetchStockNews(formData.symbol, country);
+      setCustomNewsList(refreshed);
+      setNewsFetchedSymbol(formData.symbol);
+
+      setSummaryData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          catalysts: {
+            ...(prev.catalysts || {}),
+            newsFeed: refreshed
+          }
+        };
+      });
+
+      const sym = formData.symbol;
+      const tickerKey = (country === 'IN' || sym.endsWith('.NS') || sym.endsWith('.BO')) && !sym.endsWith('.NS') && !sym.endsWith('.BO') ? `${sym}.NS_${country}` : `${sym}_${country}`;
+      const cached = globalFundamentalsCache.get(tickerKey) || globalFundamentalsCache.get(`${sym}_${country}`);
+      if (cached && cached.data) {
+        cached.data.catalysts = {
+          ...(cached.data.catalysts || {}),
+          newsFeed: refreshed
+        };
+        globalFundamentalsCache.set(tickerKey, cached.data);
+      }
+    } catch (e) {
+      console.warn("[EditStockModal] Error refreshing news:", e);
+      setNewsFetchedSymbol(formData.symbol);
+    } finally {
+      setLoadingNews(false);
+    }
+  }, [formData?.symbol, country]);
+
+  // Auto-fetch news when the News popover is open if not yet populated
+  useEffect(() => {
+    if (!isOpen || !formData?.symbol || activeRightTab !== 'news' || !isPopoverOpen) return;
+
+    const hasNews = (customNewsList && customNewsList.length > 0) || (summaryData?.catalysts?.newsFeed && summaryData.catalysts.newsFeed.length > 0);
+    if (hasNews || newsFetchedSymbol === formData.symbol || loadingNews) return;
+
+    handleRefreshNews();
+  }, [isOpen, formData?.symbol, activeRightTab, isPopoverOpen, customNewsList, summaryData, newsFetchedSymbol, loadingNews, handleRefreshNews]);
 
   if (initialActiveRightTab !== prevTabProp || formData?.symbol !== prevSymbolProp) {
     setPrevTabProp(initialActiveRightTab);
     setPrevSymbolProp(formData?.symbol);
+    setCustomNewsList(null);
+    setNewsFetchedSymbol(null);
     if (initialActiveRightTab) {
       setActiveRightTab(initialActiveRightTab);
       setIsPopoverOpen(true);
@@ -3132,12 +3189,39 @@ export default function EditStockModal({
                   <span className={`tv-rail-badge ai ${loadingAi ? 'radium-pulse-badge' : ''}`}>{loadingAi ? '⚡' : '✨'}</span>
                   <span className="tv-rail-tooltip">{loadingAi ? 'Analyzing...' : 'AI Deep Dive'}</span>
                 </button>
+
+                <button
+                  type="button"
+                  className={`tv-rail-btn news-tool ${activeRightTab === 'news' && isPopoverOpen ? 'active' : ''}`}
+                  onClick={() => {
+                    if (isPopoverOpen && activeRightTab === 'news') {
+                      setIsPopoverOpen(false);
+                    } else {
+                      setActiveRightTab('news');
+                      setIsPopoverOpen(true);
+                    }
+                  }}
+                  title="Catalysts & News Feed"
+                  aria-label="News & Catalysts"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/>
+                    <path d="M18 14h-8"/>
+                    <path d="M15 18h-5"/>
+                    <path d="M10 6h8v4h-8V6Z"/>
+                  </svg>
+                  <span className="sr-only">News & Catalysts</span>
+                  {activeNewsFeed && activeNewsFeed.length > 0 && (
+                    <span className="tv-rail-badge news">{activeNewsFeed.length}</span>
+                  )}
+                  <span className="tv-rail-tooltip">News & Catalysts</span>
+                </button>
               </div>
 
               {/* Dedicated Floating Popover Overlay Panel */}
               {isPopoverOpen && (
                 <div
-                  className={`deep-view-popover-panel ${activeRightTab === 'position' ? 'popover-position-mode' : 'popover-ai-mode'} ${activeRightTab === 'ai' && loadingAi ? 'ai-radium-glow' : ''}`}
+                  className={`deep-view-popover-panel ${activeRightTab === 'position' ? 'popover-position-mode' : activeRightTab === 'news' ? 'popover-news-mode' : 'popover-ai-mode'} ${activeRightTab === 'ai' && loadingAi ? 'ai-radium-glow' : ''}`}
                   ref={popoverRef}
                 >
                   {/* Position Dedicated Popover */}
@@ -3293,6 +3377,107 @@ export default function EditStockModal({
                             <p className="placeholder-secondary">Select <strong>'Analyze'</strong> above to begin deep search.</p>
                           </div>
                         )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* News Dedicated Popover */}
+                  {activeRightTab === 'news' && (
+                    <>
+                      <div className="popover-header-bar news-card-header">
+                        <div className="popover-title-row">
+                          <span className="popover-header-icon news-icon">📰</span>
+                          <div className="popover-title-text-group">
+                            <span className="popover-main-title">{formData.symbol} Catalysts & News</span>
+                            <span className="popover-subtitle">Breaking headlines & company updates</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="popover-close-btn"
+                          onClick={() => setIsPopoverOpen(false)}
+                          title="Close News Panel"
+                          aria-label="Close"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      <div className="news-meta-strip">
+                        <div>
+                          <span className="news-counter-pill">{activeNewsFeed.length} Headlines</span>
+                        </div>
+                        <div className="news-source-indicator">
+                          <span className="live-dot" />
+                          <span>Live Catalysts Radar</span>
+                        </div>
+                      </div>
+
+                      <div className="popover-content-scroll news-feed-scroll themed-scroll">
+                        {(loadingNews || (!summaryData && customNewsList === null)) ? (
+                          <div className="news-loading-shimmer-box">
+                            <div className="shimmer-bone-title" />
+                            <div className="shimmer-bone-body" />
+                            <div className="shimmer-bone-title" />
+                            <div className="shimmer-bone-body" />
+                          </div>
+                        ) : activeNewsFeed.length === 0 ? (
+                          <div className="news-empty-state">
+                            <div className="news-empty-icon">📰</div>
+                            <div className="news-empty-title">No recent breaking news</div>
+                            <div className="news-empty-desc">No recent company headlines detected for {formData.symbol}.</div>
+                            <button
+                              type="button"
+                              className={`news-retry-btn ${loadingNews ? 'is-loading' : ''}`}
+                              onClick={handleRefreshNews}
+                              disabled={loadingNews}
+                            >
+                              {loadingNews ? 'Searching...' : '⟳ Check for Latest News'}
+                            </button>
+                          </div>
+                        ) : (
+                          activeNewsFeed.map((item, idx) => (
+                            <a
+                              key={item.id || idx}
+                              href={item.link}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="news-card"
+                            >
+                              <div className="news-card-header">
+                                <span className="news-publisher-tag">
+                                  <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                                    <circle cx="12" cy="12" r="10" />
+                                    <path d="m10 15 5-3-5-3v6Z" />
+                                  </svg>
+                                  {item.publisher || 'Market News'}
+                                </span>
+                                <span className="news-time-ago">{item.timeAgo || 'Recent'}</span>
+                              </div>
+
+                              <div className="news-headline">{item.title}</div>
+
+                              <div className="news-footer">
+                                <div className="news-related-tickers">
+                                  {(item.relatedTickers || [formData.symbol]).slice(0, 3).map(t => (
+                                    <span key={t} className="ticker-chip-mini">{t}</span>
+                                  ))}
+                                </div>
+                                <span className="read-link-btn">
+                                  Read ↗
+                                </span>
+                              </div>
+                            </a>
+                          ))
+                        )}
+                      </div>
+
+                      <div className="news-popover-bottom-bar">
+                        <span>Click headline to open full article in new tab</span>
                       </div>
                     </>
                   )}

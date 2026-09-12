@@ -25,6 +25,14 @@ export default defineConfig({
           'Accept': 'application/json, text/plain, */*',
           'Referer': 'https://www.nseindia.com/'
         }
+      },
+      '/google-news': {
+        target: 'https://news.google.com',
+        changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/google-news/, ''),
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36'
+        }
       }
     }
   },

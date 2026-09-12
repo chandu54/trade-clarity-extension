@@ -16,7 +16,15 @@ TradeClarity.market is a powerful React-based application designed for swing tra
   - **Country-Aware Valuation**: Formatted in canonical regional standards (₹ Cr / day for India, $ Millions / day for US).
   - **Technical Setup Detectors**: Automatically identifies IPO Bases, Tight VCP contractions, and Moving Average alignments.
   - **Free-Form Numeric Filtering**: Rapidly drill down with custom expressions (e.g. `>50`, `20-50`, `<=4`).
-  - **1-Click Watchlist Import**: Seamlessly tag and import high-conviction IPO setups into your active weekly Watchlist.
+- **Deep View Workspace & Modular Tools Dock**: A high-performance modal workstation for technical chart analysis, moving average customization, watchlist grouping, and catalyst research:
+  - **Infinity Candlestick Charting**: Dynamic historical price backfilling by scrolling left on the chart, loaded on demand with custom SMA/EMA overlays.
+  - **Modular Right Rail Dock**: Persistent dock providing instant, non-blocking overlays for your **Position Ledger**, **AI Micro-Analysis** (with Radium motion pulse feedback), and **News & Catalysts Radar**.
+  - **📰 News & Catalysts Radar**: Real-time breaking news feed combining Google News RSS and Yahoo Finance:
+    - **Reverse Chronological Ranking**: Every article is strictly sorted descending by publication timestamp (*2h ago, 12h ago, Yesterday*), guaranteeing breaking news is always at the top.
+    - **Cascading Freshness Filters**: Uses dynamic 14-day recency filters (`when:14d` → `when:30d`) to eliminate months-old archives and focus on live catalysts.
+    - **Multi-Market Coverage**: Covers top Indian financial media (*LiveMint, Economic Times, Moneycontrol, BusinessLine, CNBC-TV18, Univest*) and major US publishers (*Reuters, Bloomberg, Benzinga, Yahoo Finance*).
+    - **Word-Boundary Symbol Isolation**: Regex word boundary (`\bSYMBOL\b`) prevents false ticker matches (e.g. `ABB` will never match AbbVie or Abbott).
+    - **Auto-Fetch on Open**: Background engine fetches news immediately with an animated shimmer bone skeleton without requiring manual refresh.
 - **Customizable Parameters**: Define your own technical criteria (e.g., "Relative Strength", "Stage 2", "VCP Pattern") using Text, Dropdown, or Checkbox inputs.
 - **Smart Filtering, Sorting & Search**: Quickly find stocks by symbol or notes. Filter by Sector, Tags, Tradable status, or any of your custom parameters.
 - **AI-Powered Analysis**: Integrated with **Google Gemini** and **OpenAI** to generate professional market summaries, identify top sectors, and highlight actionable setups based on your watchlist data.

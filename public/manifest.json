@@ -19,7 +19,8 @@
     "https://www.niftyindices.com/*",
     "https://www.nseindia.com/*",
     "https://archives.nseindia.com/*",
-    "https://api.nasdaq.com/*"
+    "https://api.nasdaq.com/*",
+    "https://news.google.com/*"
   ],
 
   "action": {

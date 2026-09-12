@@ -846,9 +846,27 @@ export default function UserGuideModal({
                 location="Stock Symbol Click"
               >
                 <p>
-                  Click any stock symbol to open the <strong>Deep View Workspace</strong> for technical research, chart overlays, and watchlist organization.
+                  Click any stock symbol to open the <strong>Deep View Workspace</strong> for technical research, chart overlays, modular analysis tools, and watchlist organization.
                 </p>
                 <ul className="guide-list">
+                  <li>
+                    <strong>Modular Right Rail Dock:</strong> A persistent vertical dock on the right side of the chart provides seamless, one-click access to modular analytical tools without obscuring or blurring the active candlestick chart:
+                    <ul className="guide-sublist guide-note mt-1 ml-4 list-disc">
+                      <li><strong>Position Ledger:</strong> View active position status, lot transactions, average entry prices, and current stop-loss levels.</li>
+                      <li><strong>AI Micro-Analysis:</strong> Run institutional single-stock analysis with Radium motion pulse feedback while computing.</li>
+                      <li><strong>📰 News & Catalysts Radar:</strong> Floating popover overlay displaying real-time company catalysts and breaking news.</li>
+                    </ul>
+                  </li>
+                  <li>
+                    <strong>Live Breaking News Engine & Chronological Ranking:</strong>
+                    <ul className="guide-sublist guide-note mt-1 ml-4 list-disc">
+                      <li><strong>Strict Chronological Sort (Newest First):</strong> All articles are mathematically sorted in descending order by publication timestamp (e.g. <em>2h ago</em>, <em>12h ago</em>, <em>Yesterday</em>). Breaking developments always appear at the top.</li>
+                      <li><strong>Cascading Freshness Filters:</strong> Enforces dynamic 14-day recency filters (<code>when:14d</code>) cascading to 30-day windows to prevent historical months-old archives from polluting active catalysts.</li>
+                      <li><strong>Multi-Source Regional Coverage:</strong> Queries Google News RSS and Yahoo Finance in parallel. Covers top Indian publications (<em>LiveMint, The Economic Times, Moneycontrol, BusinessLine, CNBC-TV18, Univest</em>) for NSE/BSE stocks, and major financial media (<em>Reuters, Bloomberg, Benzinga, Yahoo Finance</em>) for US stocks.</li>
+                      <li><strong>Word-Boundary Ticker Matching:</strong> Employs strict word-boundary regex (<code>\bSYMBOL\b</code>) so short symbols like <code>ABB</code> never match unrelated companies like AbbVie or Abbott.</li>
+                      <li><strong>Instant Auto-Fetch & Caching:</strong> Opening the News tool automatically fetches live news in the background with an animated shimmer loading skeleton, syncing to local cache for instant navigation between watchlist stocks.</li>
+                    </ul>
+                  </li>
                   <li>
                     <strong>Watchlist Grouping:</strong> Click the <em>Layers Icon (Group & Categorize)</em> in the sidebar toolbar to group stocks by <strong>Sector</strong>, <strong>Tag</strong>, <strong>Flag Color</strong>, or keep them flat.
                   </li>
