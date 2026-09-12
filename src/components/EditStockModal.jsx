@@ -500,6 +500,15 @@ export default function EditStockModal({
   const leftWidthRef = useRef(leftWidth);
   const deepViewTopRef = useRef(null);
 
+  const [isThemeCardCollapsed, setIsThemeCardCollapsed] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tradeclarity_theme_card_collapsed');
+      return saved !== null ? saved === 'true' : false;
+    } catch {
+      return false;
+    }
+  });
+
   useEffect(() => {
     topHeightRef.current = topHeight;
     leftWidthRef.current = leftWidth;
@@ -1881,23 +1890,126 @@ export default function EditStockModal({
 
   const renderFormContent = () => (
     <>
-      <div className="property-grid-enterprise">
-        <div className="property-row-item">
-          <label>Sector</label>
-          <select
-            value={formData.sector || ""}
-            onChange={(e) => handleChange("sector", e.target.value)}
-          >
-            <option value="">Select...</option>
-            {sectors.map((s) => (
-              <option key={s} value={s}>{s}</option>
-            ))}
-          </select>
+      {/* 1. Stock Parameters & Setup Card */}
+      <div className="params-group-card setup-card">
+        <div className="params-group-header">
+          <span className="params-group-title">
+            <span className="params-group-dot blue" /> Stock Parameters & Setup
+          </span>
+          <label className="tradable-quick-toggle" title="Toggle active in universe">
+            <input
+              type="checkbox"
+              checked={formData.tradable}
+              onChange={(e) => handleChange("tradable", e.target.checked)}
+            />
+            <span>Tradable</span>
+          </label>
         </div>
 
-        <div className="property-row-item" style={{ gridColumn: "span 2" }}>
-          <div className="property-row-header-inline">
-            <label style={{ margin: 0 }}>Business Scope (Products / Segments)</label>
+        <div className="property-grid-enterprise">
+          <div className="property-row-item">
+            <label>Sector</label>
+            <select
+              value={formData.sector || ""}
+              onChange={(e) => handleChange("sector", e.target.value)}
+            >
+              <option value="">Select...</option>
+              {sectors.map((s) => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+          </div>
+
+          <div className="property-row-item">
+            <label title="Manual earnings date override (e.g. Aug 4, 2026). Used when Yahoo Finance doesn't provide earnings data.">Earnings Date</label>
+            <input
+              type="text"
+              value={formData.earningsDate || ""}
+              onChange={(e) => handleChange("earningsDate", e.target.value || null)}
+              placeholder="e.g. Aug 4, 2026"
+              title="Enter earnings date manually (e.g. Aug 4, 2026). Overrides auto-fetched date."
+            />
+          </div>
+
+          {sortedParams.filter(([key]) => key !== 'movingAverages' && key !== adrKey && key !== liqKey).map(([key, def]) => (
+            <div key={key} className="property-row-item">
+              <label>{def.label}</label>
+              {def.type === "checkbox" ? (
+                <label className="checkbox-label-premium">
+                  <input
+                    type="checkbox"
+                    checked={formData.params?.[key] === true}
+                    onChange={(e) => handleParamChange(key, e.target.checked)}
+                  />
+                </label>
+              ) : def.type === "select" ? (
+                <select
+                  value={formData.params?.[key] || ""}
+                  onChange={(e) => handleParamChange(key, e.target.value)}
+                >
+                  <option value="">Select...</option>
+                  {def.options?.map((opt) => (
+                    <option key={opt} value={opt}>{opt}</option>
+                  ))}
+                </select>
+              ) : (
+                <input
+                  type="text"
+                  value={formData.params?.[key] || ""}
+                  onChange={(e) => handleParamChange(key, e.target.value)}
+                />
+              )}
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* 2. Macro Themes & Catalysts Card (Collapsible) */}
+      <div className={`params-group-card theme-card ${isThemeCardCollapsed ? 'collapsed' : ''}`}>
+        <div
+          className="params-group-header clickable"
+          onClick={() => {
+            const next = !isThemeCardCollapsed;
+            setIsThemeCardCollapsed(next);
+            try {
+              localStorage.setItem('tradeclarity_theme_card_collapsed', String(next));
+            } catch (err) {
+              console.warn("Failed to save theme card state:", err);
+            }
+          }}
+        >
+          <div className="params-group-header-left">
+            <button
+              type="button"
+              className="theme-collapse-btn"
+              aria-label={isThemeCardCollapsed ? "Expand Themes" : "Collapse Themes"}
+            >
+              <svg
+                className={`theme-chevron ${isThemeCardCollapsed ? 'collapsed' : ''}`}
+                width="12"
+                height="12"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2.5"
+              >
+                <polyline points="6 9 12 15 18 9" />
+              </svg>
+            </button>
+            <span className="params-group-title theme-title">
+              <span>🌐</span> Macro Themes & Catalysts
+            </span>
+            {isThemeCardCollapsed && formData.macroTheme && (
+              <span className="theme-collapsed-summary-chip">
+                {formData.macroTheme}
+                {Array.isArray(formData.thematicVectors) && formData.thematicVectors[0]?.role && (
+                  <span className="theme-role-pill">{formData.thematicVectors[0].role}</span>
+                )}
+              </span>
+            )}
+          </div>
+
+          <div className="params-group-header-right" onClick={(e) => e.stopPropagation()}>
             <button
               type="button"
               className="ai-scope-discover-btn"
@@ -1908,205 +2020,165 @@ export default function EditStockModal({
               {isAiEnriching ? "Discovering..." : "✨ AI Discover Scope"}
             </button>
           </div>
-          <input
-            type="text"
-            value={Array.isArray(formData.businessScope) ? formData.businessScope.join(", ") : ""}
-            onChange={(e) => {
-              const scopeArr = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
-              handleChange("businessScope", scopeArr);
-            }}
-            placeholder="e.g. Cigarettes, Packaged Foods, Hotels (comma separated)"
-          />
         </div>
 
-        <div className="property-row-item">
-          <label title="Manual earnings date override (e.g. Aug 4, 2026). Used when Yahoo Finance doesn't provide earnings data.">Earnings Date</label>
-          <input
-            type="text"
-            value={formData.earningsDate || ""}
-            onChange={(e) => handleChange("earningsDate", e.target.value || null)}
-            placeholder="e.g. Aug 4, 2026"
-            title="Enter earnings date manually (e.g. Aug 4, 2026). Overrides auto-fetched date."
-          />
-        </div>
-
-        <div className="property-row-item">
-          <label style={{ margin: 0, marginBottom: "2px" }}>Macro Theme</label>
-          <input
-            type="text"
-            value={formData.macroTheme || ""}
-            onChange={(e) => handleChange("macroTheme", e.target.value)}
-            placeholder="e.g. AI & Data Centers, EV & Clean Mobility"
-          />
-        </div>
-
-        <div className="property-row-item" style={{ gridColumn: "span 2" }}>
-          <label style={{ margin: 0, marginBottom: "2px" }}>Dependent Themes & Sub-Catalysts</label>
-          <input
-            type="text"
-            value={Array.isArray(formData.dependentIndustries) ? formData.dependentIndustries.join(", ") : ""}
-            onChange={(e) => {
-              const themeArr = e.target.value.split(",").map(t => t.trim()).filter(Boolean);
-              handleChange("dependentIndustries", themeArr);
-            }}
-            placeholder="e.g. AI Infrastructure, Data Centers, Power Grid (comma separated)"
-          />
-        </div>
-
-        {Array.isArray(formData.thematicVectors) && formData.thematicVectors.length > 0 && (
-          <div className="property-row-item" style={{ gridColumn: "span 2" }}>
-            <label style={{ margin: 0, marginBottom: "4px" }}>Connected Thematic Beneficiary Vectors</label>
-            <div className="space-y-1.5 p-2.5 rounded-lg border border-slate-200 dark:border-slate-800 bg-slate-50/50 dark:bg-slate-900/50">
-              {formData.thematicVectors.map((v, idx) => (
-                <div key={idx} className="flex flex-col gap-0.5 text-[11px] pb-1 border-b border-slate-200/50 dark:border-slate-800/50 last:border-0">
-                  <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
-                    <span className="text-violet-600 dark:text-violet-400">🌐 {v.theme}</span>
-                    <span className="text-[10px] px-1.5 py-0.2 rounded bg-amber-100 text-amber-900 dark:bg-amber-950/60 dark:text-amber-300">
-                      {v.role}
-                    </span>
-                    {v.conviction && (
-                      <span className="text-[10px] text-slate-400">({v.conviction})</span>
-                    )}
-                  </div>
-                  {v.thesis && (
-                    <span className="text-[10.5px] text-slate-500 dark:text-slate-400 italic pl-3">
-                      "{v.thesis}"
-                    </span>
-                  )}
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
-
-        <div className="property-row-item">
-          <label>Tradable</label>
-          <label className="checkbox-label-premium">
-            <input
-              type="checkbox"
-              checked={formData.tradable}
-              onChange={(e) => handleChange("tradable", e.target.checked)}
-            />
-          </label>
-        </div>
-
-        {sortedParams.filter(([key]) => key !== 'movingAverages' && key !== adrKey && key !== liqKey).map(([key, def]) => (
-          <div key={key} className="property-row-item">
-            <label>{def.label}</label>
-            {def.type === "checkbox" ? (
-              <label className="checkbox-label-premium">
+        {!isThemeCardCollapsed && (
+          <div className="theme-card-body">
+            <div className="theme-inputs-grid">
+              <div className="property-row-item">
+                <label>Macro Theme</label>
                 <input
-                  type="checkbox"
-                  checked={formData.params?.[key] === true}
-                  onChange={(e) => handleParamChange(key, e.target.checked)}
+                  type="text"
+                  value={formData.macroTheme || ""}
+                  onChange={(e) => handleChange("macroTheme", e.target.value)}
+                  placeholder="e.g. AI & Data Centers, EV & Clean Mobility"
                 />
-              </label>
-            ) : def.type === "select" ? (
-              <select
-                value={formData.params?.[key] || ""}
-                onChange={(e) => handleParamChange(key, e.target.value)}
-              >
-                <option value="">Select...</option>
-                {def.options?.map((opt) => (
-                  <option key={opt} value={opt}>{opt}</option>
-                ))}
-              </select>
-            ) : (
-              <input
-                type="text"
-                value={formData.params?.[key] || ""}
-                onChange={(e) => handleParamChange(key, e.target.value)}
-              />
+              </div>
+
+              <div className="property-row-item">
+                <label>Dependent Themes & Sub-Catalysts</label>
+                <input
+                  type="text"
+                  value={Array.isArray(formData.dependentIndustries) ? formData.dependentIndustries.join(", ") : ""}
+                  onChange={(e) => {
+                    const themeArr = e.target.value.split(",").map(t => t.trim()).filter(Boolean);
+                    handleChange("dependentIndustries", themeArr);
+                  }}
+                  placeholder="e.g. AI Infrastructure, Data Centers, Power Grid"
+                />
+              </div>
+
+              <div className="property-row-item">
+                <label>Business Scope (Products / Segments)</label>
+                <input
+                  type="text"
+                  value={Array.isArray(formData.businessScope) ? formData.businessScope.join(", ") : ""}
+                  onChange={(e) => {
+                    const scopeArr = e.target.value.split(",").map(s => s.trim()).filter(Boolean);
+                    handleChange("businessScope", scopeArr);
+                  }}
+                  placeholder="e.g. Cigarettes, Packaged Foods, Hotels"
+                />
+              </div>
+            </div>
+
+            {Array.isArray(formData.thematicVectors) && formData.thematicVectors.length > 0 && (
+              <div className="thematic-vectors-container">
+                <label className="thematic-vectors-label">Connected Thematic Beneficiary Vectors</label>
+                <div className="thematic-vectors-list">
+                  {formData.thematicVectors.map((v, idx) => (
+                    <div key={idx} className="thematic-vector-item">
+                      <div className="thematic-vector-header">
+                        <span className="thematic-vector-title">🌐 {v.theme}</span>
+                        <span className="thematic-vector-role">
+                          {v.role}
+                        </span>
+                        {v.conviction && (
+                          <span className="thematic-vector-conviction">({v.conviction})</span>
+                        )}
+                      </div>
+                      {v.thesis && (
+                        <span className="thematic-vector-thesis">
+                          "{v.thesis}"
+                        </span>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
-        ))}
+        )}
       </div>
 
-      <div className="combined-research-row-premium">
-        {/* Column 1: Watchlists */}
-        {watchlists.length > 0 && (
-          <div className="research-col-watchlists-v2">
-            <div className="pill-group-wrapper-v2">
-              {watchlists.map((wl) => {
-                const isSelected = formData.watchlists?.includes(wl.id);
-                return (
-                  <div
-                    key={wl.id}
-                    className={`tag-chip-selectable ${isSelected ? 'selected' : ''}`}
-                    onClick={() => toggleWatchlist(wl.id)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        toggleWatchlist(wl.id);
-                      }
-                    }}
-                    title={`Watchlist: ${wl.name}`}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="watchlist-pill-icon">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
-                    </svg>
-                    <span>{wl.name}</span>
-                  </div>
-                );
-              })}
-            </div>
-          </div>
-        )}
-
-        {/* Dynamic Separator 1 */}
-        {watchlists.length > 0 && (showTags && userSelectableTags.length > 0) && (
-          <div className="separator-v2-premium" />
-        )}
-
-        {/* Column 2: Tags */}
-        {showTags && userSelectableTags.length > 0 && (
-          <div className="research-col-tags-v2">
-            <div className="pill-group-wrapper-v2">
-              {userSelectableTags.map((tag) => {
-                const isSelected = formData.tags?.includes(tag);
-                return (
-                  <div
-                    key={tag}
-                    className={`tag-chip-selectable ${isSelected ? 'selected' : ''}`}
-                    onClick={() => toggleTag(tag)}
-                    role="button"
-                    tabIndex={0}
-                    onKeyDown={(e) => {
-                      if (e.key === 'Enter' || e.key === ' ') {
-                        e.preventDefault();
-                        toggleTag(tag);
-                      }
-                    }}
-                  >
-                    {isSelected && (
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                        <polyline points="20 6 9 17 4 12" />
+      {/* 3. Watchlists, Tags & Notes Card */}
+      <div className="params-group-card research-card">
+        <div className="combined-research-row-premium">
+          {/* Column 1: Watchlists */}
+          {watchlists.length > 0 && (
+            <div className="research-col-watchlists-v2">
+              <div className="pill-group-wrapper-v2">
+                {watchlists.map((wl) => {
+                  const isSelected = formData.watchlists?.includes(wl.id);
+                  return (
+                    <div
+                      key={wl.id}
+                      className={`tag-chip-selectable ${isSelected ? 'selected' : ''}`}
+                      onClick={() => toggleWatchlist(wl.id)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleWatchlist(wl.id);
+                        }
+                      }}
+                      title={`Watchlist: ${wl.name}`}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="watchlist-pill-icon">
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                       </svg>
-                    )}
-                    <span>{tag}</span>
-                  </div>
-                );
-              })}
+                      <span>{wl.name}</span>
+                    </div>
+                  );
+                })}
+              </div>
             </div>
+          )}
+
+          {/* Dynamic Separator 1 */}
+          {watchlists.length > 0 && (showTags && userSelectableTags.length > 0) && (
+            <div className="separator-v2-premium" />
+          )}
+
+          {/* Column 2: Tags */}
+          {showTags && userSelectableTags.length > 0 && (
+            <div className="research-col-tags-v2">
+              <div className="pill-group-wrapper-v2">
+                {userSelectableTags.map((tag) => {
+                  const isSelected = formData.tags?.includes(tag);
+                  return (
+                    <div
+                      key={tag}
+                      className={`tag-chip-selectable ${isSelected ? 'selected' : ''}`}
+                      onClick={() => toggleTag(tag)}
+                      role="button"
+                      tabIndex={0}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter' || e.key === ' ') {
+                          e.preventDefault();
+                          toggleTag(tag);
+                        }
+                      }}
+                    >
+                      {isSelected && (
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="20 6 9 17 4 12" />
+                        </svg>
+                      )}
+                      <span>{tag}</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Dynamic Separator 2 */}
+          {(watchlists.length > 0 || (showTags && userSelectableTags.length > 0)) && (
+            <div className="separator-v2-premium" />
+          )}
+
+          {/* Column 3: Notes (Always expands) */}
+          <div className="research-col-notes-v2">
+            <textarea
+              className="description-area-premium"
+              rows={1}
+              value={formData.notes || ""}
+              onChange={(e) => handleChange("notes", e.target.value)}
+              placeholder="Technical triggers, conviction level, and entry plan..."
+            />
           </div>
-        )}
-
-        {/* Dynamic Separator 2 */}
-        {(watchlists.length > 0 || (showTags && userSelectableTags.length > 0)) && (
-          <div className="separator-v2-premium" />
-        )}
-
-        {/* Column 3: Notes (Always expands) */}
-        <div className="research-col-notes-v2">
-          <textarea
-            className="description-area-premium"
-            rows={1}
-            value={formData.notes || ""}
-            onChange={(e) => handleChange("notes", e.target.value)}
-            placeholder="Technical triggers, conviction level, and entry plan..."
-          />
         </div>
       </div>
     </>

@@ -10412,6 +10412,264 @@ input[type="date"].input-with-clear {
   background: var(--muted);
 }
 
+/* PARAMS SECTION: Grouped Cards Architecture */
+.params-group-card {
+  background: var(--panel) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: 8px !important;
+  padding: 10px 14px !important;
+  margin-bottom: 10px !important;
+  transition: all 0.2s ease-in-out !important;
+}
+
+.params-group-card:last-child {
+  margin-bottom: 0 !important;
+}
+
+.params-group-card .property-grid-enterprise {
+  margin-bottom: 0 !important;
+}
+
+.params-group-header {
+  display: flex !important;
+  align-items: center !important;
+  justify-content: space-between !important;
+  margin-bottom: 8px !important;
+  padding-bottom: 6px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06) !important;
+}
+
+:root:not([data-theme="dark"]) .params-group-header {
+  border-bottom: 1px solid rgba(0, 0, 0, 0.06) !important;
+}
+
+.params-group-header.clickable {
+  cursor: pointer !important;
+  user-select: none !important;
+  margin-bottom: 0 !important;
+  border-bottom: none !important;
+}
+
+.params-group-card.theme-card:not(.collapsed) .params-group-header {
+  margin-bottom: 10px !important;
+  border-bottom: 1px solid rgba(139, 92, 246, 0.15) !important;
+}
+
+.params-group-header-left {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.params-group-header-right {
+  display: flex !important;
+  align-items: center !important;
+  gap: 8px !important;
+}
+
+.params-group-title {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: var(--text) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  letter-spacing: 0.02em !important;
+  text-transform: none !important;
+}
+
+.params-group-dot {
+  width: 6px !important;
+  height: 6px !important;
+  border-radius: 50% !important;
+  display: inline-block !important;
+}
+
+.params-group-dot.blue {
+  background-color: #3b82f6 !important;
+}
+
+.tradable-quick-toggle {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 11px !important;
+  font-weight: 600 !important;
+  color: var(--text-muted, #94a3b8) !important;
+  cursor: pointer !important;
+  background: var(--bg) !important;
+  padding: 2px 8px !important;
+  border-radius: 4px !important;
+  border: 1px solid var(--border) !important;
+  transition: all 0.15s ease !important;
+}
+
+.tradable-quick-toggle:hover {
+  border-color: var(--primary) !important;
+  color: var(--text) !important;
+}
+
+.tradable-quick-toggle input {
+  cursor: pointer !important;
+  accent-color: #2563eb !important;
+  width: 13px !important;
+  height: 13px !important;
+  margin: 0 !important;
+}
+
+/* Theme Card Accent Styling */
+.params-group-card.theme-card {
+  background: linear-gradient(135deg, rgba(139, 92, 246, 0.04), rgba(15, 23, 42, 0.3)) !important;
+  border-color: rgba(139, 92, 246, 0.25) !important;
+}
+
+.params-group-card.theme-card:hover {
+  border-color: rgba(139, 92, 246, 0.4) !important;
+}
+
+.theme-collapse-btn {
+  width: 20px !important;
+  height: 20px !important;
+  border-radius: 4px !important;
+  background: rgba(139, 92, 246, 0.15) !important;
+  border: 1px solid rgba(139, 92, 246, 0.3) !important;
+  color: #a78bfa !important;
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  cursor: pointer !important;
+  padding: 0 !important;
+  transition: all 0.15s ease !important;
+}
+
+.theme-collapse-btn:hover {
+  background: rgba(139, 92, 246, 0.25) !important;
+  color: #c4b5fd !important;
+}
+
+.theme-chevron {
+  transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
+}
+
+.theme-chevron.collapsed {
+  transform: rotate(-90deg) !important;
+}
+
+.theme-collapsed-summary-chip {
+  display: inline-flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  font-size: 11px !important;
+  color: var(--muted) !important;
+  padding-left: 6px !important;
+  border-left: 1px solid var(--border) !important;
+  font-weight: 500 !important;
+}
+
+.theme-role-pill {
+  font-size: 9.5px !important;
+  font-weight: 700 !important;
+  padding: 1px 5px !important;
+  border-radius: 3px !important;
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #f59e0b !important;
+  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+}
+
+.theme-inputs-grid {
+  display: grid !important;
+  grid-template-columns: repeat(3, 1fr) !important;
+  gap: 8px 16px !important;
+  margin-bottom: 8px !important;
+}
+
+.thematic-vectors-container {
+  background: rgba(15, 23, 42, 0.5) !important;
+  border: 1px solid rgba(139, 92, 246, 0.2) !important;
+  border-radius: 6px !important;
+  padding: 8px 12px !important;
+}
+
+:root:not([data-theme="dark"]) .thematic-vectors-container {
+  background: #f8fafc !important;
+  border-color: #e2e8f0 !important;
+}
+
+.thematic-vectors-label {
+  font-size: 10.5px !important;
+  font-weight: 700 !important;
+  color: var(--muted) !important;
+  margin-bottom: 4px !important;
+  display: block !important;
+  text-transform: none !important;
+}
+
+.thematic-vectors-list {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 6px !important;
+}
+
+.thematic-vector-item {
+  display: flex !important;
+  flex-direction: column !important;
+  gap: 2px !important;
+  padding-bottom: 4px !important;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05) !important;
+}
+
+.thematic-vector-item:last-child {
+  border-bottom: none !important;
+  padding-bottom: 0 !important;
+}
+
+.thematic-vector-header {
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+}
+
+.thematic-vector-title {
+  font-size: 11px !important;
+  font-weight: 700 !important;
+  color: #a78bfa !important;
+}
+
+:root:not([data-theme="dark"]) .thematic-vector-title {
+  color: #7c3aed !important;
+}
+
+.thematic-vector-role {
+  font-size: 10px !important;
+  font-weight: 700 !important;
+  padding: 1px 5px !important;
+  border-radius: 3px !important;
+  background: rgba(245, 158, 11, 0.15) !important;
+  color: #fbbf24 !important;
+  border: 1px solid rgba(245, 158, 11, 0.3) !important;
+}
+
+.thematic-vector-conviction {
+  font-size: 10px !important;
+  color: var(--muted) !important;
+}
+
+.thematic-vector-thesis {
+  font-size: 10.5px !important;
+  font-style: italic !important;
+  color: var(--muted) !important;
+  padding-left: 14px !important;
+  line-height: 1.4 !important;
+}
+
+.params-group-card.research-card {
+  padding: 8px 12px !important;
+}
+
+.params-group-card.research-card .combined-research-row-premium {
+  margin-top: 0 !important;
+}
+
 /* 4. INDUSTRIAL VISIBILITY CONTROLS */
 .icon-btn-collapse {
   background: var(--bg) !important;
