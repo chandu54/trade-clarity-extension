@@ -10,6 +10,7 @@ import { fetchStockSummary, fetchStockNews, globalFundamentalsCache, fetchNseEar
 
 import ChartDrawingToolbar from "./ChartDrawingToolbar";
 import { useToast } from "./ToastContext";
+import { normalizeMacroTheme } from "../constants/thematicCatalog";
 
 const getSidebarEarningsDays = (s, sidebarData, formData, summaryData, country) => {
   if (!s) return null;
@@ -211,7 +212,19 @@ export default function EditStockModal({
   initialActiveRightTab = null
 }) {
   const { showToast } = useToast();
-  const [formData, setFormData] = useState(() => stock ? structuredClone(stock) : null);
+  const [formData, setFormData] = useState(() => {
+    if (!stock) return null;
+    const cloned = structuredClone(stock);
+    if (!cloned.macroTheme) {
+      const rawFallback = Array.isArray(cloned.dependentIndustries) && cloned.dependentIndustries[0]
+        ? cloned.dependentIndustries[0]
+        : "";
+      if (rawFallback) {
+        cloned.macroTheme = normalizeMacroTheme(rawFallback) || rawFallback;
+      }
+    }
+    return cloned;
+  });
   const [activeFlagMenuSymbol, setActiveFlagMenuSymbol] = useState(null);
   const [isAiEnriching, setIsAiEnriching] = useState(false);
 
@@ -1148,6 +1161,15 @@ export default function EditStockModal({
         const cloned = structuredClone(stock);
         // Delete top-level stale rs property if present so params.rs is authoritative
         delete cloned.rs;
+        // Derive macroTheme from dependentIndustries if missing (matches StockGrid display fallback)
+        if (!cloned.macroTheme) {
+          const rawFallback = Array.isArray(cloned.dependentIndustries) && cloned.dependentIndustries[0]
+            ? cloned.dependentIndustries[0]
+            : "";
+          if (rawFallback) {
+            cloned.macroTheme = normalizeMacroTheme(rawFallback) || rawFallback;
+          }
+        }
         setFormData(cloned);
         setAiAnalysis(stock.aiAnalysis || null);
         setAiAnalysisDate(stock.aiAnalysisDate || null);
