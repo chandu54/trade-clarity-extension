@@ -108,7 +108,21 @@ function AppContent() {
       isSyncingFromStorageRef.current = false;
       return;
     }
-    saveData(data);
+    const timer = setTimeout(() => {
+      saveData(data);
+    }, 250);
+
+    return () => clearTimeout(timer);
+  }, [data]);
+
+  useEffect(() => {
+    const handleBeforeUnload = () => {
+      if (hasLoaded.current && data) {
+        saveData(data);
+      }
+    };
+    window.addEventListener("beforeunload", handleBeforeUnload);
+    return () => window.removeEventListener("beforeunload", handleBeforeUnload);
   }, [data]);
 
   useEffect(() => {
@@ -124,7 +138,24 @@ function AppContent() {
               return newData;
             }
 
-            if (JSON.stringify(currentData) === JSON.stringify(newData)) {
+            // O(1) Check: Skip if timestamps/revisions match (prevents freezing the main thread)
+            if (
+              newData._lastModified &&
+              currentData._lastModified &&
+              newData._lastModified === currentData._lastModified
+            ) {
+              return currentData;
+            }
+
+            if (currentData === newData) {
+              return currentData;
+            }
+
+            // Fallback for legacy payloads without _lastModified
+            if (
+              !newData._lastModified &&
+              JSON.stringify(currentData) === JSON.stringify(newData)
+            ) {
               return currentData;
             }
 
@@ -349,36 +380,62 @@ function AppContent() {
     if (!weekKey || !updatedStock) return;
 
     setData(prev => {
-      const newData = structuredClone(prev);
-      const weekStocks = newData.weeks?.[country]?.[weekKey]?.stocks;
-      if (weekStocks && weekStocks[updatedStock.symbol]) {
-        weekStocks[updatedStock.symbol] = updatedStock;
-        
-        if (updatedStock.sector) {
-          if (!newData.stockSectorCache) newData.stockSectorCache = {};
-          newData.stockSectorCache[updatedStock.symbol.toUpperCase()] = updatedStock.sector;
-        }
+      if (!prev) return prev;
+      const prevWeek = prev.weeks?.[country]?.[weekKey];
+      if (!prevWeek || !prevWeek.stocks || !prevWeek.stocks[updatedStock.symbol]) {
+        return prev;
+      }
 
-        if (
-          updatedStock.macroTheme ||
-          (updatedStock.thematicVectors && updatedStock.thematicVectors.length > 0) ||
-          (updatedStock.businessScope && updatedStock.businessScope.length > 0)
-        ) {
-          if (!newData.stockThematicCache) newData.stockThematicCache = {};
-          const symUpper = updatedStock.symbol.toUpperCase();
-          newData.stockThematicCache[symUpper] = {
-            sector: updatedStock.sector || newData.stockSectorCache?.[symUpper] || "",
+      const symUpper = updatedStock.symbol.toUpperCase();
+      let nextSectorCache = prev.stockSectorCache;
+      if (updatedStock.sector) {
+        nextSectorCache = {
+          ...(prev.stockSectorCache || {}),
+          [symUpper]: updatedStock.sector,
+        };
+      }
+
+      let nextThematicCache = prev.stockThematicCache;
+      if (
+        updatedStock.macroTheme ||
+        (updatedStock.thematicVectors && updatedStock.thematicVectors.length > 0) ||
+        (updatedStock.businessScope && updatedStock.businessScope.length > 0)
+      ) {
+        nextThematicCache = {
+          ...(prev.stockThematicCache || {}),
+          [symUpper]: {
+            sector: updatedStock.sector || (nextSectorCache && nextSectorCache[symUpper]) || "",
             macroTheme: updatedStock.macroTheme || "",
             thematicVectors: updatedStock.thematicVectors || [],
             businessScope: updatedStock.businessScope || [],
             dependentIndustries: updatedStock.dependentIndustries || [],
             updatedAt: Date.now(),
-          };
-        }
-
-        showToast(`Updated ${updatedStock.symbol}`, "success");
+          },
+        };
       }
-      return newData;
+
+      const nextStocks = {
+        ...prevWeek.stocks,
+        [updatedStock.symbol]: updatedStock,
+      };
+
+      showToast(`Updated ${updatedStock.symbol}`, "success");
+
+      return {
+        ...prev,
+        stockSectorCache: nextSectorCache || prev.stockSectorCache,
+        stockThematicCache: nextThematicCache || prev.stockThematicCache,
+        weeks: {
+          ...(prev.weeks || {}),
+          [country]: {
+            ...(prev.weeks?.[country] || {}),
+            [weekKey]: {
+              ...prevWeek,
+              stocks: nextStocks,
+            },
+          },
+        },
+      };
     });
   };
 

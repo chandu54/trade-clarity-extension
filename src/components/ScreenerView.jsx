@@ -115,16 +115,42 @@ export default function ScreenerView({
         const adrDays = adrDaysRef.current;
         const liquidityDays = liquidityDaysRef.current;
 
+        let accumulatedBatchMap = {};
+        let lastProgressUpdateTime = 0;
+        let progressFlushTimer = null;
+
+        const flushProgressBatch = () => {
+          if (Object.keys(accumulatedBatchMap).length === 0) return;
+          const currentBatch = { ...accumulatedBatchMap };
+          accumulatedBatchMap = {};
+          setHydratedIpos((prev) => {
+            const prevMap = new Map((prev || []).map((item) => [item.symbol, item]));
+            Object.entries(currentBatch).forEach(([sym, updatedItem]) => {
+              prevMap.set(sym, updatedItem);
+            });
+            return directory.map((d) => prevMap.get(d.symbol) || d);
+          });
+        };
+
         const onProgressCallback = (current, total, batchHydratedMap) => {
           setHydrationProgress({ current, total });
           if (batchHydratedMap && Object.keys(batchHydratedMap).length > 0) {
-            setHydratedIpos((prev) => {
-              const prevMap = new Map((prev || []).map((item) => [item.symbol, item]));
-              Object.entries(batchHydratedMap).forEach(([sym, updatedItem]) => {
-                prevMap.set(sym, updatedItem);
-              });
-              return directory.map((d) => prevMap.get(d.symbol) || d);
-            });
+            Object.assign(accumulatedBatchMap, batchHydratedMap);
+            const now = Date.now();
+            if (now - lastProgressUpdateTime > 500 || current >= total) {
+              lastProgressUpdateTime = now;
+              if (progressFlushTimer) {
+                clearTimeout(progressFlushTimer);
+                progressFlushTimer = null;
+              }
+              flushProgressBatch();
+            } else if (!progressFlushTimer) {
+              progressFlushTimer = setTimeout(() => {
+                lastProgressUpdateTime = Date.now();
+                progressFlushTimer = null;
+                flushProgressBatch();
+              }, 500);
+            }
           }
         };
 

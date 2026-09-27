@@ -320,7 +320,7 @@ export function extractPreviousClose(meta, rawBars, currentPrice = null) {
   return null;
 }
 
-export async function fetchStockData(symbols, country, timeframe = '3mo', customInterval = null, signal = null, forceRefresh = false, onBatch = null) {
+export async function fetchStockData(symbols, country, timeframe = '6mo', customInterval = null, signal = null, forceRefresh = false, onBatch = null) {
   if (!symbols || !symbols.length) return [];
 
   const isSingleStockCall = symbols.length === 1;
@@ -337,8 +337,8 @@ export async function fetchStockData(symbols, country, timeframe = '3mo', custom
     '2y': { range: '2y', interval: '1d' },
     '5y': { range: '5y', interval: '1wk' }
   };
-  const tfKey = (timeframe || '3mo').toLowerCase();
-  const tf = validTimeframes[tfKey] || validTimeframes['3mo'];
+  const tfKey = (timeframe || '6mo').toLowerCase();
+  const tf = validTimeframes[tfKey] || validTimeframes['6mo'];
   const fetchInterval = customInterval && customInterval !== 'auto' ? customInterval : tf.interval;
 
   const fetchSymbolData = async (symbol) => {

@@ -21,6 +21,34 @@ export async function loadData() {
         resolve(res[KEY] || null);
       });
     });
+
+    // Fallback: If root KEY is empty, reconstruct from partitioned storage
+    if (!data) {
+      const partitioned = await new Promise((resolve) => {
+        chrome.storage.local.get([
+          "tc_weeks_active_IN",
+          "tc_weeks_archive_IN",
+          "tc_weeks_active_US",
+          "tc_weeks_archive_US",
+          "tc_config",
+          "tc_caches"
+        ], resolve);
+      });
+      if (partitioned?.tc_weeks_active_IN || partitioned?.tc_weeks_active_US || partitioned?.tc_config) {
+        data = structuredClone(DEFAULT_DATA);
+        if (partitioned.tc_config) {
+          Object.assign(data, partitioned.tc_config);
+        }
+        if (partitioned.tc_caches) {
+          data.stockSectorCache = partitioned.tc_caches.stockSectorCache || data.stockSectorCache || {};
+          data.stockThematicCache = partitioned.tc_caches.stockThematicCache || data.stockThematicCache || {};
+        }
+        data.weeks = data.weeks || { IN: {}, US: {} };
+        data.weeks.IN = { ...(partitioned.tc_weeks_archive_IN || {}), ...(partitioned.tc_weeks_active_IN || {}) };
+        data.weeks.US = { ...(partitioned.tc_weeks_archive_US || {}), ...(partitioned.tc_weeks_active_US || {}) };
+        needsSave = true;
+      }
+    }
   } else {
     data = JSON.parse(localStorage.getItem(KEY));
   }
@@ -341,6 +369,50 @@ export async function loadData() {
   }
 
   /* =========================
+     NON-DESTRUCTIVE PARTITION MIGRATION
+  ========================= */
+  if (isChromeStorage()) {
+    try {
+      const meta = await new Promise((resolve) => {
+        chrome.storage.local.get(["tc_meta", "trading_app_data_v1_backup"], resolve);
+      });
+      if (!meta?.tc_meta && data) {
+        // Safe snapshot of legacy data before partition tagging
+        const currentSunday = getActualCurrentSunday();
+        const inPart = partitionWeeks(data.weeks?.IN || {}, currentSunday);
+        const usPart = partitionWeeks(data.weeks?.US || {}, currentSunday);
+
+        await new Promise((resolve) => {
+          chrome.storage.local.set({
+            tc_meta: { version: 2, migratedAt: Date.now() },
+            trading_app_data_v1_backup: data,
+            tc_weeks_active_IN: inPart.active,
+            tc_weeks_archive_IN: inPart.archive,
+            tc_weeks_active_US: usPart.active,
+            tc_weeks_archive_US: usPart.archive,
+            tc_config: {
+              paramDefinitions: data.paramDefinitions,
+              uiConfig: data.uiConfig,
+              sectors: data.sectors,
+              watchlists: data.watchlists,
+              aiSettings: data.aiSettings,
+              theme: data.theme,
+              isPro: data.isPro,
+              analyticsLayout: data.analyticsLayout,
+            },
+            tc_caches: {
+              stockSectorCache: data.stockSectorCache || {},
+              stockThematicCache: data.stockThematicCache || {},
+            },
+          }, resolve);
+        });
+      }
+    } catch (_err) {
+      // Non-blocking fallback
+    }
+  }
+
+  /* =========================
      SAVE BACK ONLY IF CHANGED
   ========================= */
   if (needsSave) {
@@ -350,10 +422,72 @@ export async function loadData() {
   return data;
 }
 
+export function partitionWeeks(weeksForCountry = {}, currentSunday = getActualCurrentSunday()) {
+  const active = {};
+  const archive = {};
+  if (!weeksForCountry || typeof weeksForCountry !== "object") {
+    return { active, archive };
+  }
+  Object.keys(weeksForCountry).forEach((wKey) => {
+    // If wKey is equal to current Sunday or in the future (>= currentSunday), it belongs to active working window
+    if (wKey >= currentSunday) {
+      active[wKey] = weeksForCountry[wKey];
+    } else {
+      archive[wKey] = weeksForCountry[wKey];
+    }
+  });
+  return { active, archive };
+}
+
+export async function loadArchiveWeeks(country = "IN") {
+  if (isChromeStorage()) {
+    const key = `tc_weeks_archive_${country}`;
+    const res = await new Promise(resolve => chrome.storage.local.get(key, resolve));
+    return res[key] || {};
+  }
+  const data = JSON.parse(localStorage.getItem(KEY) || "{}");
+  const weeks = data.weeks?.[country] || {};
+  return partitionWeeks(weeks).archive;
+}
+
 export async function saveData(data) {
+  if (!data) return;
+  data._lastModified = Date.now();
   if (isChromeStorage()) {
     return new Promise((resolve) => {
-      chrome.storage.local.set({ [KEY]: data }, resolve);
+      const currentSunday = getActualCurrentSunday();
+      const inWeeks = data.weeks?.IN || {};
+      const usWeeks = data.weeks?.US || {};
+      const inPart = partitionWeeks(inWeeks, currentSunday);
+      const usPart = partitionWeeks(usWeeks, currentSunday);
+
+      const payload = {
+        [KEY]: data,
+        tc_meta: { version: 2, lastModified: data._lastModified },
+        tc_weeks_active_IN: inPart.active,
+        tc_weeks_archive_IN: inPart.archive,
+        tc_weeks_active_US: usPart.active,
+        tc_weeks_archive_US: usPart.archive,
+      };
+      if (data.paramDefinitions || data.uiConfig || data.aiSettings) {
+        payload.tc_config = {
+          paramDefinitions: data.paramDefinitions,
+          uiConfig: data.uiConfig,
+          sectors: data.sectors,
+          watchlists: data.watchlists,
+          aiSettings: data.aiSettings,
+          theme: data.theme,
+          isPro: data.isPro,
+          analyticsLayout: data.analyticsLayout,
+        };
+      }
+      if (data.stockSectorCache || data.stockThematicCache) {
+        payload.tc_caches = {
+          stockSectorCache: data.stockSectorCache || {},
+          stockThematicCache: data.stockThematicCache || {},
+        };
+      }
+      chrome.storage.local.set(payload, resolve);
     });
   } else {
     localStorage.setItem(KEY, JSON.stringify(data));
@@ -365,12 +499,34 @@ function normalizeSymbolKey(symbol) {
   return String(symbol).replace(/\.(NS|BO)$/i, '').trim().toUpperCase();
 }
 
+let cachedDrawings = null;
+let cachedDrawingsTime = 0;
+let pendingDrawingsPromise = null;
+
 export async function getDrawingsForSymbol(symbol) {
   const key = normalizeSymbolKey(symbol);
   if (!key) return [];
-  const data = await loadData();
-  const drawings = data.drawings || {};
-  return drawings[key] || [];
+
+  const now = Date.now();
+  if (cachedDrawings && (now - cachedDrawingsTime < 10000)) {
+    return cachedDrawings[key] || [];
+  }
+
+  if (!pendingDrawingsPromise) {
+    pendingDrawingsPromise = (async () => {
+      try {
+        const data = await loadData();
+        cachedDrawings = data.drawings || {};
+        cachedDrawingsTime = Date.now();
+        return cachedDrawings;
+      } finally {
+        pendingDrawingsPromise = null;
+      }
+    })();
+  }
+
+  const allDrawings = await pendingDrawingsPromise;
+  return allDrawings[key] || [];
 }
 
 export async function saveDrawingForSymbol(symbol, drawing) {
@@ -388,6 +544,8 @@ export async function saveDrawingForSymbol(symbol, drawing) {
   }
   
   data.drawings[key] = current;
+  cachedDrawings = data.drawings;
+  cachedDrawingsTime = Date.now();
   await saveData(data);
   return current;
 }
@@ -399,6 +557,8 @@ export async function deleteDrawingForSymbol(symbol, drawingId) {
   data.drawings = data.drawings || {};
   const current = data.drawings[key] || [];
   data.drawings[key] = current.filter(d => d.id !== drawingId);
+  cachedDrawings = data.drawings;
+  cachedDrawingsTime = Date.now();
   await saveData(data);
   return data.drawings[key];
 }
@@ -409,6 +569,8 @@ export async function clearDrawingsForSymbol(symbol) {
   const data = await loadData();
   data.drawings = data.drawings || {};
   data.drawings[key] = [];
+  cachedDrawings = data.drawings;
+  cachedDrawingsTime = Date.now();
   await saveData(data);
   return [];
 }

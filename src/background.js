@@ -397,6 +397,7 @@ async function processAiQueue() {
               }
             });
 
+            db._lastModified = Date.now();
             chrome.storage.local.set({ trading_app_data: db }, () => {
               resolve();
             });
@@ -912,6 +913,7 @@ async function updateStorageWithMetrics(updates) {
       console.log(`[Sync] Saving metrics changes to storage for ${updates.map(u => u.symbol).join(', ')}. dataChanged=${dataChanged}`);
 
       if (dataChanged) {
+        db._lastModified = Date.now();
         chrome.storage.local.set({ trading_app_data: db }, () => {
           if (chrome.runtime.lastError) {
             console.error(
@@ -1068,6 +1070,7 @@ async function updateStorageWithSectors(mappings, country, weekKey) {
       });
 
       if (dataChanged || cacheChanged) {
+        db._lastModified = Date.now();
         chrome.storage.local.set({ trading_app_data: db }, resolve);
       } else {
         resolve();

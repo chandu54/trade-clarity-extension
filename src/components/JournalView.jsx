@@ -303,7 +303,7 @@ export default function JournalView({ country, data, setData, quickLogSymbol = n
   }, [activeJournalTab]);
 
   // Snapshot State
-  const [snapshotTimeframe, setSnapshotTimeframe] = useState('3mo');
+  const [snapshotTimeframe, setSnapshotTimeframe] = useState('6mo');
   const [snapshotStockData, setSnapshotStockData] = useState([]);
   const [snapshotLoading, setSnapshotLoading] = useState(false);
 

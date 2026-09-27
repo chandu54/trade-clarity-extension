@@ -42,6 +42,17 @@ global.ResizeObserver = vi.fn().mockImplementation(() => ({
     disconnect: vi.fn(),
 }));
 
+// Mock IntersectionObserver
+global.IntersectionObserver = vi.fn().mockImplementation((callback) => ({
+    observe: vi.fn((el) => {
+      if (typeof callback === 'function') {
+        callback([{ isIntersecting: true, target: el }]);
+      }
+    }),
+    unobserve: vi.fn(),
+    disconnect: vi.fn(),
+}));
+
 // Mock HTMLCanvasElement for lightweight-charts
 if (typeof HTMLCanvasElement !== 'undefined') {
   HTMLCanvasElement.prototype.getContext = vi.fn().mockReturnValue({

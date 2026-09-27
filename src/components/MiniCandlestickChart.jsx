@@ -15,7 +15,7 @@ export default function MiniCandlestickChart({
   height = '150px',
   accountCapital,
   maSettings = {},
-  timeframe = '3mo',
+  timeframe = '6mo',
   selectedBenchmark = 'none',
   benchmarkMode = 'pct',
   benchmarkCandles = [],

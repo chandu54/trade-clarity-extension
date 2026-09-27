@@ -9,6 +9,7 @@ import MovingAverageRibbon from "./MovingAverageRibbon";
 import { fetchStockSummary, fetchStockNews, globalFundamentalsCache, fetchNseEarningsDate, calculateDaysAway } from "../utils/stockAnalysisApi";
 
 import ChartDrawingToolbar from "./ChartDrawingToolbar";
+import StockContextMenu from "./StockContextMenu";
 import { useToast } from "./ToastContext";
 import { normalizeMacroTheme } from "../constants/thematicCatalog";
 
@@ -226,6 +227,12 @@ export default function EditStockModal({
     return cloned;
   });
   const [activeFlagMenuSymbol, setActiveFlagMenuSymbol] = useState(null);
+  const [sidebarContextMenu, setSidebarContextMenu] = useState({
+    isOpen: false,
+    x: 0,
+    y: 0,
+    stock: null,
+  });
   const [isAiEnriching, setIsAiEnriching] = useState(false);
 
   const handleAiDiscoverScope = async () => {
@@ -307,7 +314,7 @@ export default function EditStockModal({
   }, [formData?.symbol, sortedStocks, onUpdateStock, onSave]);
 
   const [isParamsCollapsed, setIsParamsCollapsed] = useState(true);
-  const [timeframe, setTimeframe] = useState('3mo');
+  const [timeframe, setTimeframe] = useState('6mo');
   const [interval, setInterval] = useState('auto');
   const [selectedBenchmark, setSelectedBenchmark] = useState('none');
   const [benchmarkMode, setBenchmarkMode] = useState('normal');
@@ -1594,30 +1601,7 @@ export default function EditStockModal({
     }
   }, [formData.symbol, handleDeleteStockItem]);
 
-  useEffect(() => {
-    if (!isOpen) return;
 
-    const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
-        e.preventDefault();
-        handleSave(false);
-        return;
-      }
-
-      if (e.key === "Delete" || e.key === "Del") {
-        const activeTag = document.activeElement?.tagName;
-        const isEditingInput = activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT";
-        
-        if (e.altKey || e.ctrlKey || !isEditingInput) {
-          e.preventDefault();
-          handleDelete();
-        }
-      }
-    };
-
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, handleDelete, handleSave]);
 
   const [selectedPromptId, setSelectedPromptId] = useState(aiSettings?.promptLibrary?.defaults?.stock || "default");
 
@@ -1681,6 +1665,67 @@ export default function EditStockModal({
       setLoadingAi(false);
     }
   };
+
+  const runAiHandlerRef = useRef(null);
+  useEffect(() => {
+    runAiHandlerRef.current = handleRunAi;
+  });
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        handleSave(false);
+        return;
+      }
+
+      const activeTag = document.activeElement?.tagName;
+      const isEditingInput = activeTag === "INPUT" || activeTag === "TEXTAREA" || activeTag === "SELECT" || document.activeElement?.isContentEditable;
+
+      if (e.key === "Delete" || e.key === "Del") {
+        if (e.altKey || e.ctrlKey || !isEditingInput) {
+          e.preventDefault();
+          handleDelete();
+        }
+      } else if (!isEditingInput && !e.ctrlKey && !e.metaKey && !e.altKey && formData?.symbol) {
+        const key = e.key.toLowerCase();
+        if (key === "f") {
+          e.preventDefault();
+          const colors = ["red", "blue", "green", "orange", "purple", null];
+          const curColor = formData.flagColor || null;
+          const nextColor = colors[(colors.indexOf(curColor) + 1) % colors.length];
+          handleUpdateStockFlag(formData.symbol, nextColor);
+        } else if (key === "t") {
+          e.preventDefault();
+          setFormData((prev) => {
+            const nextStatus = !prev.tradable;
+            showToast?.(`${prev.symbol} marked as ${nextStatus ? "Tradable" : "Untradable"}`, "info");
+            return { ...prev, tradable: nextStatus };
+          });
+        } else if (key === "c") {
+          e.preventDefault();
+          navigator.clipboard.writeText(formData.symbol).then(() => {
+            showToast?.(`Copied ${formData.symbol} to clipboard`, "success");
+          });
+        } else if (key === "o") {
+          e.preventDefault();
+          const prefix = country === "IN" ? "NSE:" : "";
+          window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(prefix + formData.symbol)}`, "_blank", "noopener,noreferrer");
+        } else if (key === "l" && onQuickLog) {
+          e.preventDefault();
+          onQuickLog(formData.symbol);
+        } else if (key === "a") {
+          e.preventDefault();
+          runAiHandlerRef.current?.();
+        }
+      }
+    };
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [isOpen, handleDelete, handleSave, formData?.symbol, formData?.flagColor, country, onQuickLog, handleUpdateStockFlag, showToast]);
 
   const handleChange = (field, value) => {
     setFormData((prev) => ({ ...prev, [field]: value }));
@@ -2564,6 +2609,16 @@ export default function EditStockModal({
                                   key={`${group.key}-${s.symbol}`}
                                   className={`sidebar-item-premium ${isActive ? 'active' : ''}`}
                                   onClick={() => handleSelectStock(s, group.key)}
+                                  onContextMenu={(e) => {
+                                    e.preventDefault();
+                                    e.stopPropagation();
+                                    setSidebarContextMenu({
+                                      isOpen: true,
+                                      x: e.clientX,
+                                      y: e.clientY,
+                                      stock: s,
+                                    });
+                                  }}
                                   title={`${s.symbol} - ${priceText || 'No price available'}`}
                                   style={{ position: 'relative' }}
                                 >
@@ -3779,6 +3834,82 @@ export default function EditStockModal({
               </button>
             </div>
           </div>
+        )}
+
+        {sidebarContextMenu.isOpen && sidebarContextMenu.stock && (
+          <StockContextMenu
+            isOpen={sidebarContextMenu.isOpen}
+            x={sidebarContextMenu.x}
+            y={sidebarContextMenu.y}
+            stock={sidebarContextMenu.stock.symbol === formData?.symbol ? formData : sidebarContextMenu.stock}
+            country={country}
+            watchlists={watchlists || []}
+            availableTags={availableTags || []}
+            onClose={() => setSidebarContextMenu({ isOpen: false, x: 0, y: 0, stock: null })}
+            onToggleWatchlist={(sym, wlId) => {
+              const targetStock = sidebarContextMenu.stock;
+              const curWls = targetStock?.watchlists || [];
+              const nextWls = curWls.includes(wlId) ? curWls.filter(id => id !== wlId) : [...curWls, wlId];
+              if (sym === formData?.symbol) {
+                setFormData(prev => ({ ...prev, watchlists: nextWls }));
+              }
+              if (onSave) {
+                onSave({ ...targetStock, watchlists: nextWls });
+              }
+              setSidebarContextMenu(prev => (prev.stock ? { ...prev, stock: { ...prev.stock, watchlists: nextWls } } : prev));
+            }}
+            onSelectFlagColor={(sym, color) => {
+              handleUpdateStockFlag(sym, color);
+              setSidebarContextMenu(prev => (prev.stock ? { ...prev, stock: { ...prev.stock, flagColor: color } } : prev));
+            }}
+            onToggleTag={(sym, tag) => {
+              const targetStock = sidebarContextMenu.stock;
+              const curTags = (sym === formData?.symbol ? formData?.tags : targetStock?.tags) || [];
+              const nextTags = curTags.includes(tag) ? curTags.filter(t => t !== tag) : [...curTags, tag];
+              if (sym === formData?.symbol) {
+                setFormData(prev => ({ ...prev, tags: nextTags }));
+              }
+              if (onSave) {
+                onSave({ ...targetStock, tags: nextTags });
+              }
+              setSidebarContextMenu(prev => (prev.stock ? { ...prev, stock: { ...prev.stock, tags: nextTags } } : prev));
+            }}
+            onToggleTradable={(sym) => {
+              const targetStock = sidebarContextMenu.stock;
+              const curTradable = Boolean(targetStock?.tradable);
+              const nextTradable = !curTradable;
+              if (sym === formData?.symbol) {
+                setFormData(prev => ({ ...prev, tradable: nextTradable }));
+              }
+              if (onSave) {
+                onSave({ ...targetStock, tradable: nextTradable });
+              }
+              showToast?.(`${sym} marked as ${nextTradable ? "Tradable" : "Untradable"}`, "info");
+              setSidebarContextMenu(prev => (prev.stock ? { ...prev, stock: { ...prev.stock, tradable: nextTradable } } : prev));
+            }}
+            onCopySymbol={(sym) => {
+              navigator.clipboard.writeText(sym).then(() => {
+                showToast?.(`Copied ${sym} to clipboard`, "success");
+              });
+            }}
+            onOpenTradingView={(sym, ctry) => {
+              const prefix = ctry === "IN" ? "NSE:" : "";
+              window.open(`https://www.tradingview.com/chart/?symbol=${encodeURIComponent(prefix + sym)}`, "_blank", "noopener,noreferrer");
+            }}
+            onQuickLog={onQuickLog}
+            onAnalyzeStock={(stk) => {
+              handleSelectStock(stk);
+              setTimeout(() => {
+                handleRunAi();
+              }, 50);
+            }}
+            onEditStock={(stk) => {
+              handleSelectStock(stk);
+            }}
+            onDeleteStock={(sym) => {
+              handleDeleteStockItem(sym);
+            }}
+          />
         )}
       </div>
     </Modal>

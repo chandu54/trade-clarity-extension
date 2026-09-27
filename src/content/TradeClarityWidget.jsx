@@ -228,7 +228,15 @@ const TradeClarityWidget = () => {
     const handleStorageChange = (changes, area) => {
       try {
         if (isContextValid() && area === 'local' && changes.trading_app_data) {
-          setAppData(changes.trading_app_data.newValue);
+          const nextVal = changes.trading_app_data.newValue;
+          if (nextVal) {
+            setAppData((prev) => {
+              if (prev && prev._lastModified && nextVal._lastModified && prev._lastModified === nextVal._lastModified) {
+                return prev;
+              }
+              return nextVal;
+            });
+          }
         }
       } catch (_e) {
         // Context likely invalidated
@@ -382,6 +390,7 @@ const TradeClarityWidget = () => {
       }
       if (!targetWeeks[weekKey]) targetWeeks[weekKey] = { displayName: `Week of ${weekKey}`, stocks: {} };
       targetWeeks[weekKey].stocks[symbol] = stockData;
+      newData._lastModified = Date.now();
 
       safeStorage.set({ trading_app_data: newData }, (err) => {
         if (err) {

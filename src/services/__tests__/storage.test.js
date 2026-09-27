@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { loadData, saveData, getDrawingsForSymbol, saveDrawingForSymbol, deleteDrawingForSymbol, clearDrawingsForSymbol } from "../storage";
+import { loadData, saveData, getDrawingsForSymbol, saveDrawingForSymbol, deleteDrawingForSymbol, clearDrawingsForSymbol, partitionWeeks, loadArchiveWeeks } from "../storage";
 import { DEFAULT_DATA } from "../../seed";
 
 // Helper to mock global objects
@@ -74,6 +74,20 @@ describe("storage service", () => {
       const data = await loadData();
       expect(data.aiSettings.apiKey).toBe("test-key");
       expect(chromeMock.storage.local.remove).toHaveBeenCalled();
+    });
+
+    it("should safely snapshot legacy data and create partitioned keys when saving", async () => {
+      const testData = { ...DEFAULT_DATA, theme: "dark" };
+      await saveData(testData);
+
+      expect(chromeMock.storage.local.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          trading_app_data: expect.objectContaining({ theme: "dark" }),
+          tc_meta: expect.objectContaining({ version: 2 }),
+          tc_config: expect.objectContaining({ theme: "dark" }),
+        }),
+        expect.any(Function)
+      );
     });
   });
 
@@ -174,6 +188,63 @@ describe("storage service", () => {
 
       const cleared = await clearDrawingsForSymbol(symbol);
       expect(cleared).toEqual([]);
+    });
+  });
+
+  describe("Week Partitioning", () => {
+    it("should correctly partition active (current & next week) from archive weeks", () => {
+      const weeks = {
+        "2025-02-16": { displayName: "Old Week 1", stocks: {} },
+        "2025-02-23": { displayName: "Old Week 2", stocks: {} },
+        "2025-03-02": { displayName: "Current Week", stocks: {} },
+        "2025-03-09": { displayName: "Next Week (Planning)", stocks: {} },
+      };
+
+      const { active, archive } = partitionWeeks(weeks, "2025-03-02");
+
+      expect(Object.keys(active)).toEqual(["2025-03-02", "2025-03-09"]);
+      expect(Object.keys(archive)).toEqual(["2025-02-16", "2025-02-23"]);
+      expect(active["2025-03-09"].displayName).toBe("Next Week (Planning)");
+    });
+
+    it("should persist partitioned active and archive weeks on saveData in chrome storage", async () => {
+      restoreChrome = stubGlobal("chrome", chromeMock);
+      const testData = {
+        ...DEFAULT_DATA,
+        weeks: {
+          IN: {
+            "2025-02-23": { displayName: "Past", stocks: {} },
+            "2025-03-02": { displayName: "Current", stocks: {} },
+          },
+          US: {
+            "2025-03-02": { displayName: "US Current", stocks: {} },
+          }
+        }
+      };
+
+      await saveData(testData);
+
+      expect(chromeMock.storage.local.set).toHaveBeenCalledWith(
+        expect.objectContaining({
+          tc_weeks_active_IN: expect.any(Object),
+          tc_weeks_archive_IN: expect.any(Object),
+          tc_weeks_active_US: expect.any(Object),
+          tc_weeks_archive_US: expect.any(Object),
+        }),
+        expect.any(Function)
+      );
+      restoreChrome();
+    });
+
+    it("should load archive weeks for a country", async () => {
+      chromeMock.storage.local.get.mockImplementation((key, callback) => {
+        callback({ tc_weeks_archive_IN: { "2025-02-16": { displayName: "Old" } } });
+      });
+      restoreChrome = stubGlobal("chrome", chromeMock);
+
+      const archive = await loadArchiveWeeks("IN");
+      expect(archive["2025-02-16"]).toBeDefined();
+      restoreChrome();
     });
   });
 });

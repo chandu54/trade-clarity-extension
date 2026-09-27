@@ -20,7 +20,7 @@ export default function CategoryAnalysisView({
   weekInfo = ""
 }) {
   const [activeTab, setActiveTab] = useState('birdsEye');
-  const [timeframe, setTimeframe] = useState('3mo');
+  const [timeframe, setTimeframe] = useState('6mo');
   const [selectedBenchmark, setSelectedBenchmark] = useState('none');
   const [benchmarkMode, setBenchmarkMode] = useState('pct');
   const [benchmarkCandles, setBenchmarkCandles] = useState([]);
@@ -81,8 +81,8 @@ export default function CategoryAnalysisView({
         return;
       }
 
-      // Skip duplicate initial fetch on mount if initial stock data is already provided for 3mo
-      if (isInitialMount.current && initialDataRef.current && initialDataRef.current.length > 0 && timeframe === '3mo') {
+      // Skip duplicate initial fetch on mount if initial stock data is already provided for 6mo
+      if (isInitialMount.current && initialDataRef.current && initialDataRef.current.length > 0 && timeframe === '6mo') {
         isInitialMount.current = false;
         setLoading(false);
         return;
