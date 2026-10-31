@@ -17,11 +17,13 @@ import AnalyticsDashboard from "./components/AnalyticsDashboard";
 import UserGuideModal from "./components/UserGuideModal";
 import DataManagementModal from "./components/DataManagementModal";
 import WeeklyFeedbackModal from "./components/WeeklyFeedbackModal";
+import AutomationModal from "./components/AutomationModal";
 import { ToastProvider, useToast } from "./components/ToastContext";
 import { ConfirmProvider, useConfirm } from "./components/ConfirmContext";
 import "./styles.css";
 
 import { loadData, saveData } from "./services/storage";
+import { syncStockUniverse } from "./services/stockUniverseService";
 import { useModalState } from "./hooks/useModalState";
 import { useTheme } from "./hooks/useTheme";
 import { useFullscreen } from "./hooks/useFullscreen";
@@ -92,6 +94,7 @@ function AppContent() {
       }
 
       finalData = scrubParamDefinitions(finalData);
+      syncStockUniverse(finalData);
 
       setData(finalData);
       setWeekKey(latestWeek);
@@ -104,6 +107,7 @@ function AppContent() {
 
   useEffect(() => {
     if (!hasLoaded.current || !data) return;
+    syncStockUniverse(data);
     if (isSyncingFromStorageRef.current) {
       isSyncingFromStorageRef.current = false;
       return;
@@ -244,6 +248,10 @@ function AppContent() {
       if (e.altKey && e.key.toLowerCase() === 's') {
         e.preventDefault();
         modals.setShowSettings(true);
+      }
+      if (e.altKey && e.key.toLowerCase() === 'u') {
+        e.preventDefault();
+        modals.setShowAutomation(true);
       }
       if (e.altKey && e.key.toLowerCase() === 'a') {
         e.preventDefault();
@@ -705,7 +713,9 @@ function AppContent() {
             setData={setData}
             country={country}
             weekKey={weekKey}
+            setWeekKey={setWeekKey}
             selectedWatchlistId={selectedWatchlistId}
+            setSelectedWatchlistId={setSelectedWatchlistId}
             isReadOnly={isReadOnly}
             onExportAll={exportAllData}
             onImportAll={importAllData}
@@ -848,6 +858,22 @@ function AppContent() {
           setWeekKey={setWeekKey}
           onClose={() => modals.setShowSettings(false)}
           onOpenModal={modals.openModal}
+        />
+      )}
+
+      {modals.showAutomation && (
+        <AutomationModal
+          key={`auto_${country}`}
+          isOpen={modals.showAutomation}
+          data={data}
+          setData={setData}
+          country={country}
+          weekKey={weekKey}
+          setWeekKey={setWeekKey}
+          selectedWatchlistId={selectedWatchlistId}
+          setSelectedWatchlistId={setSelectedWatchlistId}
+          onClose={() => modals.setShowAutomation(false)}
+          showToast={showToast}
         />
       )}
 

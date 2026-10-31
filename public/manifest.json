@@ -2,7 +2,7 @@
   "name": "TradeClarity.market",
   "description": "Professional swing trading research terminal. Organize watchlists weekly, quantify setups, Journaling and get AI insights.",
   "author": "TradeClarity Team",
-  "version": "3.2.0",
+  "version": "3.3.0",
   "manifest_version": 3,
   "permissions": [
     "storage",
@@ -20,9 +20,9 @@
     "https://www.nseindia.com/*",
     "https://archives.nseindia.com/*",
     "https://api.nasdaq.com/*",
-    "https://news.google.com/*"
+    "https://news.google.com/*",
+    "https://chartink.com/*"
   ],
-
   "action": {
     "default_title": "Open TradeClarity.market",
     "default_icon": {
@@ -51,13 +51,18 @@
         "*://*.tradingview.com/chart/*",
         "*://*.screener.in/*"
       ],
-      "js": ["content.js"],
+      "js": [
+        "content.js"
+      ],
       "run_at": "document_idle"
     }
   ],
   "web_accessible_resources": [
     {
-      "resources": ["content.css", "dashboard.html"],
+      "resources": [
+        "content.css",
+        "dashboard.html"
+      ],
       "matches": [
         "*://*.tradingview.com/*",
         "*://*.screener.in/*"

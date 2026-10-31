@@ -532,3 +532,4 @@ const SettingsModal = ({ isOpen, onClose, data, setData, onOpenModal }) => {
 };
 
 export default SettingsModal;
+

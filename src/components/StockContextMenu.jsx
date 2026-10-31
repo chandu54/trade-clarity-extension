@@ -17,6 +17,7 @@ export default function StockContextMenu({
   country = "IN",
   watchlists = [],
   availableTags = [],
+  initialSubmenu = null,
   onClose,
   onToggleWatchlist,
   onSelectFlagColor,
@@ -30,8 +31,14 @@ export default function StockContextMenu({
   onDeleteStock,
 }) {
   const menuRef = useRef(null);
-  const [activeSubmenu, setActiveSubmenu] = useState(null); // 'watchlist' | 'flag' | 'tags' | null
+  const [prevOpenState, setPrevOpenState] = useState({ isOpen, initialSubmenu });
+  const [activeSubmenu, setActiveSubmenu] = useState(initialSubmenu); // 'watchlist' | 'flag' | 'tags' | null
   const [position, setPosition] = useState({ top: y, left: x });
+
+  if (prevOpenState.isOpen !== isOpen || prevOpenState.initialSubmenu !== initialSubmenu) {
+    setPrevOpenState({ isOpen, initialSubmenu });
+    setActiveSubmenu(isOpen ? initialSubmenu : null);
+  }
 
   useLayoutEffect(() => {
     if (!isOpen || !menuRef.current) return;
@@ -61,13 +68,18 @@ export default function StockContextMenu({
       }
     };
 
-    const handleScroll = () => {
+    const handleScroll = (e) => {
+      // Do not close if scrolling inside the context menu or its submenus
+      if (menuRef.current && menuRef.current.contains(e.target)) {
+        return;
+      }
       onClose();
     };
 
     const handleKeyDown = (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
+        e.stopPropagation();
         onClose();
         return;
       }
@@ -79,39 +91,49 @@ export default function StockContextMenu({
       const key = e.key.toLowerCase();
       if (key === "w") {
         e.preventDefault();
+        e.stopPropagation();
         setActiveSubmenu((prev) => (prev === "watchlist" ? null : "watchlist"));
       } else if (key === "f") {
         e.preventDefault();
+        e.stopPropagation();
         setActiveSubmenu((prev) => (prev === "flag" ? null : "flag"));
       } else if (key === "g") {
         e.preventDefault();
+        e.stopPropagation();
         setActiveSubmenu((prev) => (prev === "tags" ? null : "tags"));
       } else if (key === "t" && onToggleTradable && stock) {
         e.preventDefault();
+        e.stopPropagation();
         onToggleTradable(stock.symbol);
         onClose();
       } else if (key === "c" && onCopySymbol && stock) {
         e.preventDefault();
+        e.stopPropagation();
         onCopySymbol(stock.symbol);
         onClose();
       } else if (key === "o" && onOpenTradingView && stock) {
         e.preventDefault();
+        e.stopPropagation();
         onOpenTradingView(stock.symbol, country);
         onClose();
       } else if (key === "l" && onQuickLog && stock) {
         e.preventDefault();
+        e.stopPropagation();
         onQuickLog(stock.symbol);
         onClose();
       } else if (key === "a" && onAnalyzeStock && stock) {
         e.preventDefault();
+        e.stopPropagation();
         onAnalyzeStock(stock);
         onClose();
       } else if ((key === "e" || key === "enter") && onEditStock && stock) {
         e.preventDefault();
+        e.stopPropagation();
         onEditStock(stock);
         onClose();
       } else if ((key === "delete" || key === "backspace") && onDeleteStock && stock) {
         e.preventDefault();
+        e.stopPropagation();
         onDeleteStock(stock.symbol);
         onClose();
       }
@@ -148,6 +170,8 @@ export default function StockContextMenu({
   const userSelectableTags = (availableTags || []).filter(
     (t) => !t.toUpperCase().startsWith("AI:")
   );
+
+  const openLeft = position.left > (typeof window !== "undefined" ? window.innerWidth - 420 : 1000);
 
   return createPortal(
     <div
@@ -201,7 +225,7 @@ export default function StockContextMenu({
           </div>
 
           {activeSubmenu === "watchlist" && (
-            <div className="context-sub-menu" onClick={(e) => e.stopPropagation()}>
+            <div className={`context-sub-menu ${openLeft ? "open-left" : ""}`} onClick={(e) => e.stopPropagation()}>
               <div className="context-sub-menu-title">Add to Watchlist</div>
               {watchlists && watchlists.length > 0 ? (
                 watchlists.map((wl) => {
@@ -260,7 +284,7 @@ export default function StockContextMenu({
           </div>
 
           {activeSubmenu === "flag" && (
-            <div className="context-sub-menu flag-picker-submenu" onClick={(e) => e.stopPropagation()}>
+            <div className={`context-sub-menu flag-picker-submenu ${openLeft ? "open-left" : ""}`} onClick={(e) => e.stopPropagation()}>
               <div className="context-sub-menu-title">Pick Flag Color</div>
               <div className="flag-picker-row">
                 {Object.entries(FLAG_COLOR_MAP).map(([colorName, colorHex]) => (
@@ -324,7 +348,7 @@ export default function StockContextMenu({
           </div>
 
           {activeSubmenu === "tags" && (
-            <div className="context-sub-menu" onClick={(e) => e.stopPropagation()}>
+            <div className={`context-sub-menu ${openLeft ? "open-left" : ""}`} onClick={(e) => e.stopPropagation()}>
               <div className="context-sub-menu-title">Apply Tags</div>
               {userSelectableTags && userSelectableTags.length > 0 ? (
                 userSelectableTags.map((t) => {

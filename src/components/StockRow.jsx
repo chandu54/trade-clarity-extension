@@ -44,6 +44,7 @@ function areStockRowPropsEqual(prev, next) {
   if (prev.isReadOnly !== next.isReadOnly) return false;
   if (prev.country !== next.country) return false;
   if (prev.quote !== next.quote) return false;
+  if (prev.isSelected !== next.isSelected) return false;
   if (prev.isTagDropdownActive !== next.isTagDropdownActive) return false;
   if (prev.isFlagMenuActive !== next.isFlagMenuActive) return false;
   if (prev.showLivePrice !== next.showLivePrice) return false;
@@ -66,6 +67,8 @@ export const StockRow = memo(function StockRow({
   quote,
   country,
   isReadOnly,
+  isSelected,
+  onToggleSelect,
   sectors,
   visibleParams,
   availableTags,
@@ -122,7 +125,8 @@ export const StockRow = memo(function StockRow({
 
   return (
     <tr
-      className={stock.tradable ? "tradable" : ""}
+      data-symbol={stock.symbol}
+      className={`${stock.tradable ? "tradable" : ""} ${isSelected ? "bg-blue-500/10 dark:bg-blue-500/15" : ""}`}
       onContextMenu={(e) => {
         if (onContextMenu) {
           e.preventDefault();
@@ -142,14 +146,26 @@ export const StockRow = memo(function StockRow({
         <div className="stock-cell-content">
           <div className="stock-header-row">
             <div className="symbol-cell-content">
-              <div className="flex items-center gap-1">
+              <div className="flex items-center gap-1.5">
+                {!isReadOnly && onToggleSelect && (
+                  <input
+                    type="checkbox"
+                    checked={Boolean(isSelected)}
+                    onChange={(e) => {
+                      e.stopPropagation();
+                      onToggleSelect(stock.symbol);
+                    }}
+                    className="stock-select-checkbox rounded border-[var(--border)] text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer shrink-0"
+                    title={isSelected ? `Deselect ${stock.symbol}` : `Select ${stock.symbol}`}
+                  />
+                )}
                 {!isReadOnly && (
                   <div
                     style={{
                       position: "relative",
                       display: "inline-flex",
                       flexShrink: 0,
-                      marginLeft: "-6px",
+                      marginLeft: "-2px",
                     }}
                   >
                     <div

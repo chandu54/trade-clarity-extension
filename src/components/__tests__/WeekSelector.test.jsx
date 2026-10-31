@@ -97,4 +97,17 @@ describe('WeekSelector', () => {
     // Sunday of 2026-06-29 is 2026-06-28
     expect(props.setWeekKey).toHaveBeenCalledWith('2026-06-28');
   });
+
+  it('preserves weekKey on mount and does not force override to current week', () => {
+    // 2026-06-21 is not today's Sunday
+    const { container } = renderWithContext(<WeekSelector {...props} weekKey="2026-06-21" />);
+    
+    // setWeekKey should NOT have been called on mount
+    expect(props.setWeekKey).not.toHaveBeenCalled();
+
+    // Date picker should be initialized to Monday of that week: 2026-06-22
+    const dateInput = container.querySelector('input[type="date"]');
+    expect(dateInput.value).toBe('2026-06-22');
+  });
 });
+

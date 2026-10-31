@@ -12,6 +12,7 @@ import ChartDrawingToolbar from "./ChartDrawingToolbar";
 import StockContextMenu from "./StockContextMenu";
 import { useToast } from "./ToastContext";
 import { normalizeMacroTheme } from "../constants/thematicCatalog";
+import { searchStockUniverse, searchYahooSymbols } from "../services/stockUniverseService";
 
 const getSidebarEarningsDays = (s, sidebarData, formData, summaryData, country) => {
   if (!s) return null;
@@ -193,8 +194,8 @@ export default function EditStockModal({
   onClose,
   stock,
   onSave,
-  paramDefinitions,
-  sectors,
+  paramDefinitions = {},
+  sectors = [],
   availableTags,
   weekInfo: _weekInfo,
   country,
@@ -202,6 +203,7 @@ export default function EditStockModal({
   aiSettings = {},
   isDeepView = false,
   onUpdateStock = null,
+  onAddStock = null,
   watchlists = [],
   sortedStocks = [],
   onSelectStock = null,
@@ -1536,12 +1538,56 @@ export default function EditStockModal({
     };
   }, [currentIndex, effectiveNavigationItems, formData, aiAnalysis, aiAnalysisDate, isOpen, handleNavigate]);
 
-  const filteredNavStocks = (sortedStocks || []).filter(s => {
-    const q = navSearchQuery.toLowerCase().trim();
-    if (!q) return false;
-    const name = s.longName || s.name || '';
-    return s.symbol.toLowerCase().includes(q) || name.toLowerCase().includes(q);
-  });
+  const [isSearchingOnline, setIsSearchingOnline] = useState(false);
+  const [universeVersion, setUniverseVersion] = useState(0);
+
+  // Live dynamic Yahoo Search fallback
+  useEffect(() => {
+    const q = navSearchQuery.trim();
+    if (!q || q.length < 2) {
+      setIsSearchingOnline(false);
+      return;
+    }
+
+    let isCurrent = true;
+    const timer = setTimeout(async () => {
+      setIsSearchingOnline(true);
+      try {
+        const liveResults = await searchYahooSymbols(q, country);
+        if (isCurrent && liveResults.length > 0) {
+          setUniverseVersion((v) => v + 1);
+        }
+      } catch (_e) {
+        // silent fallback
+      } finally {
+        if (isCurrent) setIsSearchingOnline(false);
+      }
+    }, 280);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [navSearchQuery, country]);
+
+  const universeSearchResults = useMemo(() => {
+    if (!navSearchQuery.trim()) {
+      return { inWatchlistMatches: [], directoryMatches: [] };
+    }
+    return searchStockUniverse({
+      query: navSearchQuery,
+      country,
+      currentWatchlistStocks: sortedStocks || [],
+      limit: 8
+    });
+  }, [navSearchQuery, country, sortedStocks, universeVersion]);
+
+  const filteredNavStocks = universeSearchResults.inWatchlistMatches;
+  const directoryMatches = universeSearchResults.directoryMatches;
+
+  const isInCurrentWatchlist = useMemo(() => {
+    return (sortedStocks || []).some(s => s.symbol === formData?.symbol);
+  }, [sortedStocks, formData?.symbol]);
 
   // Note: We MUST NOT return null early if we want the Modal's ESC listener to function.
   // The Modal itself handles its own null rendering via the isOpen prop.
@@ -2277,6 +2323,23 @@ export default function EditStockModal({
                       {formData.longName || formData.name}
                     </span>
                   )}
+                  {!isInCurrentWatchlist && (
+                    <button
+                      type="button"
+                      className="btn-add-to-watchlist-pill"
+                      onClick={() => {
+                        if (onAddStock) {
+                          onAddStock(formData.symbol);
+                        } else if (onSave) {
+                          onSave(formData);
+                        }
+                        showToast(`Added ${formData.symbol} to watchlist!`, "success");
+                      }}
+                      title="Add to current week's watchlist"
+                    >
+                      + Add to Watchlist
+                    </button>
+                  )}
                 </div>
               </div>
 
@@ -2342,22 +2405,56 @@ export default function EditStockModal({
                         </button>
                       )}
                     </div>
-                    {isNavDropdownOpen && filteredNavStocks.length > 0 && (
+                    {isNavDropdownOpen && (filteredNavStocks.length > 0 || directoryMatches.length > 0 || isSearchingOnline) && (
                       <div className="nav-search-dropdown-premium themed-scroll">
-                        {filteredNavStocks.map((s) => (
-                          <div
-                            key={s.symbol}
-                            className={`nav-search-item-premium ${s.symbol === formData.symbol ? 'active' : ''}`}
-                            onClick={() => {
-                              handleSelectStock(s);
-                              setNavSearchQuery('');
-                              setIsNavDropdownOpen(false);
-                            }}
-                          >
-                            <span className="nav-search-item-symbol">{s.symbol}</span>
-                            <span className="nav-search-item-name">{s.longName || s.name || ''}</span>
+                        {filteredNavStocks.length > 0 && (
+                          <>
+                            {directoryMatches.length > 0 && (
+                              <div className="nav-search-section-header">In Watchlist ({filteredNavStocks.length})</div>
+                            )}
+                            {filteredNavStocks.map((s) => (
+                              <div
+                                key={s.symbol}
+                                className={`nav-search-item-premium ${s.symbol === formData.symbol ? 'active' : ''}`}
+                                onClick={() => {
+                                  handleSelectStock(s);
+                                  setNavSearchQuery('');
+                                  setIsNavDropdownOpen(false);
+                                }}
+                              >
+                                <span className="nav-search-item-symbol">{s.symbol}</span>
+                                <span className="nav-search-item-name">{s.longName || s.name || ''}</span>
+                              </div>
+                            ))}
+                          </>
+                        )}
+                        {directoryMatches.length > 0 && (
+                          <>
+                            <div className="nav-search-section-header">Stock Directory ({directoryMatches.length})</div>
+                            {directoryMatches.map((s) => (
+                              <div
+                                key={`dir-${s.symbol}`}
+                                className="nav-search-item-premium directory-stock-item"
+                                onClick={() => {
+                                  handleSelectStock(s);
+                                  setNavSearchQuery('');
+                                  setIsNavDropdownOpen(false);
+                                }}
+                              >
+                                <div className="nav-search-item-main">
+                                  <span className="nav-search-item-symbol">{s.symbol}</span>
+                                  <span className="nav-search-item-name">{s.longName || s.name || ''}</span>
+                                </div>
+                                {s.sector && <span className="nav-search-item-sector-pill">{s.sector}</span>}
+                              </div>
+                            ))}
+                          </>
+                        )}
+                        {isSearchingOnline && (
+                          <div className="nav-search-live-indicator">
+                            <span className="loading-spinner-micro" /> Searching online market...
                           </div>
-                        ))}
+                        )}
                       </div>
                     )}
                   </div>

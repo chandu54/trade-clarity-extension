@@ -125,7 +125,6 @@ export const DEFAULT_DATA = {
     },
   },
 
-  watchlists: [],
   weeks: {},
   uiConfig: {
     readOnlyPastWeeks: false,
@@ -173,5 +172,28 @@ export const DEFAULT_DATA = {
   journals: {
     IN: [],
     US: []
-  }
+  },
+  watchlists: [
+    {
+      id: "wl_default",
+      name: "Default Watchlist",
+      isDefault: true,
+      visibleParams: ["stage", "vcp_tightness", "rs", "movingAverages", "in.liquidity", "adr"],
+      visibleFilters: ["stage", "vcp_tightness", "rs", "movingAverages", "in.liquidity", "adr"],
+    },
+    {
+      id: "wl_mid_liquidity",
+      name: "Watchlist 2",
+      isDefault: false,
+      visibleParams: ["stage", "vcp_tightness", "rs", "movingAverages", "in.liquidity", "adr"],
+      visibleFilters: ["stage", "vcp_tightness", "rs", "movingAverages", "in.liquidity", "adr"],
+    },
+    {
+      id: "wl_ipo",
+      name: "IPO Watchlist",
+      isDefault: false,
+      visibleParams: ["stage", "vcp_tightness", "rs", "movingAverages", "in.liquidity", "adr"],
+      visibleFilters: ["stage", "vcp_tightness", "rs", "movingAverages", "in.liquidity", "adr"],
+    },
+  ],
 };

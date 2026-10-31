@@ -5,6 +5,7 @@ export function useStockShortcuts({
   country = "IN",
   enabled = true,
   onToggleWatchlistModal,
+  onToggleWatchlist,
   onCycleFlagColor,
   onToggleTagDropdown,
   onToggleTradable,
@@ -15,6 +16,8 @@ export function useStockShortcuts({
   onEditStock,
   onDeleteStock,
 }) {
+  const handleWatchlist = onToggleWatchlistModal || onToggleWatchlist;
+
   useEffect(() => {
     if (!enabled || !stock) return;
 
@@ -35,9 +38,9 @@ export function useStockShortcuts({
 
       const key = e.key.toLowerCase();
 
-      if (key === "w" && onToggleWatchlistModal) {
+      if (key === "w" && handleWatchlist) {
         e.preventDefault();
-        onToggleWatchlistModal(stock);
+        handleWatchlist(stock);
       } else if (key === "f" && onCycleFlagColor) {
         e.preventDefault();
         onCycleFlagColor(stock.symbol);
@@ -74,7 +77,7 @@ export function useStockShortcuts({
     stock,
     country,
     enabled,
-    onToggleWatchlistModal,
+    handleWatchlist,
     onCycleFlagColor,
     onToggleTagDropdown,
     onToggleTradable,

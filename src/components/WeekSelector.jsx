@@ -1,5 +1,5 @@
 import WeekSummary from "./WeekSummary";
-import { useEffect, useState, useRef } from "react";
+import { useEffect, useState } from "react";
 import { getLocalDateString, getSundayOfWeek, getWeekRangeLabel } from "../utils/weekHelpers";
 import { useConfirm } from "./ConfirmContext";
 import { useToast } from "./ToastContext";
@@ -24,7 +24,18 @@ export default function WeekSelector({
   onShowWeeklyFeedback,
 }) {
   // Initialize with weekKey or today's date
-  const [selectedDate, setSelectedDate] = useState(() => getLocalDateString(new Date()));
+  const [selectedDate, setSelectedDate] = useState(() => {
+    const today = getLocalDateString(new Date());
+    const todaySunday = getSundayOfWeek(today);
+    if (weekKey && weekKey !== todaySunday) {
+      const [y, m, d] = weekKey.split("-").map(Number);
+      const sunday = new Date(y, m - 1, d);
+      const monday = new Date(sunday);
+      monday.setDate(sunday.getDate() + 1);
+      return getLocalDateString(monday);
+    }
+    return today;
+  });
   const [isBulkRunning, setIsBulkRunning] = useState(false);
 
   useEffect(() => {
@@ -55,7 +66,6 @@ export default function WeekSelector({
     if (onBulkAnalyze) onBulkAnalyze();
   };
 
-  const mounted = useRef(false);
   const { confirm } = useConfirm();
   const { showToast } = useToast();
 
@@ -99,19 +109,6 @@ export default function WeekSelector({
       }
     }
   }
-
-  useEffect(() => {
-    const today = getLocalDateString(new Date());
-    const todaySunday = getSundayOfWeek(today);
-
-    if (!mounted.current) {
-      mounted.current = true;
-      // On initial load, force the week key to be the current week
-      if (weekKey !== todaySunday) {
-        setWeekKey(todaySunday);
-      }
-    }
-  }, [weekKey, setWeekKey]);
 
   function updateDate(dateStr) {
     setSelectedDate(dateStr);

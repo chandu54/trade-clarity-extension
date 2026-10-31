@@ -60,9 +60,30 @@ export async function loadData() {
     data = structuredClone(DEFAULT_DATA);
     needsSave = true;
   }
-  if (!data.watchlists) {
+  if (!data.watchlists || !Array.isArray(data.watchlists)) {
     data.watchlists = structuredClone(DEFAULT_DATA.watchlists);
     needsSave = true;
+  } else {
+    const standardWatchlists = [
+      { id: "wl_default", name: "Default Watchlist", isDefault: true },
+      { id: "wl_mid_liquidity", name: "Watchlist 2", isDefault: false },
+      { id: "wl_ipo", name: "IPO Watchlist", isDefault: false },
+    ];
+    standardWatchlists.forEach((std) => {
+      const exists = data.watchlists.some(
+        (w) => w.id === std.id || (std.id === "wl_default" && (w.isDefault || w.name?.toLowerCase().includes("default")))
+      );
+      if (!exists) {
+        data.watchlists.push({
+          id: std.id,
+          name: std.name,
+          isDefault: std.isDefault,
+          visibleParams: Object.keys(data.paramDefinitions || {}),
+          visibleFilters: Object.keys(data.paramDefinitions || {}),
+        });
+        needsSave = true;
+      }
+    });
   }
 
   /* =========================

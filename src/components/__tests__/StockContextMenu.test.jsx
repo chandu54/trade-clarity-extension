@@ -145,4 +145,42 @@ describe("StockContextMenu Component", () => {
 
     expect(onToggleTag).toHaveBeenCalledWith("TCS", "VCP Breakout");
   });
+
+  it("handles keyboard shortcuts W, G, and E", () => {
+    const onEditStock = vi.fn();
+    render(
+      <StockContextMenu
+        {...defaultProps}
+        availableTags={["VCP Breakout"]}
+        onEditStock={onEditStock}
+      />
+    );
+
+    // Test 'W' shortcut toggles watchlist submenu
+    fireEvent.keyDown(document, { key: "w" });
+    expect(screen.getByText("Add to Watchlist")).toBeInTheDocument();
+
+    // Toggle off with 'W'
+    fireEvent.keyDown(document, { key: "w" });
+    expect(screen.queryByText("Add to Watchlist")).toBeNull();
+
+    // Test 'G' shortcut toggles tags submenu
+    fireEvent.keyDown(document, { key: "g" });
+    expect(screen.getByText("VCP Breakout")).toBeInTheDocument();
+
+    // Test 'E' shortcut triggers edit stock
+    fireEvent.keyDown(document, { key: "e" });
+    expect(onEditStock).toHaveBeenCalledWith(defaultProps.stock);
+    expect(defaultProps.onClose).toHaveBeenCalled();
+  });
+
+  it("opens with initialSubmenu if provided", () => {
+    render(
+      <StockContextMenu
+        {...defaultProps}
+        initialSubmenu="watchlist"
+      />
+    );
+    expect(screen.getByText("Add to Watchlist")).toBeInTheDocument();
+  });
 });

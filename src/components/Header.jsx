@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useConfirm } from "./ConfirmContext";
 import { isMarketOpenForCountry } from "../utils/yahooFinanceMap";
+import { subscribeAutomationState, getActiveRunningAutomation } from "../services/automation/automationStateStore";
 
 const MENU_ITEMS = [
   {
@@ -37,6 +38,11 @@ const MENU_ITEMS = [
     label: "Rules",
     title: "Set rules for editing data across weeks and lock previous entries",
     key: "rules",
+  },
+  {
+    label: "Automations",
+    title: "Run automated scanning, hydration, and watchlist preparation workflows",
+    key: "automation",
   },
   {
     label: "Data management",
@@ -127,9 +133,17 @@ const BookIcon = () => (
 export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll, onManageTags, onManageWatchlists, theme, onToggleTheme, isFullscreen, onToggleFullscreen, onShowSettings, onShowUserGuide, country, setCountry }) {
   const [open, setOpen] = useState(false);
   const [regionOpen, setRegionOpen] = useState(false);
+  const [activeAutomation, setActiveAutomation] = useState(getActiveRunningAutomation);
   const menuRef = useRef(null);
   const regionRef = useRef(null);
   const { confirm } = useConfirm();
+
+  useEffect(() => {
+    const unsubscribe = subscribeAutomationState(() => {
+      setActiveAutomation(getActiveRunningAutomation());
+    });
+    return unsubscribe;
+  }, []);
 
   useEffect(() => {
     const handleOutsideClick = (e) => {
@@ -195,6 +209,20 @@ export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll
       </div>
 
       <div className="header-actions">
+        {activeAutomation && (
+          <div
+            className="header-automation-capsule"
+            onClick={() => onOpenModal("automation")}
+            title={`Automation in progress: ${activeAutomation.statusText || 'Running...'} - Click to view`}
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-blue-500"></span>
+            </span>
+            <span>⚡ {activeAutomation.taskId === 'chartink_scanner' ? 'Chartink' : 'IPO Prep'}: {activeAutomation.pct}%</span>
+          </div>
+        )}
+
         <div className="header-group system-controls">
           <div className="region-selector-v2" ref={regionRef}>
             <button

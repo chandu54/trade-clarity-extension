@@ -9,6 +9,7 @@ import { getBulkStockVerdicts } from "./services/ai.js";
 import { fetchStockData } from "./utils/yahooFinanceMap.js";
 import { CONFIG } from "./constants/config.js";
 import stockMetadata from "./constants/stockMetadata.json";
+import { executeChartinkFetch } from "./services/chartinkService.js";
 
 chrome.action.onClicked.addListener(() => {
   chrome.tabs.create({
@@ -55,6 +56,23 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       url: chrome.runtime.getURL("dashboard.html"),
     });
     sendResponse({ success: true });
+    return true;
+  }
+
+  if (message.action === "FETCH_CHARTINK_SCANNER") {
+    executeChartinkFetch(message.screenerUrl)
+      .then((symbols) => sendResponse({ success: true, symbols }))
+      .catch((err) => sendResponse({ success: false, error: err.message }));
+    return true;
+  }
+
+  if (message.action === "GET_METRICS_QUEUE_STATUS") {
+    sendResponse({
+      isProcessing,
+      queueLength: processingQueue.length,
+      totalJobs,
+      completedJobs,
+    });
     return true;
   }
 
@@ -782,6 +800,8 @@ async function fetchAndCalculateMetrics(
       movingAveragesKey: maMatch.key,
       rsKey: rsMatch.key,
       stageKey: stageMatch.key,
+      turnoverCr: country === "IN" ? liquidityValue / 10000000 : liquidityValue / 1000000,
+      liquidityValue: liquidityValue,
     };
   } catch (error) {
     clearTimeout(timeoutId);
@@ -811,16 +831,38 @@ async function updateStorageWithMetrics(updates) {
       });
 
       updates.forEach(({ symbol, country, weekKey, metrics }) => {
-        const weekData = db.weeks[country]?.[weekKey];
-        if (weekData && weekData.stocks && weekData.stocks[symbol]) {
-          const stock = weekData.stocks[symbol];
-          stock.params = stock.params || {};
+        if (!db.weeks) db.weeks = {};
+        if (!db.weeks[country]) db.weeks[country] = {};
+        if (!db.weeks[country][weekKey]) db.weeks[country][weekKey] = { stocks: {} };
+        const weekData = db.weeks[country][weekKey];
+        if (!weekData.stocks) weekData.stocks = {};
+        if (!weekData.stocks[symbol]) {
+          weekData.stocks[symbol] = {
+            symbol,
+            sector: "",
+            macroTheme: "",
+            thematicVectors: [],
+            businessScope: [],
+            dependentIndustries: [],
+            tradable: false,
+            notes: "",
+            tags: [],
+            params: {},
+            watchlists: [],
+          };
+          dataChanged = true;
+        }
 
-          const adrKey = metrics.adrKey || "adr";
-          const liqKey = metrics.liquidityKey || "liquidity";
-          const maKey = metrics.movingAveragesKey || "movingAverages";
-          const rsKey = metrics.rsKey || "rs";
-          const stageKey = metrics.stageKey || "stage";
+        const stock = weekData.stocks[symbol];
+        stock.params = stock.params || {};
+        if (metrics.turnoverCr !== undefined) stock.turnoverCr = metrics.turnoverCr;
+        if (metrics.liquidityValue !== undefined) stock.liquidityVal = metrics.liquidityValue;
+
+        const adrKey = metrics.adrKey || "adr";
+        const liqKey = metrics.liquidityKey || "liquidity";
+        const maKey = metrics.movingAveragesKey || "movingAverages";
+        const rsKey = metrics.rsKey || "rs";
+        const stageKey = metrics.stageKey || "stage";
 
           // Auto-apply Young IPO (<60d) or Recent Listing (60-250d)
           if (metrics.isYoungIPO) {
@@ -907,7 +949,6 @@ async function updateStorageWithMetrics(updates) {
 
           // Update the week-level timestamp whenever we process a successful sync
           weekData.lastUpdatedTime = Date.now();
-        }
       });
 
       console.log(`[Sync] Saving metrics changes to storage for ${updates.map(u => u.symbol).join(', ')}. dataChanged=${dataChanged}`);

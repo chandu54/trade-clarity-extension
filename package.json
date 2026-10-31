@@ -1,7 +1,7 @@
 {
   "name": "trade-clarity-market",
   "private": true,
-  "version": "3.2.0",
+  "version": "3.3.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,7 +16,8 @@
     "test:utils": "vitest run --config vite.config.js utils",
     "test:e2e": "vitest run --config vite.config.js e2e",
     "test:ipo-live": "vite-node scripts/testIpoScreenerLive.js",
-    "update-metadata-db": "node scripts/generateMetadataDb.js"
+    "update-metadata-db": "node scripts/generateMetadataDb.js",
+    "sync:agent": "node scripts/sync-chartink-agent.js"
   },
   "dependencies": {
     "lightweight-charts": "^5.1.0",

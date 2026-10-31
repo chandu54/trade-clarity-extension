@@ -13,6 +13,7 @@ import { useToast } from "./ToastContext";
 import { useConfirm } from "./ConfirmContext";
 import { classifySectorsInBulk } from "../services/ai";
 import stockMetadata from "../constants/stockMetadata.json";
+import { searchStockUniverse, syncStockUniverse, searchYahooSymbols } from "../services/stockUniverseService";
 import {
   normalizeMacroTheme,
   extractStockThematicThemes,
@@ -345,10 +346,12 @@ function checkCondition(value, filter, type) {
 export default function StockGrid({
   data,
   weekKey,
+  setWeekKey: _setWeekKey,
   setData,
   isReadOnly,
   country,
   selectedWatchlistId,
+  setSelectedWatchlistId: _setSelectedWatchlistId,
   onExportAll,
   onImportAll,
   availableTags,
@@ -775,6 +778,7 @@ export default function StockGrid({
         const rsKey = rsInfo?.key || (country === 'IN' ? 'in.rs' : 'us.rs');
 
         Object.keys(stocksMap).forEach(sym => {
+          if (!mergedStocks[sym]) return;
           const newRs = stocksMap[sym]?.params?.rs || stocksMap[sym]?.parameters?.rs || stocksMap[sym]?.params?.[rsKey] || stocksMap[sym]?.parameters?.[rsKey];
           const oldRs = mergedStocks[sym]?.params?.[rsKey] || mergedStocks[sym]?.params?.rs;
           if (newRs && newRs !== oldRs) {
@@ -853,6 +857,66 @@ export default function StockGrid({
   const [importPendingStocks, setImportPendingStocks] = useState(null);
 
   const [searchQuery, setSearchQuery] = useState("");
+  const [isSearchDropdownOpen, setIsSearchDropdownOpen] = useState(false);
+  const [isSearchingOnline, setIsSearchingOnline] = useState(false);
+  const [universeVersion, setUniverseVersion] = useState(0);
+  const searchContainerRef = useRef(null);
+
+  useEffect(() => {
+    function handleClickOutside(event) {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target)) {
+        setIsSearchDropdownOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => document.removeEventListener("mousedown", handleClickOutside);
+  }, []);
+
+  // Live dynamic Yahoo Search fallback
+  useEffect(() => {
+    const q = searchQuery.trim();
+    if (!q || q.length < 2) {
+      setIsSearchingOnline(false);
+      return;
+    }
+
+    let isCurrent = true;
+    const timer = setTimeout(async () => {
+      setIsSearchingOnline(true);
+      try {
+        const liveResults = await searchYahooSymbols(q, country);
+        if (isCurrent && liveResults.length > 0) {
+          setUniverseVersion((v) => v + 1);
+        }
+      } catch (_e) {
+        // silent fallback
+      } finally {
+        if (isCurrent) setIsSearchingOnline(false);
+      }
+    }, 280);
+
+    return () => {
+      isCurrent = false;
+      clearTimeout(timer);
+    };
+  }, [searchQuery, country]);
+
+  const currentViewStocks = useMemo(() => {
+    if (selectedWatchlistId === "all") return allStocks;
+    return allStocks.filter((s) => s.watchlists?.includes(selectedWatchlistId));
+  }, [allStocks, selectedWatchlistId]);
+
+  const universeSearchResults = useMemo(() => {
+    if (!searchQuery.trim()) {
+      return { inWatchlistMatches: [], directoryMatches: [] };
+    }
+    return searchStockUniverse({
+      query: searchQuery,
+      country,
+      currentWatchlistStocks: currentViewStocks,
+      limit: 8
+    });
+  }, [searchQuery, country, currentViewStocks, universeVersion]);
   const [filters, setFilters] = useState({});
   const [showFilters, setShowFilters] = useState(false);
   const [sortBy, setSortBy] = useState("symbol");
@@ -884,6 +948,29 @@ export default function StockGrid({
   const [activeTagDropdown, setActiveTagDropdown] = useState(null);
   const [pageSize, setPageSize] = useState(10);
   const [currentPage, setCurrentPage] = useState(1);
+
+  // Multi-select state for bulk actions
+  const [selectedSymbols, setSelectedSymbols] = useState(new Set());
+
+  const handleToggleSelect = useCallback((symbol) => {
+    setSelectedSymbols((prev) => {
+      const next = new Set(prev);
+      if (next.has(symbol)) {
+        next.delete(symbol);
+      } else {
+        next.add(symbol);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleSelectAll = useCallback((checked, symbolsToToggle) => {
+    if (checked) {
+      setSelectedSymbols(new Set(symbolsToToggle));
+    } else {
+      setSelectedSymbols(new Set());
+    }
+  }, []);
 
   const [editingStock, setEditingStock] = useState(null);
   const [activeFlagMenuSymbol, setActiveFlagMenuSymbol] = useState(null);
@@ -928,8 +1015,18 @@ export default function StockGrid({
     x: 0,
     y: 0,
     stock: null,
+    initialSubmenu: null,
   });
   const [hoveredStock, setHoveredStock] = useState(null);
+  const mousePosRef = useRef({ x: 300, y: 200 });
+
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      mousePosRef.current = { x: e.clientX, y: e.clientY };
+    };
+    window.addEventListener("mousemove", handleMouseMove, { passive: true });
+    return () => window.removeEventListener("mousemove", handleMouseMove);
+  }, []);
 
   const handleOpenContextMenu = useCallback((e, stock) => {
     e.preventDefault();
@@ -938,22 +1035,25 @@ export default function StockGrid({
       x: e.clientX,
       y: e.clientY,
       stock,
+      initialSubmenu: null,
     });
   }, []);
 
   const handleCloseContextMenu = useCallback(() => {
-    setContextMenu((prev) => ({ ...prev, isOpen: false, stock: null }));
+    setContextMenu((prev) => ({ ...prev, isOpen: false, stock: null, initialSubmenu: null }));
   }, []);
 
   const handleToggleWatchlistForStock = useCallback((symbol, watchlistId) => {
+    let wasAdded = false;
     setData((prev) => {
       const prevWeek = prev.weeks?.[country]?.[weekKey];
       if (!prevWeek?.stocks?.[symbol]) return prev;
       const stock = prevWeek.stocks[symbol];
       const currentWls = stock.watchlists || [];
-      const nextWls = currentWls.includes(watchlistId)
-        ? currentWls.filter((id) => id !== watchlistId)
-        : [...currentWls, watchlistId];
+      wasAdded = !currentWls.includes(watchlistId);
+      const nextWls = wasAdded
+        ? [...currentWls, watchlistId]
+        : currentWls.filter((id) => id !== watchlistId);
       return {
         ...prev,
         weeks: {
@@ -969,12 +1069,14 @@ export default function StockGrid({
                   watchlists: nextWls,
                 },
               },
+              lastUpdatedTime: Date.now(),
             },
           },
         },
       };
     });
-  }, [country, weekKey, setData]);
+    showToast(`${wasAdded ? "Added to" : "Removed from"} watchlist and saved`, "success");
+  }, [country, weekKey, setData, showToast]);
 
   const handleToggleTagForStock = useCallback((symbol, tag) => {
     setData((prev) => {
@@ -1000,6 +1102,7 @@ export default function StockGrid({
                   tags: nextTags,
                 },
               },
+              lastUpdatedTime: Date.now(),
             },
           },
         },
@@ -1029,12 +1132,13 @@ export default function StockGrid({
                   tradable: nextStatus,
                 },
               },
+              lastUpdatedTime: Date.now(),
             },
           },
         },
       };
     });
-    showToast(`${symbol} marked as ${nextStatus ? "Tradable" : "Untradable"}`, "info");
+    showToast(`${symbol} marked as ${nextStatus ? "Tradable" : "Untradable"} and saved`, "info");
   }, [country, weekKey, setData, showToast]);
 
   const handleCopySymbol = useCallback((symbol) => {
@@ -1062,9 +1166,29 @@ export default function StockGrid({
   useStockShortcuts({
     stock: activeTargetStock ? (week?.stocks?.[activeTargetStock.symbol] || activeTargetStock) : null,
     country,
-    enabled: !editingStock && Boolean(activeTargetStock),
+    enabled: !editingStock && Boolean(activeTargetStock) && !contextMenu.isOpen,
     onCycleFlagColor: handleCycleFlagColor,
-    onToggleTagDropdown: handleToggleTagDropdown,
+    onToggleWatchlistModal: (stk) => {
+      setContextMenu({
+        isOpen: true,
+        x: mousePosRef.current?.x || 300,
+        y: mousePosRef.current?.y || 200,
+        stock: stk,
+        initialSubmenu: "watchlist",
+      });
+    },
+    onToggleTagDropdown: (symbol) => {
+      const stk = activeTargetStock || (week?.stocks?.[symbol] ? { ...week.stocks[symbol], symbol } : null);
+      if (stk) {
+        setContextMenu({
+          isOpen: true,
+          x: mousePosRef.current?.x || 300,
+          y: mousePosRef.current?.y || 200,
+          stock: stk,
+          initialSubmenu: "tags",
+        });
+      }
+    },
     onToggleTradable: handleToggleTradable,
     onCopySymbol: handleCopySymbol,
     onOpenTradingView: handleOpenTradingView,
@@ -1108,6 +1232,8 @@ export default function StockGrid({
   const fileInputRef = useRef(null);
   const importTypeRef = useRef("stocks"); // 'stocks', 'backup', or 'tv'
   const [copiedStocks, setCopiedStocks] = useState(false);
+  const [bulkAddMenuOpen, setBulkAddMenuOpen] = useState(false);
+  const bulkAddMenuRef = useRef(null);
   const isFiltering = searchQuery.length > 0 || Object.keys(filters).length > 0;
 
   const updateStockField = useCallback((symbol, field, value) => {
@@ -1304,6 +1430,12 @@ export default function StockGrid({
         !importMenuRef.current.contains(event.target)
       ) {
         setImportMenuOpen(false);
+      }
+      if (
+        bulkAddMenuRef.current &&
+        !bulkAddMenuRef.current.contains(event.target)
+      ) {
+        setBulkAddMenuOpen(false);
       }
       // Close tag dropdown if click is outside
       if (!event.target.closest(".add-tag-wrapper")) {
@@ -1573,22 +1705,52 @@ export default function StockGrid({
         if (!stockWatchlists.includes(selectedWatchlistId)) return false;
       }
 
-      /* SEARCH FILTER */
+      /* SMART HYBRID SEARCH FILTER */
       if (searchQuery) {
-        const q = searchQuery.toLowerCase();
-        const symbolMatch = stock.symbol.toLowerCase().includes(q);
-        const nameMatch = (stock.name || "").toLowerCase().includes(q);
-        const notesMatch = (stock.notes || "").toLowerCase().includes(q);
-        const sectorMatch = (stock.sector || "").toLowerCase().includes(q);
-        const macroMatch = (stock.macroTheme || "").toLowerCase().includes(q);
-        const vectorMatch = Array.isArray(stock.thematicVectors) && stock.thematicVectors.some(v =>
-          (v.theme || "").toLowerCase().includes(q) ||
-          (v.thesis || "").toLowerCase().includes(q) ||
-          (v.role || "").toLowerCase().includes(q)
-        );
-        const scopeMatch = Array.isArray(stock.businessScope) && stock.businessScope.some(b => (b || "").toLowerCase().includes(q));
-        const themeMatch = Array.isArray(stock.dependentIndustries) && stock.dependentIndustries.some(t => (t || "").toLowerCase().includes(q));
-        if (!symbolMatch && !nameMatch && !notesMatch && !sectorMatch && !macroMatch && !vectorMatch && !scopeMatch && !themeMatch) return false;
+        const rawQ = searchQuery.trim().toLowerCase();
+        let mode = 'default';
+        let q = rawQ;
+
+        if (rawQ.startsWith('theme:') || rawQ.startsWith('t:')) {
+          mode = 'theme';
+          q = rawQ.replace(/^(theme:|t:)s*/, '');
+        } else if (rawQ.startsWith('scope:') || rawQ.startsWith('s:')) {
+          mode = 'scope';
+          q = rawQ.replace(/^(scope:|s:)s*/, '');
+        } else if (rawQ.startsWith('sector:') || rawQ.startsWith('sec:')) {
+          mode = 'sector';
+          q = rawQ.replace(/^(sector:|sec:)s*/, '');
+        } else if (rawQ.startsWith('notes:') || rawQ.startsWith('n:')) {
+          mode = 'notes';
+          q = rawQ.replace(/^(notes:|n:)s*/, '');
+        }
+
+        if (q) {
+          if (mode === 'theme') {
+            const macroMatch = (stock.macroTheme || "").toLowerCase().includes(q);
+            const vectorMatch = Array.isArray(stock.thematicVectors) && stock.thematicVectors.some(v =>
+              (v.theme || "").toLowerCase().includes(q) ||
+              (v.thesis || "").toLowerCase().includes(q) ||
+              (v.role || "").toLowerCase().includes(q)
+            );
+            const themeMatch = Array.isArray(stock.dependentIndustries) && stock.dependentIndustries.some(t => (t || "").toLowerCase().includes(q));
+            if (!macroMatch && !vectorMatch && !themeMatch) return false;
+          } else if (mode === 'scope') {
+            const scopeMatch = Array.isArray(stock.businessScope) && stock.businessScope.some(b => (b || "").toLowerCase().includes(q));
+            if (!scopeMatch) return false;
+          } else if (mode === 'sector') {
+            const sectorMatch = (stock.sector || "").toLowerCase().includes(q);
+            if (!sectorMatch) return false;
+          } else if (mode === 'notes') {
+            const notesMatch = (stock.notes || "").toLowerCase().includes(q);
+            if (!notesMatch) return false;
+          } else {
+            // Default: Clean Symbol and Company Name matching only
+            const symbolMatch = stock.symbol.toLowerCase().includes(q);
+            const nameMatch = (stock.name || stock.longName || "").toLowerCase().includes(q);
+            if (!symbolMatch && !nameMatch) return false;
+          }
+        }
       }
 
       /*SECTOR FILTER*/
@@ -1950,20 +2112,27 @@ export default function StockGrid({
   /* =====================
      CRUD
   ===================== */
-  function handleAddStock(input, selectedWlIds = []) {
+  const handleAddStock = useCallback((input, selectedWlIds = [], overrideWeekKey = null) => {
+    const effectiveWeek = overrideWeekKey || weekKey;
     const symbols = input
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
 
-    if (symbols.length === 0) return;
+    if (symbols.length === 0) return [];
 
-    const currentWeek = data.weeks?.[country]?.[weekKey] || { stocks: {} };
+    const currentWeek = data.weeks?.[country]?.[effectiveWeek] || { stocks: {} };
     const currentStocks = currentWeek.stocks || {};
     const newSymbolsAdded = symbols.filter((symbol) => !currentStocks[symbol]);
+    const unhydratedSymbols = symbols.filter((symbol) => {
+      const s = currentStocks[symbol];
+      if (!s) return false;
+      return !s.lastSyncTime && !s.params?.movingAverages && !s.isInvalid;
+    });
+    const symbolsToHydrate = Array.from(new Set([...newSymbolsAdded, ...unhydratedSymbols]));
 
     setData((prev) => {
-      const prevWeek = prev.weeks?.[country]?.[weekKey] || { stocks: {} };
+      const prevWeek = prev.weeks?.[country]?.[effectiveWeek] || { stocks: {} };
       const newStocks = { ...(prevWeek.stocks || {}) };
       const newCache = { ...(prev.stockSectorCache || {}) };
       const newSectorsList = [...(prev.uiConfig?.sectors || prev.sectors || [])];
@@ -2030,7 +2199,7 @@ export default function StockGrid({
           ...(prev?.weeks || {}),
           [country]: {
             ...(prev?.weeks?.[country] || {}),
-            [weekKey]: {
+            [effectiveWeek]: {
               ...prevWeek,
               stocks: newStocks,
             },
@@ -2041,16 +2210,16 @@ export default function StockGrid({
 
     // Trigger background API hydration immediately if enabled
     if (
-      newSymbolsAdded.length > 0 &&
+      symbolsToHydrate.length > 0 &&
       data?.uiConfig?.enableApiHydration !== false
     ) {
       if (chrome?.runtime?.sendMessage) {
         chrome.runtime.sendMessage({
           action: "FETCH_STOCK_METRICS",
           payload: {
-            symbols: newSymbolsAdded,
+            symbols: symbolsToHydrate,
             country,
-            weekKey,
+            weekKey: effectiveWeek,
             paramDefs: data.paramDefinitions,
             adrDays: data.uiConfig?.adrDays || 20,
             liquidityDays: data.uiConfig?.liquidityDays || 20,
@@ -2060,7 +2229,8 @@ export default function StockGrid({
     }
 
     showToast(`Added ${symbols.length} stock(s) to watchlist`, "success");
-  }
+    return symbolsToHydrate;
+  }, [country, data, weekKey, showToast, setData]);
 
   function handleUpdateStock(updatedStock) {
     setData((prev) => {
@@ -2128,6 +2298,150 @@ export default function StockGrid({
     showToast(isWatchlistSpecific ? `Removed ${symbol} from watchlist` : `Deleted ${symbol}`, "success");
     return true;
   }
+
+  const handleBulkDeleteSelected = useCallback(async () => {
+    if (selectedSymbols.size === 0) return;
+    const count = selectedSymbols.size;
+    const isWatchlistSpecific = selectedWatchlistId && selectedWatchlistId !== "all" && activeWatchlist;
+    const confirmMessage = isWatchlistSpecific
+      ? `Remove all ${count} selected stocks from watchlist "${activeWatchlist.name}"?`
+      : `Permanently delete all ${count} selected stocks?`;
+
+    if (!(await confirm(confirmMessage, { confirmSettingsKey: "skipDeleteConfirm" }))) return;
+
+    setData((prev) => {
+      const prevWeek = prev.weeks?.[country]?.[weekKey] || { stocks: {} };
+      const newStocks = { ...(prevWeek.stocks || {}) };
+
+      selectedSymbols.forEach((sym) => {
+        if (isWatchlistSpecific) {
+          const stk = newStocks[sym];
+          if (stk) {
+            newStocks[sym] = {
+              ...stk,
+              watchlists: (stk.watchlists || []).filter((id) => id !== selectedWatchlistId),
+            };
+          }
+        } else {
+          delete newStocks[sym];
+        }
+      });
+
+      return {
+        ...prev,
+        weeks: {
+          ...(prev?.weeks || {}),
+          [country]: {
+            ...(prev?.weeks?.[country] || {}),
+            [weekKey]: {
+              ...prevWeek,
+              stocks: newStocks,
+              lastUpdatedTime: Date.now(),
+            },
+          },
+        },
+      };
+    });
+
+    setSelectedSymbols(new Set());
+    showToast(
+      isWatchlistSpecific
+        ? `Removed ${count} stocks from watchlist "${activeWatchlist.name}"`
+        : `Deleted ${count} stocks`,
+      "success"
+    );
+  }, [selectedSymbols, selectedWatchlistId, activeWatchlist, confirm, country, weekKey, setData, showToast]);
+
+  const handleBulkAddToWatchlist = useCallback((targetWlId) => {
+    if (selectedSymbols.size === 0 || !targetWlId) return;
+    const count = selectedSymbols.size;
+    const targetWl = (data.watchlists || []).find((w) => w.id === targetWlId);
+    const targetName = targetWl?.name || targetWlId;
+
+    setData((prev) => {
+      const prevWeek = prev.weeks?.[country]?.[weekKey] || { stocks: {} };
+      const newStocks = { ...(prevWeek.stocks || {}) };
+
+      selectedSymbols.forEach((sym) => {
+        const stk = newStocks[sym];
+        if (stk) {
+          const existing = stk.watchlists || [];
+          if (!existing.includes(targetWlId)) {
+            newStocks[sym] = {
+              ...stk,
+              watchlists: [...existing, targetWlId],
+            };
+          }
+        }
+      });
+
+      return {
+        ...prev,
+        weeks: {
+          ...(prev?.weeks || {}),
+          [country]: {
+            ...(prev?.weeks?.[country] || {}),
+            [weekKey]: {
+              ...prevWeek,
+              stocks: newStocks,
+              lastUpdatedTime: Date.now(),
+            },
+          },
+        },
+      };
+    });
+
+    setSelectedSymbols(new Set());
+    showToast(`Added ${count} stocks to "${targetName}"`, "success");
+  }, [selectedSymbols, data.watchlists, country, weekKey, setData, showToast]);
+
+  const handleBulkMoveToWatchlist = useCallback((targetWlId) => {
+    if (selectedSymbols.size === 0 || !targetWlId) return;
+    const count = selectedSymbols.size;
+    const targetWl = (data.watchlists || []).find((w) => w.id === targetWlId);
+    const targetName = targetWl?.name || targetWlId;
+    const isWatchlistSpecific = selectedWatchlistId && selectedWatchlistId !== "all";
+
+    setData((prev) => {
+      const prevWeek = prev.weeks?.[country]?.[weekKey] || { stocks: {} };
+      const newStocks = { ...(prevWeek.stocks || {}) };
+
+      selectedSymbols.forEach((sym) => {
+        const stk = newStocks[sym];
+        if (stk) {
+          let existing = stk.watchlists || [];
+          if (isWatchlistSpecific) {
+            existing = existing.filter((id) => id !== selectedWatchlistId);
+          }
+          if (!existing.includes(targetWlId)) {
+            existing = [...existing, targetWlId];
+          }
+          newStocks[sym] = {
+            ...stk,
+            watchlists: existing,
+          };
+        }
+      });
+
+      return {
+        ...prev,
+        weeks: {
+          ...(prev?.weeks || {}),
+          [country]: {
+            ...(prev?.weeks?.[country] || {}),
+            [weekKey]: {
+              ...prevWeek,
+              stocks: newStocks,
+              lastUpdatedTime: Date.now(),
+            },
+          },
+        },
+      };
+    });
+
+    setSelectedSymbols(new Set());
+    showToast(`Moved ${count} stock${count > 1 ? "s" : ""} to "${targetName}"`, "success");
+  }, [selectedSymbols, selectedWatchlistId, data.watchlists, country, weekKey, setData, showToast]);
 
   function addTag(stock, tag) {
     if (!tag || stock.tags?.includes(tag)) return;
@@ -2917,7 +3231,7 @@ export default function StockGrid({
           )}
 
           {/* SEARCH BOX */}
-          <div className="search-box-v2">
+          <div className="search-box-v2" ref={searchContainerRef}>
             <span className="search-icon-v2">
               <svg
                 xmlns="http://www.w3.org/2000/svg"
@@ -2940,12 +3254,24 @@ export default function StockGrid({
               placeholder="Search symbols... (Ctrl+K)"
               aria-label="Search symbols"
               value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
+              onChange={(e) => {
+                setSearchQuery(e.target.value);
+                setIsSearchDropdownOpen(true);
+              }}
+              onFocus={() => setIsSearchDropdownOpen(true)}
+              onKeyDown={(e) => {
+                if (e.key === "Escape") {
+                  setIsSearchDropdownOpen(false);
+                }
+              }}
             />
             {searchQuery && (
               <button
                 className="search-clear-btn"
-                onClick={() => setSearchQuery("")}
+                onClick={() => {
+                  setSearchQuery("");
+                  setIsSearchDropdownOpen(false);
+                }}
                 title="Clear search"
               >
                 <svg
@@ -2963,6 +3289,98 @@ export default function StockGrid({
                   <line x1="6" y1="6" x2="18" y2="18" />
                 </svg>
               </button>
+            )}
+
+            {/* AUTOCOMPLETE DROPDOWN */}
+            {isSearchDropdownOpen && searchQuery.trim().length >= 1 && (
+              <div className="grid-search-dropdown themed-scroll">
+                {/* 1. MATCHES ALREADY IN WATCHLIST */}
+                {universeSearchResults.inWatchlistMatches.length > 0 && (
+                  <>
+                    <div className="grid-search-dropdown-header">
+                      <span>In Current Watchlist ({universeSearchResults.inWatchlistMatches.length})</span>
+                    </div>
+                    {universeSearchResults.inWatchlistMatches.map((stk) => (
+                      <div
+                        key={`wl-${stk.symbol}`}
+                        className="grid-search-item in-watchlist-item"
+                        onClick={() => {
+                          setEditingStock(stk);
+                          setIsSearchDropdownOpen(false);
+                        }}
+                        title="Click to view details in Research Modal"
+                      >
+                        <div className="grid-search-item-info">
+                          <div className="grid-search-item-row-top">
+                            <span className="grid-search-item-symbol">{stk.symbol}</span>
+                            {stk.sector && <span className="grid-search-item-sector">{stk.sector}</span>}
+                            <span className="in-watchlist-pill">In Watchlist</span>
+                          </div>
+                          <span className="grid-search-item-name">{stk.name || stk.longName || ""}</span>
+                        </div>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {/* 2. MATCHES FROM DIRECTORY / LIVE SEARCH */}
+                {universeSearchResults.directoryMatches.length > 0 && (
+                  <>
+                    <div className="grid-search-dropdown-header">
+                      <span>Stock Directory ({universeSearchResults.directoryMatches.length})</span>
+                    </div>
+                    {universeSearchResults.directoryMatches.map((stk) => (
+                      <div
+                        key={`search-dir-${stk.symbol}`}
+                        className="grid-search-item"
+                        onClick={() => {
+                          setEditingStock(stk);
+                          setIsSearchDropdownOpen(false);
+                        }}
+                        title="Click to view details in Research Modal"
+                      >
+                        <div className="grid-search-item-info">
+                          <div className="grid-search-item-row-top">
+                            <span className="grid-search-item-symbol">{stk.symbol}</span>
+                            {stk.sector && <span className="grid-search-item-sector">{stk.sector}</span>}
+                          </div>
+                          <span className="grid-search-item-name">{stk.name || stk.longName || ""}</span>
+                        </div>
+                        <button
+                          type="button"
+                          className="grid-search-add-btn"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            handleAddStock(stk.symbol, selectedWatchlistId !== "all" ? [selectedWatchlistId] : []);
+                            showToast(`Added ${stk.symbol} to watchlist!`, "success");
+                            setIsSearchDropdownOpen(false);
+                            setSearchQuery("");
+                          }}
+                          title={`Add ${stk.symbol} directly to watchlist`}
+                        >
+                          + Add
+                        </button>
+                      </div>
+                    ))}
+                  </>
+                )}
+
+                {/* 3. SEARCHING ONLINE STATUS */}
+                {isSearchingOnline && (
+                  <div className="grid-search-live-indicator">
+                    <span className="loading-spinner-micro" /> Searching online market for "{searchQuery}"...
+                  </div>
+                )}
+
+                {/* 4. NO MATCHES FOUND */}
+                {!isSearchingOnline && 
+                 universeSearchResults.inWatchlistMatches.length === 0 &&
+                 universeSearchResults.directoryMatches.length === 0 && (
+                  <div className="grid-search-empty">
+                    No stocks found for "{searchQuery}"
+                  </div>
+                )}
+              </div>
             )}
           </div>
 
@@ -3086,8 +3504,6 @@ export default function StockGrid({
             />
           </div>
 
-
-
           <button
             className="add-stock-cta"
             onClick={() => setShowAddStock(true)}
@@ -3183,6 +3599,7 @@ export default function StockGrid({
           country={country}
           watchlists={data.watchlists || []}
           availableTags={availableTags || []}
+          initialSubmenu={contextMenu.initialSubmenu || null}
           onClose={handleCloseContextMenu}
           onToggleWatchlist={handleToggleWatchlistForStock}
           onSelectFlagColor={handleSelectFlagColor}
@@ -3218,6 +3635,111 @@ export default function StockGrid({
           </div>
         )}
 
+        {/* BULK ACTION BAR */}
+        {selectedSymbols.size > 0 && !isReadOnly && (
+          <div className="bulk-selection-toolbar animate-fadeIn">
+            {/* Left: Multi Select badge & Clear */}
+            <div className="bulk-selection-left">
+              <div className="bulk-selection-badge">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="20 6 9 17 4 12" />
+                </svg>
+                <span className="bulk-selection-count-text">
+                  <strong>{selectedSymbols.size}</strong> selected
+                </span>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setSelectedSymbols(new Set())}
+                className="bulk-selection-clear-pill"
+                title="Deselect all"
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                </svg>
+                <span>Clear</span>
+              </button>
+            </div>
+
+            {/* Right: Actions Group */}
+            <div className="bulk-selection-actions">
+              {/* Add to Watchlist */}
+              <div className="bulk-dropdown-group" ref={bulkAddMenuRef}>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBulkAddMenuOpen((prev) => !prev);
+                  }}
+                  className={`bulk-action-btn ${bulkAddMenuOpen ? "active" : ""}`}
+                  title="Add selected stocks to another watchlist"
+                >
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <line x1="12" y1="5" x2="12" y2="19" />
+                    <line x1="5" y1="12" x2="19" y2="12" />
+                  </svg>
+                  <span>Add to</span>
+                  <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="bulk-chevron">
+                    <polyline points="6 9 12 15 18 9" />
+                  </svg>
+                </button>
+
+                {bulkAddMenuOpen && (
+                  <ul className="bulk-action-menu animate-fadeIn">
+                    <li className="bulk-menu-header">ADD TO WATCHLIST</li>
+                    {(data.watchlists || []).length === 0 ? (
+                      <li className="bulk-menu-empty">No watchlists found</li>
+                    ) : (
+                      (data.watchlists || []).map((w) => (
+                        <li
+                          key={w.id}
+                          onClick={() => {
+                            handleBulkAddToWatchlist(w.id);
+                            setBulkAddMenuOpen(false);
+                          }}
+                          className="bulk-menu-item"
+                        >
+                          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+                          </svg>
+                          <span>{w.name}</span>
+                        </li>
+                      ))
+                    )}
+                  </ul>
+                )}
+              </div>
+
+              <div className="bulk-actions-divider" />
+
+              {/* Bulk Delete Button */}
+              <button
+                type="button"
+                onClick={handleBulkDeleteSelected}
+                className="bulk-delete-action-btn"
+                title={
+                  selectedWatchlistId && selectedWatchlistId !== "all" && activeWatchlist
+                    ? `Remove ${selectedSymbols.size} stocks from this watchlist`
+                    : `Delete ${selectedSymbols.size} stocks permanently`
+                }
+              >
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                  <polyline points="3 6 5 6 21 6" />
+                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  <line x1="10" y1="11" x2="10" y2="17" />
+                  <line x1="14" y1="11" x2="14" y2="17" />
+                </svg>
+                <span>
+                  {selectedWatchlistId && selectedWatchlistId !== "all" && activeWatchlist
+                    ? `Remove (${selectedSymbols.size})`
+                    : `Delete (${selectedSymbols.size})`}
+                </span>
+              </button>
+            </div>
+          </div>
+        )}
+
         <table className="grid-table">
           <thead>
             <tr>
@@ -3226,6 +3748,23 @@ export default function StockGrid({
                 onClick={() => toggleSort("symbol")}
               >
                 <div className="copy-stocks-wrapper">
+                  {!isReadOnly && (
+                    <input
+                      type="checkbox"
+                      checked={stocks.length > 0 && stocks.every((s) => selectedSymbols.has(s.symbol))}
+                      onChange={(e) => {
+                        e.stopPropagation();
+                        handleSelectAll(e.target.checked, stocks.map((s) => s.symbol));
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                      className="rounded border-[var(--border)] text-blue-600 focus:ring-blue-500 h-3.5 w-3.5 cursor-pointer shrink-0 mr-1"
+                      title={
+                        stocks.every((s) => selectedSymbols.has(s.symbol))
+                          ? "Deselect all visible stocks"
+                          : "Select all visible stocks"
+                      }
+                    />
+                  )}
                   <span>Stock{renderSortIndicator("symbol")}</span>
                   <button
                     className="copy-stocks-btn"
@@ -3406,6 +3945,8 @@ export default function StockGrid({
                 quote={quotes[stock.symbol]}
                 country={country}
                 isReadOnly={isReadOnly}
+                isSelected={selectedSymbols.has(stock.symbol)}
+                onToggleSelect={handleToggleSelect}
                 sectors={sectors}
                 visibleParams={visibleParams}
                 availableTags={availableTags}
