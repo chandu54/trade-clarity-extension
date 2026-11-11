@@ -5,7 +5,9 @@ import {
   fetchSingleIndexDetails, 
   INDEX_NAME_MAP, 
   INDEX_CONSTITUENTS, 
-  getInstitutionalTrend 
+  getInstitutionalTrend,
+  calculateDistributionDays,
+  analyzePriceActionGeometry
 } from '../services/marketPulse';
 import { getSingleStockAnalysis, PROMPT_TEMPLATES } from '../services/ai';
 
@@ -159,18 +161,18 @@ export default function IndexDetailModal({
   const [indexData, setIndexData] = useState(index);
   const [loadingChart, setLoadingChart] = useState(false);
 
-  // Moving Average Settings (synced with global trade_clarity_ma_settings like EditStockModal)
+  // Moving Average Settings (synced with trade_clarity_index_ma_settings & trade_clarity_ma_settings)
   const [maSettings, setMaSettings] = useState(() => {
     try {
-      const saved = localStorage.getItem('trade_clarity_ma_settings');
+      const saved = localStorage.getItem('trade_clarity_index_ma_settings') || localStorage.getItem('trade_clarity_ma_settings');
       if (saved) return JSON.parse(saved);
     } catch (_e) {}
     return {
-      '5': { visible: false, color: '#10b981', thickness: 2 },
-      '10': { visible: false, color: '#06b6d4', thickness: 2 },
-      '21': { visible: true, color: '#3b82f6', thickness: 2 },
-      '50': { visible: true, color: '#f59e0b', thickness: 2 },
-      '200': { visible: true, color: '#ef4444', thickness: 2 },
+      '5': { visible: true, color: '#10b981', thickness: 1.5 },
+      '10': { visible: true, color: '#06b6d4', thickness: 1.5 },
+      '21': { visible: true, color: '#3b82f6', thickness: 1.8 },
+      '50': { visible: true, color: '#f59e0b', thickness: 2.0 },
+      '200': { visible: true, color: '#ef4444', thickness: 2.0 },
     };
   });
   const [isMaPopoverOpen, setIsMaPopoverOpen] = useState(false);
@@ -211,6 +213,7 @@ export default function IndexDetailModal({
     setMaSettings(prev => {
       const next = { ...prev, [ma]: { ...prev[ma], [key]: value } };
       try {
+        localStorage.setItem('trade_clarity_index_ma_settings', JSON.stringify(next));
         localStorage.setItem('trade_clarity_ma_settings', JSON.stringify(next));
       } catch (_) {}
       return next;
@@ -333,10 +336,31 @@ export default function IndexDetailModal({
     return "Below all";
   }, [dynamicSmas, currentPrice]);
 
-  // Institutional Health & Trend
+  // William O'Neil / IBD Distribution Day Analysis
+  const distributionAnalysis = useMemo(() => {
+    return activeData.distributionDays || (typeof calculateDistributionDays === 'function' ? calculateDistributionDays(candles, 25) : { count: 0, label: "Low", color: "#10b981", status: "Low Risk" });
+  }, [candles, activeData]);
+
+  // Forensic Price Action Geometry & Swing Pivots
+  const s1Fallback = dynamicSmas.sma21 || (currentPrice * 0.98);
+  const s2Fallback = dynamicSmas.sma50 || (currentPrice * 0.95);
+  const r1Fallback = activeData.high52w || (currentPrice * 1.02);
+
+  const geometry = useMemo(() => {
+    return activeData.geometry || (typeof analyzePriceActionGeometry === 'function' ? analyzePriceActionGeometry(candles, 15, currentPrice, activeData.high52w) : {
+      structureLabel: "Consolidating Range",
+      lastCandleDesc: "Neutral consolidation session",
+      pivots: { s1: s1Fallback, s2: s2Fallback, r1: r1Fallback, r2: r1Fallback * 1.02 },
+      recentCandlesSummary: ""
+    });
+  }, [candles, activeData, currentPrice, s1Fallback, s2Fallback, r1Fallback]);
+
+  // Institutional Health & Trend (integrated with distribution days & stage)
   const trendAnalysis = useMemo(() => {
-    return getInstitutionalTrend ? getInstitutionalTrend(currentPrice, dynamicSmas) : { score: 100, phase: "Structural Bull", color: "#10b981" };
-  }, [currentPrice, dynamicSmas]);
+    return typeof getInstitutionalTrend === 'function' 
+      ? getInstitutionalTrend(currentPrice, dynamicSmas, distributionAnalysis?.count || 0) 
+      : { score: 100, phase: "Structural Bull", color: "#10b981", stage: "Stage 2 Markup" };
+  }, [currentPrice, dynamicSmas, distributionAnalysis]);
 
   const healthScore = activeData.healthScore ?? trendAnalysis.score ?? 100;
   const trendPhase = activeData.trendPhase || trendAnalysis.phase || 'Structural Bull';
@@ -344,9 +368,9 @@ export default function IndexDetailModal({
 
   const rsiVal = activeData.rsi || 58.4;
   const distFromAth = activeData.dist52wH != null ? activeData.dist52wH : (activeData.high52w ? (((currentPrice - activeData.high52w) / activeData.high52w) * 100) : -0.8);
-  const s1Price = dynamicSmas.sma21 || (currentPrice * 0.98);
-  const s2Price = dynamicSmas.sma50 || (currentPrice * 0.95);
-  const r1Price = activeData.high52w || (currentPrice * 1.02);
+  const s1Price = geometry?.pivots?.s1 || s1Fallback;
+  const s2Price = geometry?.pivots?.s2 || s2Fallback;
+  const r1Price = geometry?.pivots?.r1 || r1Fallback;
 
   const constituents = (INDEX_CONSTITUENTS && INDEX_CONSTITUENTS[activeData.symbol]) 
     ? INDEX_CONSTITUENTS[activeData.symbol] 
@@ -358,6 +382,24 @@ export default function IndexDetailModal({
     : healthScore >= 60 
     ? 'Selective buying environment. Focus on market leaders showing high relative strength and keep stops disciplined.' 
     : 'Defensive stance recommended. Protect capital, tighten stop losses, and wait for confirmed base breakouts.';
+
+  const maStructure = useMemo(() => {
+    const s21 = dynamicSmas.sma21;
+    const s50 = dynamicSmas.sma50;
+    const s200 = dynamicSmas.sma200;
+    if (s21 && s50 && s200) {
+      if (currentPrice > s21 && s21 > s50 && s50 > s200) {
+        return "Bullish Momentum Expansion (Price > 21 EMA > 50 SMA > 200 SMA)";
+      } else if (currentPrice < s21 && s21 < s50 && s50 < s200) {
+        return "Bearish Cascade Breakdown (Price < 21 EMA < 50 SMA < 200 SMA)";
+      } else if (currentPrice > s50 && s50 > s200) {
+        return "Constructive Base Digestion (Consolidating between 21 EMA and 50 SMA)";
+      } else if (currentPrice < s50 && currentPrice > s200) {
+        return "Vulnerable Pullback Testing 200 SMA Institutional Support";
+      }
+    }
+    return maRibbonStatus;
+  }, [dynamicSmas, currentPrice, maRibbonStatus]);
 
   const maDescription = (currentPrice >= (dynamicSmas.sma21 || 0) && (!dynamicSmas.sma50 || dynamicSmas.sma21 >= dynamicSmas.sma50))
     ? `Strong upward trend. Price is holding comfortably above the 21-Day EMA (+${dynamicSmas.sma21 ? (((currentPrice - dynamicSmas.sma21) / dynamicSmas.sma21) * 100).toFixed(1) : '0.0'}%) and 50-Day Moving Average (+${dynamicSmas.sma50 ? (((currentPrice - dynamicSmas.sma50) / dynamicSmas.sma50) * 100).toFixed(1) : '0.0'}%).`
@@ -380,20 +422,29 @@ export default function IndexDetailModal({
     try {
       const defaultPrompt = PROMPT_TEMPLATES.find(t => t.value === 'index_pulse')?.text || PROMPT_TEMPLATES.find(t => t.value === 'deep_view')?.text;
       const cleanAiSymbol = INDEX_NAME_MAP[activeData.symbol]?.name || activeData.longName || activeData.symbol;
+      const dist52wHPct = distFromAth != null ? Number(distFromAth).toFixed(2) : '-0.8';
+      
       const stockPayload = {
         symbol: cleanAiSymbol,
         longName: cleanAiSymbol,
-        currentPrice,
-        dailyChangePct: activeData.dailyChangePct || 0,
-        periodChangePct: changePct,
+        currentPrice: Number(currentPrice).toFixed(2),
+        dailyChangePct: activeData.dailyChangePct != null ? Number(activeData.dailyChangePct).toFixed(2) : '0.00',
+        periodChangePct: Number(changePct).toFixed(2),
         sector: "Market Index",
         healthScore,
         trendPhase,
+        dist52wH: dist52wHPct,
+        distributionDays: `${distributionAnalysis?.count || 0} / 25 (${distributionAnalysis?.status || 'Low Risk'})`,
         rsi: Number(Number(rsiVal).toFixed(1)),
+        sma5: dynamicSmas.sma5 ? Number(dynamicSmas.sma5.toFixed(2)) : 'N/A',
+        sma10: dynamicSmas.sma10 ? Number(dynamicSmas.sma10.toFixed(2)) : 'N/A',
         sma21: dynamicSmas.sma21 ? Number(dynamicSmas.sma21.toFixed(2)) : 'N/A',
         sma50: dynamicSmas.sma50 ? Number(dynamicSmas.sma50.toFixed(2)) : 'N/A',
         sma200: dynamicSmas.sma200 ? Number(dynamicSmas.sma200.toFixed(2)) : 'N/A',
-        constituents: constituents.join(', ')
+        maStructure,
+        recentCandles: geometry?.recentCandlesSummary || "N/A",
+        constituents: constituents.join(', '),
+        breadthContext: `Distribution: ${distributionAnalysis?.count || 0} institutional selling days in trailing 25 sessions. Structure: ${geometry?.structureLabel || 'Consolidating'}. Moving Average Alignment: ${maStructure}.`
       };
 
       const result = await getSingleStockAnalysis(
@@ -578,8 +629,9 @@ export default function IndexDetailModal({
                   onClick={() => setShowAiPane(true)}
                   title="Expand Market Intelligence"
                 >
-                  <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                    <polyline points="15 18 9 12 15 6"></polyline>
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                    <polyline points="11 17 6 12 11 7"></polyline>
+                    <polyline points="18 17 13 12 18 7"></polyline>
                   </svg>
                   <span>Market Intelligence</span>
                 </button>
@@ -657,8 +709,9 @@ export default function IndexDetailModal({
                     title="Collapse Market Intelligence"
                     aria-label="Collapse panel"
                   >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="9 18 15 12 9 6"></polyline>
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="13 17 18 12 13 7"></polyline>
+                      <polyline points="6 17 11 12 6 7"></polyline>
                     </svg>
                   </button>
                 </div>
@@ -675,20 +728,27 @@ export default function IndexDetailModal({
                           </span>
                         </div>
 
-                        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px', marginTop: '12px' }}>
+                        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '8px', marginTop: '12px' }}>
                           <div className="stat-subcard">
                             <span className="subcard-title">TREND STRENGTH</span>
                             <div className="subcard-value" style={{ color: regimeColor }}>
-                              {healthScore} <span style={{ fontSize: '12px', color: '#94a3b8' }}>/ 100</span>
+                              {healthScore} <span className="subcard-subtext">/ 100</span>
                             </div>
                           </div>
                           <div className="stat-subcard">
                             <span className="subcard-title">MOMENTUM (RSI)</span>
                             <div className="subcard-value" style={{ color: rsiVal > 70 ? '#ef4444' : rsiVal < 30 ? '#10b981' : '#f59e0b' }}>
                               {Number(rsiVal).toFixed(1)}{' '}
-                              <span style={{ fontSize: '11px', color: '#94a3b8' }}>
+                              <span className="subcard-subtext">
                                 ({rsiVal >= 60 ? 'Bullish' : rsiVal <= 40 ? 'Oversold' : 'Neutral'})
                               </span>
+                            </div>
+                          </div>
+                          <div className="stat-subcard">
+                            <span className="subcard-title">DISTRIBUTION</span>
+                            <div className="subcard-value" style={{ color: distributionAnalysis?.color || '#10b981' }}>
+                              {distributionAnalysis?.count || 0}{' '}
+                              <span className="subcard-subtext">/ 25 ({distributionAnalysis?.label || 'Low'})</span>
                             </div>
                           </div>
                         </div>
@@ -700,6 +760,12 @@ export default function IndexDetailModal({
                         <ul className="info-bullets">
                           <li>
                             <strong>Market State:</strong> {distFromAth >= -2 ? 'Testing 52-Week High' : `Consolidating (${formatPct(distFromAth)} from 52W High)`}
+                          </li>
+                          <li>
+                            <strong>Price Structure:</strong> <span>{geometry?.structureLabel || 'Consolidating Range'}</span>
+                          </li>
+                          <li>
+                            <strong>Recent Candle:</strong> <span>{geometry?.lastCandleDesc || 'Neutral consolidation session'}</span>
                           </li>
                           <li>
                             <strong>Short-term Support:</strong> <span className="highlight-price">{currencySymbol}{formatPrice(s1Price)}</span> (21-Day EMA)
@@ -732,9 +798,9 @@ export default function IndexDetailModal({
                       </div>
 
                       {/* Section 5: Market Outlook & Strategy */}
-                      <div className="institutional-card" style={{ borderColor: 'rgba(56, 189, 248, 0.25)', background: 'linear-gradient(180deg, rgba(15, 23, 42, 0.9) 0%, rgba(30, 41, 59, 0.4) 100%)' }}>
+                      <div className="institutional-card outlook-card">
                         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
-                          <span className="card-badge-label" style={{ color: '#38bdf8' }}>4. Market Outlook & Strategy</span>
+                          <span className="card-badge-label">4. Market Outlook & Strategy</span>
                           <span className="exposure-pill">{exposureText}</span>
                         </div>
                         <p className="narrative-text" style={{ marginTop: '8px' }}>

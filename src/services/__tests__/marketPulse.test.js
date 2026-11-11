@@ -1,5 +1,12 @@
 import { describe, it, vi, beforeEach, expect } from 'vitest';
-import { fetchMarketPulseData, generateTechnicalThesis, filterToLatestActiveSession } from '../marketPulse';
+import { 
+  fetchMarketPulseData, 
+  generateTechnicalThesis, 
+  filterToLatestActiveSession,
+  calculateDistributionDays,
+  analyzePriceActionGeometry,
+  getInstitutionalTrend
+} from '../marketPulse';
 import * as yahooFinanceMap from '../../utils/yahooFinanceMap';
 
 vi.mock('../../utils/yahooFinanceMap', () => ({
@@ -228,6 +235,96 @@ describe('marketPulse service', () => {
       expect(filterToLatestActiveSession([])).toEqual([]);
       const single = [{ time: 1754634600, open: 10, high: 11, low: 9, close: 10 }];
       expect(filterToLatestActiveSession(single)).toEqual(single);
+    });
+  });
+
+  describe('calculateDistributionDays', () => {
+    it('detects institutional distribution days when close drops >= 0.2% on higher volume', () => {
+      const candles = [
+        { time: 1000, open: 100, high: 101, low: 99, close: 100, volume: 1000 },
+        { time: 2000, open: 100, high: 100.5, low: 98.5, close: 99.0, volume: 1500 }, // drop 1.0% on higher vol -> Dist Day
+        { time: 3000, open: 99, high: 100, low: 98.8, close: 99.5, volume: 1100 },
+        { time: 4000, open: 99.5, high: 99.8, low: 98.0, close: 98.5, volume: 1800 }, // drop 1.0% on higher vol -> Dist Day
+      ];
+
+      const res = calculateDistributionDays(candles, 25);
+      expect(res.count).toBe(2);
+      expect(res.status).toContain('Confirmed Uptrend');
+      expect(res.label).toBe('Low');
+      expect(res.color).toBe('#10b981');
+    });
+
+    it('correctly categorizes Elevated risk when 5 or more distribution days accumulate', () => {
+      const candles = [{ time: 0, open: 100, high: 101, low: 99, close: 100, volume: 1000 }];
+      for (let i = 1; i <= 6; i++) {
+        candles.push({
+          time: i * 1000,
+          open: 100 - i * 0.5,
+          high: 100 - i * 0.4,
+          low: 100 - i * 0.8,
+          close: 100 - i * 0.7, // consecutive drops
+          volume: 1000 + i * 200 // consecutive higher volumes
+        });
+      }
+
+      const res = calculateDistributionDays(candles, 25);
+      expect(res.count).toBeGreaterThanOrEqual(5);
+      expect(res.label).toBe('High');
+      expect(res.color).toBe('#ef4444');
+    });
+
+    it('invalidates a distribution day if price subsequently rallies 5% or more above its close', () => {
+      const candles = [
+        { time: 1000, open: 100, high: 101, low: 99, close: 100, volume: 1000 },
+        { time: 2000, open: 100, high: 100, low: 98, close: 98.5, volume: 1500 }, // Dist day at close 98.5
+        { time: 3000, open: 99, high: 105, low: 99, close: 104.5, volume: 2000 }, // Rallied > 5% above 98.5
+      ];
+
+      const res = calculateDistributionDays(candles, 25);
+      expect(res.count).toBe(0); // invalidated
+    });
+  });
+
+  describe('analyzePriceActionGeometry', () => {
+    it('classifies Higher Highs & Higher Lows structure and calculates pivots', () => {
+      const candles = [
+        { time: 1000, open: 100, high: 105, low: 98, close: 104, volume: 1000 },
+        { time: 2000, open: 104, high: 108, low: 102, close: 107, volume: 1100 },
+        { time: 3000, open: 107, high: 110, low: 105, close: 109, volume: 900 },
+        { time: 4000, open: 109, high: 114, low: 108, close: 113, volume: 1200 },
+        { time: 5000, open: 113, high: 116, low: 111, close: 115, volume: 1300 },
+        { time: 6000, open: 115, high: 118, low: 113, close: 117, volume: 1400 },
+      ];
+
+      const res = analyzePriceActionGeometry(candles, 15, 117, 120);
+      expect(res.structureLabel).toContain('Higher Highs & Higher Lows');
+      expect(res.pivots.s1).toBeLessThanOrEqual(117);
+      expect(res.pivots.r1).toBeGreaterThanOrEqual(117);
+      expect(res.recentCandlesSummary).toContain('O:');
+    });
+
+    it('identifies bullish hammer when lower shadow strongly rejects lower prices', () => {
+      const candles = [
+        { time: 1000, open: 100, high: 102, low: 99, close: 101, volume: 1000 },
+        { time: 2000, open: 101, high: 101.5, low: 95.0, close: 101.2, volume: 1800 }, // long lower wick of 6.2
+      ];
+
+      const res = analyzePriceActionGeometry(candles, 15, 101.2);
+      expect(res.lastCandleDesc).toContain('Bullish Hammer');
+    });
+  });
+
+  describe('getInstitutionalTrend with Weinstein Stage & Distribution integration', () => {
+    it('returns Stage 2 Markup and adjusts phase when distribution count is elevated', () => {
+      const smas = { sma21: 105, sma50: 100, sma200: 90 };
+      const resNormal = getInstitutionalTrend(110, smas, 1);
+      expect(resNormal.score).toBe(100);
+      expect(resNormal.stage).toContain('Stage 2 (Markup');
+      expect(resNormal.phase).toBe('Structural Bull');
+
+      const resDist = getInstitutionalTrend(110, smas, 5);
+      expect(resDist.phase).toBe('Uptrend Under Heavy Pressure');
+      expect(resDist.color).toBe('#ef4444');
     });
   });
 });

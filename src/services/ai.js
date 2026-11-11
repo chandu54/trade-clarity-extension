@@ -78,6 +78,7 @@ Executive Quote Context:
 - Current Level: {price} | Day: {dailyChangePct}% | {timeframe} Trend: {periodChangePct}%
 - Distance from 52-Week High: {dist52wH}
 - Institutional Health Score: {healthScore}/100 | Regime Phase: {trendPhase}
+- Institutional Distribution Count: {distributionDays}
 - Momentum RSI(14): {rsi}
 - Moving Average Alignment:
   * 5 SMA: {sma5} | 10 SMA: {sma10} | 21 SMA: {sma21}
@@ -300,6 +301,7 @@ export async function getSingleStockAnalysis(
   prompt = prompt.replace(/\{dist52wH\}/g, stock.dist52wH != null ? `${stock.dist52wH}%` : "N/A");
   prompt = prompt.replace(/\{healthScore\}/g, stock.healthScore != null ? String(stock.healthScore) : "N/A");
   prompt = prompt.replace(/\{trendPhase\}/g, stock.trendPhase || "N/A");
+  prompt = prompt.replace(/\{distributionDays\}/g, stock.distributionDays || "N/A");
   prompt = prompt.replace(/\{rsi\}/g, stock.rsi != null ? String(stock.rsi) : "N/A");
   prompt = prompt.replace(/\{sma5\}/g, stock.sma5 != null ? String(stock.sma5) : "N/A");
   prompt = prompt.replace(/\{sma10\}/g, stock.sma10 != null ? String(stock.sma10) : "N/A");

@@ -88,6 +88,9 @@ export default function MiniCandlestickChart({
   const lastLogicalRangeRef = useRef(null);
   const prevTimeframeRef = useRef(timeframe);
 
+  const isBenchmarkActive = selectedBenchmark !== 'none' && benchmarkCandles && benchmarkCandles.length > 0 && benchmarkMode !== 'normal';
+  const isPctMode = isBenchmarkActive && benchmarkMode === 'pct';
+
   const applyTimeframeCamera = useCallback((tf) => {
     if (!chartRef.current || !allCandlesRef.current || allCandlesRef.current.length === 0) return;
     const candles = allCandlesRef.current;
@@ -183,7 +186,7 @@ export default function MiniCandlestickChart({
       if (!chartRef.current || !interactive) return;
       const rect = containerEl.getBoundingClientRect();
       const isOverPriceAxis = e.clientX >= (rect.right - 65);
-      const isOverTimeAxis = e.clientY >= (rect.bottom - 30);
+      const isOverTimeAxis = e.clientY >= (rect.bottom - 42);
       // Double click on chart body resets both time and price scale
       if (!isOverPriceAxis && !isOverTimeAxis) {
         chartRef.current.timeScale().fitContent();
@@ -340,9 +343,6 @@ export default function MiniCandlestickChart({
         axisDoubleClickReset: interactive ? { time: true, price: true } : false,
       },
     });
-
-    const isBenchmarkActive = selectedBenchmark !== 'none' && benchmarkCandles && benchmarkCandles.length > 0 && benchmarkMode !== 'normal';
-    const isPctMode = isBenchmarkActive && benchmarkMode === 'pct';
 
     let series = null;
 
@@ -898,20 +898,68 @@ export default function MiniCandlestickChart({
     };
   }, [data?.symbol, Boolean(data?.candlesticks && data.candlesticks.length > 0), interactive, disableZoom, maSettingsKey, interval, selectedBenchmark, benchmarkMode, benchmarkCandlesKey, stockLineColor, benchmarkLineColor, rsLineColor, country]);
 
-  // Live in-place update of series without destroying chart canvas
+  // Live in-place update of series (candles & moving averages) without destroying chart canvas
   useEffect(() => {
     if (!chartRef.current || !seriesRef.current || !data?.candlesticks || data.candlesticks.length === 0) return;
-    if (data.candlesticks.length > allCandlesRef.current.length) {
+    
+    // Check if candlesticks updated (new reference or different count)
+    const candlesUpdated = data.candlesticks !== allCandlesRef.current || data.candlesticks.length !== allCandlesRef.current.length;
+    if (candlesUpdated) {
       allCandlesRef.current = data.candlesticks;
       const visible = interactive ? data.candlesticks : getVisibleCandlesticks(data.candlesticks, timeframe);
       if (seriesRef.current?.setData) {
         seriesRef.current.setData(visible);
       }
+
+      // Synchronize moving average lines to match updated candlestick data
+      const currentMaSettings = maSettingsRef.current || maSettings;
+      if (currentMaSettings && chartRef.current && !isPctMode) {
+        const maColors = {
+          '5': '#10b981', // green
+          '10': '#06b6d4', // cyan
+          '21': '#3b82f6', // blue
+          '50': '#f59e0b', // yellow/orange
+          '200': '#ef4444' // red
+        };
+        const visibleTimes = new Set(visible.map(c => c.time));
+
+        Object.entries(currentMaSettings).forEach(([maKey, config]) => {
+          if (config && config.visible) {
+            const period = parseInt(maKey, 10);
+            if (!isNaN(period)) {
+              const fullSmaData = calculateSMA(data.candlesticks, period);
+              const visibleSmaData = fullSmaData.filter(d => visibleTimes.has(d.time));
+              let lineSeries = maSeriesMapRef.current ? maSeriesMapRef.current[maKey] : null;
+
+              if (!lineSeries && visibleSmaData.length > 0) {
+                lineSeries = chartRef.current.addSeries(LineSeries, {
+                  color: config.color || maColors[maKey] || '#8b5cf6',
+                  lineWidth: config.thickness || 1.2,
+                  title: `${maKey} SMA`,
+                  priceLineVisible: false,
+                });
+                if (maSeriesMapRef.current) {
+                  maSeriesMapRef.current[maKey] = lineSeries;
+                }
+              }
+
+              if (lineSeries && typeof lineSeries.setData === 'function') {
+                lineSeries.setData(visibleSmaData);
+              }
+            }
+          } else if (maSeriesMapRef.current && maSeriesMapRef.current[maKey]) {
+            try {
+              maSeriesMapRef.current[maKey].setData([]);
+            } catch (_e) {}
+          }
+        });
+      }
+
       if (!userHasNavigatedRef.current && !isUserInteractingRef.current) {
         applyTimeframeCamera(timeframe);
       }
     }
-  }, [data?.candlesticks, interactive, timeframe, applyTimeframeCamera]);
+  }, [data?.candlesticks, interactive, timeframe, applyTimeframeCamera, selectedBenchmark, benchmarkMode, benchmarkCandles?.length, maSettings]);
 
   const getPointPixel = useCallback((time, price) => {
     if (!chartRef.current || !seriesRef.current) return null;
@@ -997,7 +1045,7 @@ export default function MiniCandlestickChart({
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
     const isOverPriceScale = x >= rect.width - 65;
-    const isOverTimeScale = y >= rect.height - 28;
+    const isOverTimeScale = y >= rect.height - 40;
 
     if (isOverTimeScale) {
       chartContainerRef.current.style.cursor = 'ew-resize';
@@ -1152,7 +1200,7 @@ export default function MiniCandlestickChart({
       onClick={onClick}
     >
       {interactive && activeToolProp === undefined && (
-        <div className="mini-chart-toolbar-row flex items-center justify-end px-3 py-1 bg-slate-900/90 border-b border-slate-800/80 z-20 rounded-t-xl">
+        <div className="mini-chart-toolbar-row flex items-center justify-end px-3 py-1 z-20 rounded-t-xl">
           <ChartDrawingToolbar
             activeTool={activeTool}
             onToolChange={setActiveTool}
@@ -1238,7 +1286,7 @@ export default function MiniCandlestickChart({
         }}
       >
         {isHistoryLoading && (
-          <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900/80 text-sky-300 text-[10px] font-medium backdrop-blur-sm border border-sky-500/20 shadow-sm pointer-events-none animate-pulse">
+          <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-100/90 dark:bg-slate-900/80 text-sky-600 dark:text-sky-300 text-[10px] font-medium backdrop-blur-sm border border-sky-500/30 dark:border-sky-500/20 shadow-sm pointer-events-none animate-pulse">
             <span className="w-1.5 h-1.5 rounded-full bg-sky-400 animate-ping" />
             Loading history...
           </div>

@@ -63,6 +63,18 @@ vi.mock('../../services/marketPulse', () => ({
     score: 100,
     phase: 'Structural Bull',
     color: '#10b981'
+  })),
+  calculateDistributionDays: vi.fn(() => ({
+    count: 1,
+    status: 'Low (Confirmed Uptrend)',
+    label: 'Low',
+    color: '#10b981'
+  })),
+  analyzePriceActionGeometry: vi.fn(() => ({
+    structureLabel: 'Higher Highs & Higher Lows (HH/HL)',
+    lastCandleDesc: 'Bullish Hammer',
+    pivots: { s1: 23100, s2: 22800, r1: 23500, r2: 24000 },
+    recentCandlesSummary: '2026-11-06: O:23000 H:23500 L:22900 C:23456.95 (+1.01%)'
   }))
 }));
 
@@ -199,5 +211,31 @@ describe('IndexDetailModal Component', () => {
 
     // Verify structured sections can render
     expect(screen.getByText('AI Market Structure Analysis')).toBeDefined();
+  });
+
+  it('renders theme-native cards, stat subcards, and outlook card without hardcoded styles', () => {
+    render(<IndexDetailModal index={mockIndex} country="IN" onClose={vi.fn()} />);
+
+    // Institutional cards
+    const cards = document.querySelectorAll('.institutional-card');
+    expect(cards.length).toBeGreaterThanOrEqual(4);
+
+    // Outlook card uses outlook-card class instead of hardcoded dark background
+    const outlookCard = document.querySelector('.institutional-card.outlook-card');
+    expect(outlookCard).not.toBeNull();
+    expect(outlookCard.style.background).toBeFalsy();
+
+    // Stat subcards and subcard-subtext
+    const subcardSubtexts = document.querySelectorAll('.subcard-subtext');
+    expect(subcardSubtexts.length).toBeGreaterThanOrEqual(2);
+  });
+
+  it('renders distribution days and price action structure in index analysis tab', () => {
+    render(<IndexDetailModal index={mockIndex} country="IN" onClose={vi.fn()} />);
+
+    expect(screen.getByText('DISTRIBUTION')).toBeDefined();
+    expect(screen.getByText(/Price Structure:/i)).toBeDefined();
+    expect(screen.getByText(/Recent Candle:/i)).toBeDefined();
+    expect(screen.getByText('Higher Highs & Higher Lows (HH/HL)')).toBeDefined();
   });
 });

@@ -398,9 +398,11 @@ export default function EditStockModal({
     if (isScrolledToFundamentals) {
       scrollToPos(0);
     } else {
-      if (fundamentalsRef.current) {
-        const targetTop = fundamentalsRef.current.offsetTop - 44;
-        scrollToPos(Math.max(0, targetTop));
+      if (fundamentalsRef.current && container) {
+        const containerRect = container.getBoundingClientRect();
+        const fundRect = fundamentalsRef.current.getBoundingClientRect();
+        const scrollDelta = fundRect.top - containerRect.top + container.scrollTop - 44;
+        scrollToPos(Math.max(0, scrollDelta));
       } else {
         scrollToPos(container.scrollHeight);
       }
@@ -646,6 +648,14 @@ export default function EditStockModal({
     }
   }
 
+  // Synchronize isParamsCollapsed with popover parameters dock
+  useEffect(() => {
+    if (!isParamsCollapsed) {
+      setActiveRightTab('params');
+      setIsPopoverOpen(true);
+    }
+  }, [isParamsCollapsed]);
+
   // Handle ESC key to close popover before modal
   useEffect(() => {
     if (!isOpen) return;
@@ -654,6 +664,7 @@ export default function EditStockModal({
         e.preventDefault();
         e.stopPropagation();
         setIsPopoverOpen(false);
+        setIsParamsCollapsed(true);
       }
     };
     window.addEventListener("keydown", handleEscKey, true);
@@ -668,9 +679,11 @@ export default function EditStockModal({
         popoverRef.current &&
         !popoverRef.current.contains(e.target) &&
         railRef.current &&
-        !railRef.current.contains(e.target)
+        !railRef.current.contains(e.target) &&
+        !e.target.closest?.('.btn-header-params-dock')
       ) {
         setIsPopoverOpen(false);
+        setIsParamsCollapsed(true);
       }
     };
     document.addEventListener("mousedown", handleOutsideClick);
@@ -1636,6 +1649,27 @@ export default function EditStockModal({
 
   const [justSaved, setJustSaved] = useState(false);
 
+  const persistStockData = useCallback((updatedStock) => {
+    if (!updatedStock || !updatedStock.symbol) return;
+    const finalParams = { ...(updatedStock.params || {}) };
+    if (selectedBenchmark !== 'none' && liveRsInfo?.category) {
+      finalParams.rs = liveRsInfo.category;
+    }
+    const finalData = {
+      ...updatedStock,
+      params: finalParams,
+      aiAnalysis: updatedStock.aiAnalysis !== undefined ? updatedStock.aiAnalysis : aiAnalysis,
+      aiAnalysisDate: updatedStock.aiAnalysisDate !== undefined ? updatedStock.aiAnalysisDate : aiAnalysisDate,
+      aiTaggedAt: updatedStock.aiTaggedAt || formData?.aiTaggedAt || (aiAnalysisDate ? new Date().toISOString() : null)
+    };
+
+    if (onUpdateStock) {
+      onUpdateStock(finalData);
+    } else if (onSave) {
+      onSave(finalData);
+    }
+  }, [formData?.aiTaggedAt, aiAnalysis, aiAnalysisDate, onUpdateStock, onSave, selectedBenchmark, liveRsInfo]);
+
   const handleSave = useCallback((shouldClose = true) => {
     const finalParams = { ...(formData?.params || {}) };
     if (selectedBenchmark !== 'none' && liveRsInfo?.category) {
@@ -1744,13 +1778,15 @@ export default function EditStockModal({
         updatedTags.push(`AI: ${verdictStr}`);
       }
 
-      setFormData((prev) => ({
-        ...prev,
+      const updatedStock = {
+        ...formData,
         tags: updatedTags,
         aiAnalysis: rawText,
         aiAnalysisDate: nowStr,
         aiTaggedAt: isoStr
-      }));
+      };
+      setFormData(updatedStock);
+      persistStockData(updatedStock);
     } catch (err) {
       setAiError(err.message);
     } finally {
@@ -1794,7 +1830,9 @@ export default function EditStockModal({
           setFormData((prev) => {
             const nextStatus = !prev.tradable;
             showToast?.(`${prev.symbol} marked as ${nextStatus ? "Tradable" : "Untradable"}`, "info");
-            return { ...prev, tradable: nextStatus };
+            const next = { ...prev, tradable: nextStatus };
+            persistStockData(next);
+            return next;
           });
         } else if (key === "c") {
           e.preventDefault();
@@ -1820,29 +1858,34 @@ export default function EditStockModal({
   }, [isOpen, handleDelete, handleSave, formData?.symbol, formData?.flagColor, country, onQuickLog, handleUpdateStockFlag, showToast]);
 
   const handleChange = (field, value) => {
-    setFormData((prev) => ({ ...prev, [field]: value }));
+    setFormData((prev) => {
+      const next = { ...prev, [field]: value };
+      persistStockData(next);
+      return next;
+    });
   };
 
   const handleParamChange = (key, value) => {
-    setFormData((prev) => ({
-      ...prev,
-      params: { ...prev.params, [key]: value },
-    }));
+    setFormData((prev) => {
+      const next = {
+        ...prev,
+        params: { ...prev.params, [key]: value },
+      };
+      persistStockData(next);
+      return next;
+    });
   };
 
   const toggleWatchlist = (wlId) => {
     const currentWls = formData.watchlists || [];
-    if (currentWls.includes(wlId)) {
-      setFormData((prev) => ({
-        ...prev,
-        watchlists: currentWls.filter((id) => id !== wlId),
-      }));
-    } else {
-      setFormData((prev) => ({
-        ...prev,
-        watchlists: [...currentWls, wlId],
-      }));
-    }
+    const nextWls = currentWls.includes(wlId)
+      ? currentWls.filter((id) => id !== wlId)
+      : [...currentWls, wlId];
+    setFormData((prev) => {
+      const next = { ...prev, watchlists: nextWls };
+      persistStockData(next);
+      return next;
+    });
   };
 
   const toggleTag = (tag) => {
@@ -2049,11 +2092,11 @@ export default function EditStockModal({
 
   const renderFormContent = () => (
     <>
-      {/* 1. Stock Parameters & Setup Card */}
+      {/* 1. Stock Parameters & Technical Setup Card */}
       <div className="params-group-card setup-card">
         <div className="params-group-header">
           <span className="params-group-title">
-            <span className="params-group-dot blue" /> Stock Parameters & Setup
+            <span className="params-group-dot blue" /> Technical Setup
           </span>
           <label className="tradable-quick-toggle" title="Toggle active in universe">
             <input
@@ -2065,6 +2108,49 @@ export default function EditStockModal({
           </label>
         </div>
 
+        {/* 1-Click Stage Selector */}
+        <div className="stage-selector-container">
+          <div className="stage-selector-header">
+            <label className="property-group-sublabel">Market Stage</label>
+            {(formData.params?.stage || formData.stage) && (
+              <span className="stage-active-badge">
+                {formData.params?.stage || formData.stage}
+              </span>
+            )}
+          </div>
+          <div className="stage-pill-selector-group">
+            {(() => {
+              const stageOptions = (paramDefinitions?.stage?.options && paramDefinitions.stage.options.length > 0)
+                ? paramDefinitions.stage.options
+                : ['Stage 1', 'Stage 2', 'Stage 3', 'Stage 4'];
+
+              return stageOptions.map((st) => {
+                const currentVal = (formData.params?.stage || formData.stage || '').toString();
+                const isSelected = currentVal === st || currentVal.toLowerCase() === st.toLowerCase();
+                const stageClass = st.toLowerCase().replace(/[^a-z0-9]/g, '-');
+                return (
+                  <button
+                    key={st}
+                    type="button"
+                    className={`stage-pill-btn ${isSelected ? 'active' : ''} ${stageClass}`}
+                    onClick={() => {
+                      const nextVal = isSelected ? "" : st;
+                      handleParamChange('stage', nextVal);
+                      if (formData.stage !== undefined) {
+                        handleChange('stage', nextVal);
+                      }
+                    }}
+                    title={`Set market stage to ${st}`}
+                  >
+                    {st}
+                  </button>
+                );
+              });
+            })()}
+          </div>
+        </div>
+
+        {/* 2-Column Responsive Property Grid */}
         <div className="property-grid-enterprise">
           <div className="property-row-item">
             <label>Sector</label>
@@ -2080,7 +2166,7 @@ export default function EditStockModal({
           </div>
 
           <div className="property-row-item">
-            <label title="Manual earnings date override (e.g. Aug 4, 2026). Used when Yahoo Finance doesn't provide earnings data.">Earnings Date</label>
+            <label title="Manual earnings date override (e.g. Aug 4, 2026). Overrides auto-fetched date.">Earnings Date</label>
             <input
               type="text"
               value={formData.earningsDate || ""}
@@ -2090,36 +2176,121 @@ export default function EditStockModal({
             />
           </div>
 
-          {sortedParams.filter(([key]) => key !== 'movingAverages' && key !== adrKey && key !== liqKey).map(([key, def]) => (
-            <div key={key} className="property-row-item">
-              <label>{def.label}</label>
-              {def.type === "checkbox" ? (
-                <label className="checkbox-label-premium">
-                  <input
-                    type="checkbox"
-                    checked={formData.params?.[key] === true}
-                    onChange={(e) => handleParamChange(key, e.target.checked)}
-                  />
-                </label>
-              ) : def.type === "select" ? (
-                <select
-                  value={formData.params?.[key] || ""}
-                  onChange={(e) => handleParamChange(key, e.target.value)}
-                >
-                  <option value="">Select...</option>
-                  {def.options?.map((opt) => (
-                    <option key={opt} value={opt}>{opt}</option>
-                  ))}
-                </select>
-              ) : (
-                <input
-                  type="text"
-                  value={formData.params?.[key] || ""}
-                  onChange={(e) => handleParamChange(key, e.target.value)}
-                />
-              )}
-            </div>
-          ))}
+          {/* Filter out redundant data: Stage (already in top selector), Header metrics (ADR, Liquidity, RS in deep view), country mirrors (IN.*, US.*), and internal timestamp/display caches */}
+          {(() => {
+            const isRedundantOrHeaderMetric = (key) => {
+              const k = key.toLowerCase();
+
+              // 1. Stage is already handled by the top 1-click Market Stage selector
+              if (k === 'stage' || k.endsWith('.stage') || k === 'marketstage') return true;
+
+              // 2. In deep view, header metrics are already prominently displayed in the top bar ribbon
+              if (isDeepView) {
+                if (k === 'adr' || k === adrKey?.toLowerCase() || k.startsWith('adr')) return true;
+                if (k === 'liquidity' || k === liqKey?.toLowerCase() || k.startsWith('liq')) return true;
+                if (k === 'rs' || k === 'relativestrength' || k === 'relative_strength') return true;
+              } else {
+                if (k === 'adr' || k === adrKey?.toLowerCase()) return true;
+                if (k === 'liquidity' || k === liqKey?.toLowerCase()) return true;
+              }
+              if (k === 'movingaverages' || k === 'mas') return true;
+
+              // 3. Country-prefixed mirrors (e.g. in.rs, us.rs, in.stage, in.vcp_tightness)
+              if (/^(in|us)\./i.test(k) || k.includes('.')) return true;
+
+              // 4. Internal timestamps, timeframes, and display formatting strings
+              if (k.endsWith('updatedat') || k.endsWith('_updated_at') || k.endsWith('timestamp')) return true;
+              if (k.endsWith('timeframe') || k.endsWith('_timeframe')) return true;
+              if (k.endsWith('display') || k.endsWith('_display')) return true;
+
+              // 5. Common technical/chart calculated cache fields
+              if (['sma', 'ema', 'rsi', 'macd', 'atr', 'high52', 'low52', 'volume', 'prevclose'].includes(k)) return true;
+
+              return false;
+            };
+
+            const visibleSortedParams = sortedParams.filter(([key]) => !isRedundantOrHeaderMetric(key));
+
+            const definedNormalizedKeys = new Set(
+              sortedParams.map(([k]) => k.toLowerCase().replace(/[^a-z0-9]/g, ''))
+            );
+            definedNormalizedKeys.add('sector');
+            definedNormalizedKeys.add('earningsdate');
+            definedNormalizedKeys.add('tradable');
+            definedNormalizedKeys.add('stage');
+            definedNormalizedKeys.add('vcptightness');
+            definedNormalizedKeys.add('rs');
+            definedNormalizedKeys.add('adr');
+            definedNormalizedKeys.add('liquidity');
+
+            const extraKeys = Object.keys(formData.params || {}).filter(k => {
+              if (isRedundantOrHeaderMetric(k)) return false;
+              const normalized = k.toLowerCase().replace(/[^a-z0-9]/g, '');
+              if (definedNormalizedKeys.has(normalized)) return false;
+              return true;
+            });
+
+            return (
+              <>
+                {visibleSortedParams.map(([key, def]) => (
+                  <div key={key} className="property-row-item">
+                    <label title={def.label}>{def.label}</label>
+                    {def.type === "checkbox" ? (
+                      <label className="checkbox-label-premium">
+                        <input
+                          type="checkbox"
+                          checked={formData.params?.[key] === true}
+                          onChange={(e) => handleParamChange(key, e.target.checked)}
+                        />
+                      </label>
+                    ) : def.type === "select" ? (
+                      <select
+                        value={formData.params?.[key] || ""}
+                        onChange={(e) => handleParamChange(key, e.target.value)}
+                      >
+                        <option value="">Select...</option>
+                        {def.options?.map((opt) => (
+                          <option key={opt} value={opt}>{opt}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <input
+                        type={def.type === "number" ? "number" : "text"}
+                        value={formData.params?.[key] ?? ""}
+                        onChange={(e) => handleParamChange(key, e.target.value)}
+                        placeholder={def.placeholder || ""}
+                      />
+                    )}
+                  </div>
+                ))}
+
+                {extraKeys.map((key) => {
+                  const val = formData.params[key];
+                  const label = key.replace(/([A-Z])/g, ' $1').replace(/_/g, ' ').replace(/^./, str => str.toUpperCase());
+                  return (
+                    <div key={key} className="property-row-item">
+                      <label title={label}>{label}</label>
+                      {typeof val === 'boolean' ? (
+                        <label className="checkbox-label-premium">
+                          <input
+                            type="checkbox"
+                            checked={val}
+                            onChange={(e) => handleParamChange(key, e.target.checked)}
+                          />
+                        </label>
+                      ) : (
+                        <input
+                          type="text"
+                          value={val ?? ""}
+                          onChange={(e) => handleParamChange(key, e.target.value)}
+                        />
+                      )}
+                    </div>
+                  );
+                })}
+              </>
+            );
+          })()}
         </div>
       </div>
 
@@ -2183,18 +2354,23 @@ export default function EditStockModal({
 
         {!isThemeCardCollapsed && (
           <div className="theme-card-body">
-            <div className="theme-inputs-grid">
-              <div className="property-row-item">
+            <div className="theme-inputs-vertical">
+              <div className="property-row-item full-width-field">
                 <label>Macro Theme</label>
-                <input
-                  type="text"
-                  value={formData.macroTheme || ""}
-                  onChange={(e) => handleChange("macroTheme", e.target.value)}
-                  placeholder="e.g. AI & Data Centers, EV & Clean Mobility"
-                />
+                <div className="theme-macro-input-wrapper">
+                  <input
+                    type="text"
+                    value={formData.macroTheme || ""}
+                    onChange={(e) => handleChange("macroTheme", e.target.value)}
+                    placeholder="e.g. AI & Data Centers, EV & Clean Mobility"
+                  />
+                  {Array.isArray(formData.thematicVectors) && formData.thematicVectors[0]?.role && (
+                    <span className="theme-role-pill-inline">{formData.thematicVectors[0].role}</span>
+                  )}
+                </div>
               </div>
 
-              <div className="property-row-item">
+              <div className="property-row-item full-width-field">
                 <label>Dependent Themes & Sub-Catalysts</label>
                 <input
                   type="text"
@@ -2205,9 +2381,27 @@ export default function EditStockModal({
                   }}
                   placeholder="e.g. AI Infrastructure, Data Centers, Power Grid"
                 />
+                {Array.isArray(formData.dependentIndustries) && formData.dependentIndustries.length > 0 && (
+                  <div className="theme-chips-flex-row">
+                    {formData.dependentIndustries.map((ind, i) => (
+                      <span key={i} className="theme-subchip">
+                        {ind}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = formData.dependentIndustries.filter((_, idx) => idx !== i);
+                            handleChange("dependentIndustries", next);
+                          }}
+                          className="theme-chip-del"
+                          title={`Remove ${ind}`}
+                        >×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
 
-              <div className="property-row-item">
+              <div className="property-row-item full-width-field">
                 <label>Business Scope (Products / Segments)</label>
                 <input
                   type="text"
@@ -2218,6 +2412,24 @@ export default function EditStockModal({
                   }}
                   placeholder="e.g. Cigarettes, Packaged Foods, Hotels"
                 />
+                {Array.isArray(formData.businessScope) && formData.businessScope.length > 0 && (
+                  <div className="theme-chips-flex-row">
+                    {formData.businessScope.map((scope, i) => (
+                      <span key={i} className="theme-scope-chip">
+                        {scope}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const next = formData.businessScope.filter((_, idx) => idx !== i);
+                            handleChange("businessScope", next);
+                          }}
+                          className="theme-chip-del"
+                          title={`Remove ${scope}`}
+                        >×</button>
+                      </span>
+                    ))}
+                  </div>
+                )}
               </div>
             </div>
 
@@ -2250,13 +2462,21 @@ export default function EditStockModal({
         )}
       </div>
 
-      {/* 3. Watchlists, Tags & Notes Card */}
+      {/* 3. Watchlists & Setup Tags Card */}
       <div className="params-group-card research-card">
-        <div className="combined-research-row-premium">
-          {/* Column 1: Watchlists */}
+        <div className="params-group-header">
+          <span className="params-group-title">
+            <span className="params-group-dot blue" /> Watchlists & Setup Tags
+          </span>
+          <span className="params-group-sync-badge">Auto-synced</span>
+        </div>
+
+        <div className="research-sections-flow">
+          {/* Watchlists Horizontal Row */}
           {watchlists.length > 0 && (
-            <div className="research-col-watchlists-v2">
-              <div className="pill-group-wrapper-v2">
+            <div className="dock-subsection">
+              <label className="property-group-sublabel">Watchlist Membership</label>
+              <div className="pill-group-wrapper-v2 horizontal-wrap">
                 {watchlists.map((wl) => {
                   const isSelected = formData.watchlists?.includes(wl.id);
                   return (
@@ -2274,10 +2494,11 @@ export default function EditStockModal({
                       }}
                       title={`Watchlist: ${wl.name}`}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="watchlist-pill-icon">
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill={isSelected ? "currentColor" : "none"} stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" className="watchlist-pill-icon">
                         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
                       </svg>
                       <span>{wl.name}</span>
+                      {isSelected && <span className="pill-check-indicator">✓</span>}
                     </div>
                   );
                 })}
@@ -2285,15 +2506,11 @@ export default function EditStockModal({
             </div>
           )}
 
-          {/* Dynamic Separator 1 */}
-          {watchlists.length > 0 && (showTags && userSelectableTags.length > 0) && (
-            <div className="separator-v2-premium" />
-          )}
-
-          {/* Column 2: Tags */}
+          {/* Tags Horizontal Row */}
           {showTags && userSelectableTags.length > 0 && (
-            <div className="research-col-tags-v2">
-              <div className="pill-group-wrapper-v2">
+            <div className="dock-subsection">
+              <label className="property-group-sublabel">Setup & Pattern Tags</label>
+              <div className="pill-group-wrapper-v2 horizontal-wrap">
                 {userSelectableTags.map((tag) => {
                   const isSelected = formData.tags?.includes(tag);
                   return (
@@ -2310,11 +2527,7 @@ export default function EditStockModal({
                         }
                       }}
                     >
-                      {isSelected && (
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                          <polyline points="20 6 9 17 4 12" />
-                        </svg>
-                      )}
+                      <span className="tag-prefix">{isSelected ? "✓" : "+"}</span>
                       <span>{tag}</span>
                     </div>
                   );
@@ -2322,24 +2535,168 @@ export default function EditStockModal({
               </div>
             </div>
           )}
-
-          {/* Dynamic Separator 2 */}
-          {(watchlists.length > 0 || (showTags && userSelectableTags.length > 0)) && (
-            <div className="separator-v2-premium" />
-          )}
-
-          {/* Column 3: Notes (Always expands) */}
-          <div className="research-col-notes-v2">
-            <textarea
-              className="description-area-premium"
-              rows={1}
-              value={formData.notes || ""}
-              onChange={(e) => handleChange("notes", e.target.value)}
-              placeholder="Technical triggers, conviction level, and entry plan..."
-            />
-          </div>
         </div>
       </div>
+
+      {/* 4. Trade Notes & Triggers Card */}
+      <div className="params-group-card notes-card">
+        <div className="params-group-header">
+          <span className="params-group-title">
+            <span className="params-group-dot blue" /> Trade Notes & Triggers
+          </span>
+          <span className="params-group-storage-badge">Auto-saved</span>
+        </div>
+        <div className="dock-notes-body">
+          <textarea
+            className="description-area-premium dock-notes-textarea"
+            rows={3}
+            value={formData.notes || ""}
+            onChange={(e) => handleChange("notes", e.target.value)}
+            placeholder="Technical triggers, conviction level, and entry plan..."
+          />
+        </div>
+      </div>
+    </>
+  );
+
+  const renderHeaderMetricsContent = () => (
+    <>
+      {(() => {
+        const price = (sidebarStockData[formData.symbol]?.currentPrice !== undefined)
+          ? sidebarStockData[formData.symbol].currentPrice
+          : (formData.currentPrice || 0);
+
+        const changePct = (sidebarStockData[formData.symbol]?.dailyChangePct !== undefined)
+          ? sidebarStockData[formData.symbol].dailyChangePct
+          : (formData.dailyChangePct || 0);
+
+        if (price > 0) {
+          const currencySymbol = country === 'US' ? '$' : '₹';
+          const formattedPrice = price.toLocaleString(country === 'US' ? 'en-US' : 'en-IN', {
+            minimumFractionDigits: 2,
+            maximumFractionDigits: 2
+          });
+          const formattedChange = changePct.toFixed(2);
+          const isUp = changePct >= 0;
+
+          return (
+            <div className="modal-header-price-tag">
+              <span className="price-num">{currencySymbol}&nbsp;{formattedPrice}</span>
+              <span className={`price-change-pct ${isUp ? 'up' : 'down'}`}>
+                {isUp ? '+' : ''}{formattedChange}%
+              </span>
+            </div>
+          );
+        }
+        return null;
+      })()}
+
+      {formattedAdrValue && (
+        <span
+          className="header-metric-pill-v2 adr"
+          title={`Average Daily Range (ADR): ${formattedAdrValue}`}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="metric-pill-icon">
+            <path d="M12 3v18" />
+            <path d="m8 7 4-4 4 4" />
+            <path d="m8 17 4 4 4-4" />
+          </svg>
+          <span className="metric-pill-label">ADR</span>
+          <span className="metric-pill-value">{formattedAdrValue}</span>
+        </span>
+      )}
+
+      {formattedLiqValue && (
+        <span
+          className="header-metric-pill-v2 liquidity"
+          title={`Liquidity: ${formattedLiqValue}`}
+        >
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="metric-pill-icon water-drop">
+            <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
+          </svg>
+          <span className="metric-pill-value">{formattedLiqValue}</span>
+        </span>
+      )}
+
+      {(() => {
+        const liveRsCat = liveRsInfo?.category || null;
+        const liveDiffStr = liveRsInfo?.diffStr || '';
+
+        // When benchmark is selected, live calculated RS is the primary source of truth
+        const rsVal = (selectedBenchmark !== 'none' && liveRsCat)
+          ? liveRsCat
+          : (formData?.params?.rs || formData?.parameters?.rs || stock?.params?.rs || stock?.parameters?.rs || liveRsCat);
+        if (!rsVal) return null;
+
+        const getRsEmoji = (cat) => {
+          const lower = String(cat || '').toLowerCase();
+          if (lower.includes('very strong')) return '🔥🔥';
+          if (lower.includes('strong')) return '🔥';
+          if (lower.includes('neutral')) return '⚖️';
+          if (lower.includes('very weak')) return '👎👎';
+          if (lower.includes('weak')) return '👎';
+          return '📈';
+        };
+
+        const getRsClass = (cat) => {
+          const lower = String(cat || '').toLowerCase();
+          if (lower.includes('very strong')) return 'very-strong';
+          if (lower.includes('strong')) return 'strong';
+          if (lower.includes('neutral')) return 'neutral';
+          if (lower.includes('very weak')) return 'very-weak';
+          if (lower.includes('weak')) return 'weak';
+          return '';
+        };
+
+        return (
+          <span
+            className={`header-metric-pill-v2 rs ${getRsClass(rsVal)}`}
+            title={`Relative Strength (RS vs Benchmark): ${rsVal}${liveDiffStr}`}
+          >
+            <span className="metric-pill-label">RS</span>
+            <span className="metric-pill-emoji">{getRsEmoji(rsVal)}</span>
+          </span>
+        );
+      })()}
+
+      {(() => {
+        const earningsDateVal = summaryData?.catalysts?.earningsDate || formData.earningsDate || stock?.earningsDate;
+        if (!earningsDateVal) return null;
+        const daysAway = calculateDaysAway(earningsDateVal);
+
+        const isImminent = typeof daysAway === 'number' && daysAway >= 0 && daysAway <= 7;
+        const isPast = typeof daysAway === 'number' && daysAway < 0;
+        const displayDate = String(earningsDateVal).replace(/,\s*\d{4}$/, '');
+
+        return (
+          <span
+            className={`header-metric-pill-v2 earnings ${isImminent ? 'imminent' : (isPast ? 'past' : '')}`}
+            title={`Next Earnings Date: ${earningsDateVal}${typeof daysAway === 'number' ? ` (${daysAway >= 0 ? `in ${daysAway}d` : `${Math.abs(daysAway)}d ago`})` : ''}`}
+          >
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="metric-pill-icon">
+              <rect x="3" y="4" width="18" height="18" rx="2"/>
+              <line x1="16" y1="2" x2="16" y2="6"/>
+              <line x1="8" y1="2" x2="8" y2="6"/>
+              <line x1="3" y1="10" x2="21" y2="10"/>
+            </svg>
+            <span className="metric-pill-value">{displayDate || earningsDateVal}</span>
+            {typeof daysAway === 'number' && (
+              <span className="earnings-days-sub">
+                ({daysAway >= 0 ? `${daysAway}d` : `${Math.abs(daysAway)}d ago`})
+              </span>
+            )}
+          </span>
+        );
+      })()}
+
+      {formData.params?.movingAverages && (
+        <>
+          <div className="params-summary-divider-line" />
+          <div className="self-center">
+            <MovingAverageRibbon value={formData.params.movingAverages} variant="compact" showLabel={true} />
+          </div>
+        </>
+      )}
     </>
   );
 
@@ -2361,7 +2718,7 @@ export default function EditStockModal({
         ) : isDeepView ? (
           <>
             <div className="modal-header header-premium">
-              <div className="modal-title-group-premium">
+              <div className="modal-title-group-premium" ref={deepViewTopRef}>
                 <div className="terminal-header-title-wrapper">
                   <h1 className="symbol-header-hero">{formData.symbol}</h1>
                   {(formData.longName || formData.name) && (
@@ -2386,6 +2743,13 @@ export default function EditStockModal({
                       + Add to Watchlist
                     </button>
                   )}
+                </div>
+
+                <div className="header-action-divider-v2-premium" />
+
+                {/* Unified Header Metrics (Price, ADR, Liquidity, RS, Earnings, MAs) */}
+                <div className="params-summary-metrics-inline header-metrics-unified">
+                  {renderHeaderMetricsContent()}
                 </div>
               </div>
 
@@ -2530,6 +2894,20 @@ export default function EditStockModal({
                       <path d="m19 9-5 5-4-4-3 3" />
                     </svg>
                   </a>
+                  {onDeleteStock && (
+                    <button
+                      type="button"
+                      className="header-icon-action-btn delete-stock-header-btn"
+                      onClick={handleDelete}
+                      title="Delete Stock from Watchlist (Alt+Del)"
+                      aria-label="Delete Stock from Watchlist"
+                    >
+                      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                        <path d="M3 6h18m-2 0v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6m3 0V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2" />
+                      </svg>
+                      <span className="sr-only">Delete Stock</span>
+                    </button>
+                  )}
                 </div>
                 <div className="header-action-divider-v2-premium" />
                 <button className="modal-close-btn" onClick={onClose} title="Close Terminal">
@@ -2911,202 +3289,8 @@ export default function EditStockModal({
 
               <div className="workspace-content-premium">
                 <div
-                  ref={deepViewTopRef}
-                  className={`deep-view-top ${isParamsCollapsed ? 'collapsed' : ''}`}
+                  className="deep-view-bottom"
                 >
-              <style>{`
-                .deep-view-top { --top-section-height: ${!isParamsCollapsed ? `${topHeight}px` : '0px'}; }
-              `}</style>
-              <div className="section-header-row">
-                <button
-                  className={`icon-btn-collapse ${isParamsCollapsed ? 'collapsed' : ''}`}
-                  onClick={() => setIsParamsCollapsed(!isParamsCollapsed)}
-                  title={isParamsCollapsed ? 'Expand Parameters' : 'Collapse Parameters'}
-                >
-                  {isParamsCollapsed ? (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="6 9 12 15 18 9" />
-                    </svg>
-                  ) : (
-                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="3" strokeLinecap="round" strokeLinejoin="round">
-                      <polyline points="18 15 12 9 6 15" />
-                    </svg>
-                  )}
-                </button>
-                <span className="section-title">Parameters</span>
-
-                <div className="params-summary-metrics-inline">
-                  <div className="params-summary-divider-line" />
-
-                  {(() => {
-                    const price = (sidebarStockData[formData.symbol]?.currentPrice !== undefined)
-                      ? sidebarStockData[formData.symbol].currentPrice
-                      : (formData.currentPrice || 0);
-
-                    const changePct = (sidebarStockData[formData.symbol]?.dailyChangePct !== undefined)
-                      ? sidebarStockData[formData.symbol].dailyChangePct
-                      : (formData.dailyChangePct || 0);
-
-                    if (price > 0) {
-                      const currencySymbol = country === 'US' ? '$' : '₹';
-                      const formattedPrice = price.toLocaleString(country === 'US' ? 'en-US' : 'en-IN', {
-                        minimumFractionDigits: 2,
-                        maximumFractionDigits: 2
-                      });
-                      const formattedChange = changePct.toFixed(2);
-                      const isUp = changePct >= 0;
-
-                      return (
-                        <div className="modal-header-price-tag">
-                          <span className="price-num">{currencySymbol}&nbsp;{formattedPrice}</span>
-                          <span className={`price-change-pct ${isUp ? 'up' : 'down'}`}>
-                            {isUp ? '+' : ''}{formattedChange}%
-                          </span>
-                        </div>
-                      );
-                    }
-                    return null;
-                  })()}
-
-                  {formattedAdrValue && (
-                    <span
-                      className="header-metric-pill-v2 adr"
-                      title={`Average Daily Range (ADR): ${formattedAdrValue}`}
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="metric-pill-icon">
-                        <path d="M12 3v18" />
-                        <path d="m8 7 4-4 4 4" />
-                        <path d="m8 17 4 4 4-4" />
-                      </svg>
-                      <span className="metric-pill-label">ADR</span>
-                      <span className="metric-pill-value">{formattedAdrValue}</span>
-                    </span>
-                  )}
-
-                  {formattedLiqValue && (
-                    <span
-                      className="header-metric-pill-v2 liquidity"
-                      title={`Liquidity: ${formattedLiqValue}`}
-                    >
-                      <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="metric-pill-icon water-drop">
-                        <path d="M12 2.69l5.66 5.66a8 8 0 1 1-11.31 0z" />
-                      </svg>
-                      <span className="metric-pill-value">{formattedLiqValue}</span>
-                    </span>
-                  )}
-
-                  {(() => {
-                    const liveRsCat = liveRsInfo?.category || null;
-                    const liveDiffStr = liveRsInfo?.diffStr || '';
-
-                    // When benchmark is selected, live calculated RS is the primary source of truth
-                    const rsVal = (selectedBenchmark !== 'none' && liveRsCat)
-                      ? liveRsCat
-                      : (formData?.params?.rs || formData?.parameters?.rs || stock?.params?.rs || stock?.parameters?.rs || liveRsCat);
-                    if (!rsVal) return null;
-
-                    const getRsEmoji = (cat) => {
-                      const lower = String(cat || '').toLowerCase();
-                      if (lower.includes('very strong')) return '🔥🔥';
-                      if (lower.includes('strong')) return '🔥';
-                      if (lower.includes('neutral')) return '⚖️';
-                      if (lower.includes('very weak')) return '👎👎';
-                      if (lower.includes('weak')) return '👎';
-                      return '📈';
-                    };
-
-                    const getRsClass = (cat) => {
-                      const lower = String(cat || '').toLowerCase();
-                      if (lower.includes('very strong')) return 'very-strong';
-                      if (lower.includes('strong')) return 'strong';
-                      if (lower.includes('neutral')) return 'neutral';
-                      if (lower.includes('very weak')) return 'very-weak';
-                      if (lower.includes('weak')) return 'weak';
-                      return '';
-                    };
-
-                    return (
-                      <span
-                        className={`header-metric-pill-v2 rs ${getRsClass(rsVal)}`}
-                        title={`Relative Strength (RS vs Benchmark): ${rsVal}${liveDiffStr}`}
-                      >
-                        <span className="metric-pill-label">RS</span>
-                        <span className="metric-pill-emoji">{getRsEmoji(rsVal)}</span>
-                      </span>
-                    );
-                  })()}
-
-                  {(() => {
-                    const earningsDateVal = summaryData?.catalysts?.earningsDate || formData.earningsDate || stock?.earningsDate;
-                    if (!earningsDateVal) return null;
-                    const daysAway = calculateDaysAway(earningsDateVal);
-
-                    const isImminent = typeof daysAway === 'number' && daysAway >= 0 && daysAway <= 7;
-                    const isPast = typeof daysAway === 'number' && daysAway < 0;
-
-                    return (
-                      <span
-                        className={`header-metric-pill-v2 earnings ${isImminent ? 'imminent' : (isPast ? 'past' : '')}`}
-                        title={`Next Earnings Date: ${earningsDateVal}`}
-                      >
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" className="metric-pill-icon">
-                          <rect x="3" y="4" width="18" height="18" rx="2" ry="2"/>
-                          <line x1="16" y1="2" x2="16" y2="6"/>
-                          <line x1="8" y1="2" x2="8" y2="6"/>
-                          <line x1="3" y1="10" x2="21" y2="10"/>
-                        </svg>
-                        <span className="metric-pill-label">EARNINGS:</span>
-                        <span className="metric-pill-value">{earningsDateVal}</span>
-                        {typeof daysAway === 'number' && (
-                          <span className="earnings-days-sub">
-                            ({daysAway >= 0 ? `in ${daysAway}d` : `${Math.abs(daysAway)}d ago`})
-                          </span>
-                        )}
-                      </span>
-                    );
-                  })()}
-
-                  {formData.params?.movingAverages && (
-                    <>
-                      <div className="params-summary-divider-line" />
-                      <div className="self-center">
-                        <MovingAverageRibbon value={formData.params.movingAverages} variant="compact" showLabel={true} />
-                      </div>
-                    </>
-                  )}
-                </div>
-              </div>
-
-              {!isParamsCollapsed && (
-                <div className="params-content-grid themed-scroll">
-                  {renderFormContent()}
-                </div>
-              )}
-            </div>
-
-            {!isParamsCollapsed && (
-              <div
-                className="resizer-v-handle"
-                onMouseDown={() => setIsResizingV(true)}
-                onDoubleClick={() => {
-                  setTopHeight(320);
-                  topHeightRef.current = 320;
-                  try {
-                    localStorage.setItem('tradeclarity_modal_top_height', '320');
-                  } catch (err) {
-                    console.warn("Failed to reset top height:", err);
-                  }
-                }}
-                role="separator"
-                aria-orientation="horizontal"
-                aria-label="Resize parameters"
-                title="Drag to resize parameters | Double-click to reset (320px)"
-              />
-            )}
-
-            <div
-              className="deep-view-bottom"
-            >
               <div className="deep-view-left-panel" ref={leftPanelRef} onScroll={handleLeftPanelScroll}>
                 <div className="panel-header">
                   <div className="chart-header-controls">
@@ -3538,6 +3722,30 @@ export default function EditStockModal({
               <div className="tv-chart-rail-dock" ref={railRef}>
                 <button
                   type="button"
+                  className={`tv-rail-btn params-tool ${activeRightTab === 'params' && isPopoverOpen ? 'active' : ''}`}
+                  onClick={() => {
+                    if (isPopoverOpen && activeRightTab === 'params') {
+                      setIsPopoverOpen(false);
+                      setIsParamsCollapsed(true);
+                    } else {
+                      setActiveRightTab('params');
+                      setIsPopoverOpen(true);
+                      setIsParamsCollapsed(false);
+                    }
+                  }}
+                  title={isParamsCollapsed ? 'Expand Parameters' : 'Collapse Parameters'}
+                  aria-label="Parameters"
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <rect x="3" y="3" width="18" height="18" rx="2"/>
+                    <path d="m9 12 2 2 4-4"/>
+                  </svg>
+                  <span className="sr-only">Parameters</span>
+                  <span className="tv-rail-tooltip">{isParamsCollapsed ? 'Parameters & Setup' : 'Collapse Parameters'}</span>
+                </button>
+
+                <button
+                  type="button"
                   className={`tv-rail-btn ${activeRightTab === 'position' && isPopoverOpen ? 'active' : ''}`}
                   onClick={() => {
                     if (isPopoverOpen && activeRightTab === 'position') {
@@ -3617,9 +3825,43 @@ export default function EditStockModal({
               {/* Dedicated Floating Popover Overlay Panel */}
               {isPopoverOpen && (
                 <div
-                  className={`deep-view-popover-panel ${activeRightTab === 'position' ? 'popover-position-mode' : activeRightTab === 'news' ? 'popover-news-mode' : 'popover-ai-mode'} ${activeRightTab === 'ai' && loadingAi ? 'ai-radium-glow' : ''}`}
+                  className={`deep-view-popover-panel ${activeRightTab === 'params' ? 'popover-params-mode' : activeRightTab === 'position' ? 'popover-position-mode' : activeRightTab === 'news' ? 'popover-news-mode' : 'popover-ai-mode'} ${activeRightTab === 'ai' && loadingAi ? 'ai-radium-glow' : ''}`}
                   ref={popoverRef}
                 >
+                  {/* Parameters Dedicated Popover */}
+                  {activeRightTab === 'params' && (
+                    <>
+                      <div className="popover-header-bar params-card-header">
+                        <div className="popover-title-row">
+                          <span className="popover-header-icon params-icon">📋</span>
+                          <div className="popover-title-text-group">
+                            <span className="popover-main-title">Parameters & Setup</span>
+                            <span className="popover-subtitle">{formData.symbol}</span>
+                          </div>
+                        </div>
+
+                        <button
+                          type="button"
+                          className="popover-close-btn"
+                          onClick={() => {
+                            setIsPopoverOpen(false);
+                            setIsParamsCollapsed(true);
+                          }}
+                          title="Close Parameters (Esc)"
+                          aria-label="Close Parameters"
+                        >
+                          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+
+                      <div className="popover-content-scroll params-dock-scroll themed-scroll">
+                        {renderFormContent()}
+                      </div>
+                    </>
+                  )}
                   {/* Position Dedicated Popover */}
                   {activeRightTab === 'position' && (
                     <>
@@ -3882,50 +4124,6 @@ export default function EditStockModal({
               </div>
             </div>
           </div>
-
-            <div className="modal-pinned-footer">
-              <div className="footer-context-hub">
-                {onDeleteStock && (
-                  <button 
-                    onClick={handleDelete} 
-                    className="btn-premium-danger"
-                    title="Delete Stock (Shortcut: Alt + Del or Del)"
-                  >
-                    Delete Stock <span className="btn-shortcut-hint">(Alt+Del)</span>
-                  </button>
-                )}
-              </div>
-              <div className="footer-actions">
-                {onQuickLog && (
-                  <button 
-                    onClick={() => {
-                      onClose();
-                      onQuickLog(formData.symbol);
-                    }} 
-                    className="btn-premium-secondary quick-log-modal-btn"
-                  >
-                    Log Position
-                  </button>
-                )}
-                <button type="button" onClick={onClose} className="btn-premium-secondary">Cancel</button>
-                <button 
-                  type="button" 
-                  onClick={() => handleSave(false)} 
-                  className={`btn-premium-secondary ${justSaved ? 'btn-saved-highlight' : ''}`}
-                  title="Save changes without closing modal (Ctrl+S)"
-                >
-                  {justSaved ? '✓ Saved' : 'Save'}
-                </button>
-                <button 
-                  type="button" 
-                  onClick={() => handleSave(true)} 
-                  className="btn-premium-primary"
-                  title="Save changes and close terminal"
-                >
-                  Save & Close
-                </button>
-              </div>
-            </div>
           </>
         ) : (
           <div className="standard-modal-interior-v2">

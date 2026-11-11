@@ -166,6 +166,8 @@ export async function fetchSingleIndexDetails(symbol, country = 'IN', timeframe 
   finalRes.sma50 = calculateSMA(maCandles, 50) ? Number((calculateSMA(maCandles, 50) * scaleFactor).toFixed(2)) : (baseIndexData?.sma50 || null);
   finalRes.sma200 = calculateSMA(maCandles, 200) ? Number((calculateSMA(maCandles, 200) * scaleFactor).toFixed(2)) : (baseIndexData?.sma200 || null);
   finalRes.rsi = calculateRSI(maCandles, 14) || baseIndexData?.rsi || null;
+  finalRes.distributionDays = calculateDistributionDays(maCandles, 25);
+  finalRes.geometry = analyzePriceActionGeometry(maCandles, 15, finalRes.currentPrice, finalRes.high52w);
 
   if (INDEX_NAME_MAP[symbol]) {
     finalRes.longName = INDEX_NAME_MAP[symbol].name;
@@ -204,13 +206,215 @@ function calculateRSI(data, period = 14) {
 }
 
 /**
- * Calculates a comprehensive Health Score (0-100) and identifies the Trend Phase
+ * Calculates William O'Neil / IBD Distribution Days in the trailing lookback window (default 25 sessions)
+ * A distribution day occurs when the index closes down >= 0.20% on volume higher than the prior day.
+ * Days are invalidated if price advances 5% or more above that day's close.
  */
-export function getInstitutionalTrend(price, smas = {}) {
+export function calculateDistributionDays(candlesticks, lookback = 25) {
+  if (!Array.isArray(candlesticks) || candlesticks.length < 2) {
+    return { count: 0, lookback, status: "Low Risk", label: "Low", color: "#10b981", days: [], hasVolumeData: false };
+  }
+
+  // Work with trailing candles (with buffer)
+  const windowCandles = candlesticks.slice(-(lookback + 10));
+  const distDays = [];
+  let volumeFound = false;
+
+  for (let i = 1; i < windowCandles.length; i++) {
+    const curr = windowCandles[i];
+    const prev = windowCandles[i - 1];
+
+    if (!curr || !prev || curr.close == null || prev.close == null || prev.close <= 0) continue;
+
+    const dropPct = ((curr.close - prev.close) / prev.close) * 100;
+    const hasVolume = curr.volume != null && prev.volume != null && curr.volume > 0 && prev.volume > 0;
+    if (hasVolume) volumeFound = true;
+
+    // Standard IBD rule: drop >= 0.2% on higher volume
+    const isVolumeDistribution = dropPct <= -0.2 && hasVolume && curr.volume > prev.volume;
+
+    // Churning / Stagnation rule: flat change on heavier volume with close in lower half
+    const range = (curr.high || curr.close) - (curr.low || curr.close);
+    const closeLocation = range > 0 ? (curr.close - (curr.low || curr.close)) / range : 0.5;
+    const isChurning = hasVolume && Math.abs(dropPct) < 0.2 && closeLocation < 0.4 && curr.volume > prev.volume;
+
+    if (isVolumeDistribution || isChurning) {
+      distDays.push({
+        time: curr.time,
+        dropPct: Number(dropPct.toFixed(2)),
+        volume: curr.volume,
+        isChurning: !isVolumeDistribution && isChurning,
+        index: i
+      });
+    }
+  }
+
+  const activeWindowStart = Math.max(0, windowCandles.length - lookback);
+  const latestPrice = windowCandles[windowCandles.length - 1].close;
+
+  // Invalidate any distribution day if the market rallied >= 5% above its close
+  const validDays = distDays.filter(d => {
+    if (d.index < activeWindowStart) return false;
+    const distCandle = windowCandles[d.index];
+    if (distCandle && latestPrice >= distCandle.close * 1.05) {
+      return false;
+    }
+    return true;
+  });
+
+  const count = validDays.length;
+  let status = "Low (Confirmed Uptrend)";
+  let label = "Low";
+  let color = "#10b981";
+
+  if (count >= 5) {
+    status = "Elevated (Market in Correction)";
+    label = "High";
+    color = "#ef4444";
+  } else if (count >= 3) {
+    status = "Moderate (Uptrend Under Pressure)";
+    label = "Elevated";
+    color = "#f59e0b";
+  }
+
+  return {
+    count,
+    lookback,
+    status,
+    label,
+    color,
+    days: validDays,
+    hasVolumeData: volumeFound
+  };
+}
+
+/**
+ * Evaluates forensic price action geometry, candle rejection patterns, swing pivots, and structure
+ */
+export function analyzePriceActionGeometry(candlesticks, lookback = 15, currentPrice = null, high52w = null) {
+  if (!Array.isArray(candlesticks) || candlesticks.length === 0) {
+    return {
+      structureLabel: "Consolidating Base",
+      lastCandleDesc: "Awaiting candle data",
+      pivots: { s1: 0, s2: 0, r1: 0, r2: 0 },
+      recentCandlesSummary: "No candlestick history available."
+    };
+  }
+
+  const windowCandles = candlesticks.slice(-lookback);
+  const latest = windowCandles[windowCandles.length - 1];
+  const price = currentPrice || latest.close;
+
+  // 1. Analyze latest candle pattern / rejection
+  const prev = windowCandles.length >= 2 ? windowCandles[windowCandles.length - 2] : null;
+  const candleRange = Math.max(0.0001, (latest.high || latest.close) - (latest.low || latest.close));
+  const candleBody = Math.abs(latest.close - latest.open);
+  const lowerWick = Math.min(latest.open, latest.close) - (latest.low || latest.close);
+  const upperWick = (latest.high || latest.close) - Math.max(latest.open, latest.close);
+  const bodyPct = candleBody / candleRange;
+
+  let lastCandleDesc = "Neutral consolidation session";
+  if (lowerWick >= 1.8 * candleBody && lowerWick / candleRange > 0.45) {
+    lastCandleDesc = "Bullish Hammer (Dip rejection / lower shadow support)";
+  } else if (upperWick >= 1.8 * candleBody && upperWick / candleRange > 0.45) {
+    lastCandleDesc = "Exhaustion wick (Upper shadow supply rejection)";
+  } else if (prev && latest.high < prev.high && latest.low > prev.low) {
+    lastCandleDesc = "Inside day (Volatility compression / tight digestion)";
+  } else if (prev && latest.close > prev.high && latest.open < prev.low) {
+    lastCandleDesc = "Bullish Outside Reversal (Engulfing demand surge)";
+  } else if (latest.close > latest.open && bodyPct > 0.65) {
+    lastCandleDesc = "Strong bullish expansion bar (Demand dominance)";
+  } else if (latest.close < latest.open && bodyPct > 0.65) {
+    lastCandleDesc = "Bearish distribution bar (Selling pressure dominance)";
+  }
+
+  // 2. Identify Swing Pivots across the window
+  const highs = windowCandles.map(c => c.high || c.close).filter(Boolean);
+  const lows = windowCandles.map(c => c.low || c.close).filter(Boolean);
+  const windowHigh = highs.length > 0 ? Math.max(...highs) : price * 1.02;
+  const windowLow = lows.length > 0 ? Math.min(...lows) : price * 0.98;
+
+  // Local swing low (support) below current price
+  const lowsBelowPrice = lows.filter(l => l < price * 0.999);
+  const s1 = lowsBelowPrice.length > 0 ? Math.max(...lowsBelowPrice) : windowLow;
+  const s2 = windowLow < s1 ? windowLow : s1 * 0.97;
+
+  // Local swing high (resistance) above current price
+  const highsAbovePrice = highs.filter(h => h > price * 1.001);
+  const r1 = highsAbovePrice.length > 0 ? Math.min(...highsAbovePrice) : (high52w && high52w > price ? high52w : windowHigh);
+  const r2 = high52w && high52w > r1 ? high52w : r1 * 1.02;
+
+  // 3. Classify Swing Structure (HH/HL vs LH/LL)
+  let structureLabel = "Consolidating Range (Contracting Volatility)";
+  if (windowCandles.length >= 6) {
+    const mid = Math.floor(windowCandles.length / 2);
+    const firstHalfLows = windowCandles.slice(0, mid).map(c => c.low || c.close);
+    const secondHalfLows = windowCandles.slice(mid).map(c => c.low || c.close);
+    const firstHalfHighs = windowCandles.slice(0, mid).map(c => c.high || c.close);
+    const secondHalfHighs = windowCandles.slice(mid).map(c => c.high || c.close);
+
+    const minL1 = Math.min(...firstHalfLows);
+    const minL2 = Math.min(...secondHalfLows);
+    const maxH1 = Math.max(...firstHalfHighs);
+    const maxH2 = Math.max(...secondHalfHighs);
+
+    if (minL2 > minL1 && maxH2 > maxH1) {
+      structureLabel = "Higher Highs & Higher Lows (HH/HL - Bullish Expansion)";
+    } else if (minL2 < minL1 && maxH2 < maxH1) {
+      structureLabel = "Lower Highs & Lower Lows (LH/LL - Bearish Degradation)";
+    } else if (minL2 > minL1 && maxH2 <= maxH1) {
+      structureLabel = "Ascending Base (Higher Lows testing overhead supply)";
+    }
+  }
+
+  // 4. Compact 15-day OHLCV string for AI prompt
+  const hasVolumes = windowCandles.some(c => c.volume && c.volume > 0);
+  const avgVol = hasVolumes ? (windowCandles.reduce((a, c) => a + (c.volume || 0), 0) / windowCandles.length) : 0;
+  const candleLines = windowCandles.map((c, i) => {
+    const dPct = i > 0 && windowCandles[i-1].close ? (((c.close - windowCandles[i-1].close) / windowCandles[i-1].close) * 100).toFixed(2) : "0.00";
+    const sign = Number(dPct) >= 0 ? "+" : "";
+    const volStr = avgVol > 0 && c.volume ? ` | Vol: ${(c.volume / avgVol).toFixed(1)}x avg` : "";
+    const dateStr = c.time ? (typeof c.time === 'number' ? new Date(c.time * 1000).toISOString().split('T')[0] : String(c.time).split('T')[0]) : `Bar-${i+1}`;
+    return `${dateStr}: O:${Number(c.open || c.close).toFixed(1)} H:${Number(c.high || c.close).toFixed(1)} L:${Number(c.low || c.close).toFixed(1)} C:${Number(c.close).toFixed(1)} (${sign}${dPct}%)${volStr}`;
+  });
+
+  return {
+    structureLabel,
+    lastCandleDesc,
+    pivots: {
+      s1: Number(s1.toFixed(2)),
+      s2: Number(s2.toFixed(2)),
+      r1: Number(r1.toFixed(2)),
+      r2: Number(r2.toFixed(2))
+    },
+    recentCandlesSummary: candleLines.join('\n')
+  };
+}
+
+/**
+ * Calculates a comprehensive Health Score (0-100), Stan Weinstein Stage, and Trend Phase
+ */
+export function getInstitutionalTrend(price, smas = {}, distributionCount = 0) {
   const { sma21, sma50, sma200 } = smas;
   
   if (!price || (!sma21 && !sma50)) {
-    return { score: 0, phase: "Insufficient Data", color: "var(--muted)" };
+    return { score: 0, phase: "Insufficient Data", color: "var(--muted)", stage: "Insufficient Data", distributionStatus: "N/A" };
+  }
+
+  // Classify Stan Weinstein Market Stage
+  let stage = "Stage 2 Markup";
+  if (sma50 && sma200) {
+    if (price > sma50 && sma50 > sma200) {
+      stage = "Stage 2 (Markup / Institutional Demand)";
+    } else if (price < sma50 && sma50 < sma200) {
+      stage = "Stage 4 (Capitulation / Downtrend)";
+    } else if (Math.abs(price - sma200) / sma200 < 0.04) {
+      stage = price >= sma50 ? "Stage 1 (Base Accumulation)" : "Stage 3 (Top Distribution)";
+    } else if (price < sma50 && price > sma200) {
+      stage = "Stage 3 (Distribution / Pullback to 200MA)";
+    } else {
+      stage = "Stage 1 (Base Accumulation / Recovery)";
+    }
   }
 
   // Standard 3-MA Institutional Scoring if 200MA is available
@@ -225,11 +429,24 @@ export function getInstitutionalTrend(price, smas = {}) {
 
     if (score >= 100) {
       const extension = ((price - sma21) / sma21) * 100;
-      phase = extension > 8 ? "Bullish Extension" : "Structural Bull";
-      color = "#10b981";
+      if (distributionCount >= 5) {
+        phase = "Uptrend Under Heavy Pressure";
+        color = "#ef4444";
+      } else if (distributionCount >= 3) {
+        phase = "Bullish Extension (Elevated Distribution)";
+        color = "#f59e0b";
+      } else {
+        phase = extension > 8 ? "Bullish Extension" : "Structural Bull";
+        color = "#10b981";
+      }
     } else if (score >= 70) {
-      phase = "Bullish Trend";
-      color = "#10b981";
+      if (distributionCount >= 4) {
+        phase = "Uptrend Under Pressure";
+        color = "#f59e0b";
+      } else {
+        phase = "Bullish Trend";
+        color = "#10b981";
+      }
     } else if (score >= 40) {
       phase = price > sma200 ? "Mean Reversion (Bull)" : "Mean Reversion (Bear)";
       color = "#f59e0b";
@@ -241,7 +458,7 @@ export function getInstitutionalTrend(price, smas = {}) {
       color = "#ef4444";
     }
 
-    return { score, phase, color };
+    return { score, phase, color, stage, distributionCount };
   }
 
   // Fallback for emerging sector indices with fewer than 200 candles (evaluate via 21MA & 50MA)
@@ -252,8 +469,8 @@ export function getInstitutionalTrend(price, smas = {}) {
   if (sma21 && sma50) {
     if (price > sma21 && sma21 > sma50) {
       score = 85;
-      phase = "Bullish Trend";
-      color = "#10b981";
+      phase = distributionCount >= 4 ? "Uptrend Under Pressure" : "Bullish Trend";
+      color = distributionCount >= 4 ? "#f59e0b" : "#10b981";
     } else if (price > sma21) {
       score = 60;
       phase = "Emerging Bull";
@@ -279,7 +496,7 @@ export function getInstitutionalTrend(price, smas = {}) {
     }
   }
 
-  return { score, phase, color };
+  return { score, phase, color, stage, distributionCount };
 }
 
 export const INDEX_CONSTITUENTS = {
@@ -640,10 +857,14 @@ export async function fetchMarketPulseData(country = "US", timeframe = "1y") {
 
     finalRes.rsRating = finalRes.dailyChangePct - benchmarkChange;
     const smas = { sma21: finalRes.sma21, sma50: finalRes.sma50, sma200: finalRes.sma200 };
-    const { score, phase, color } = getInstitutionalTrend(finalRes.currentPrice, smas);
+    const distData = calculateDistributionDays(finalRes.candlesticks || [], 25);
+    finalRes.distributionDays = distData;
+    finalRes.geometry = analyzePriceActionGeometry(finalRes.candlesticks || [], 15, finalRes.currentPrice, finalRes.high52w);
+    const { score, phase, color, stage } = getInstitutionalTrend(finalRes.currentPrice, smas, distData.count);
     finalRes.marketPhase = phase;
     finalRes.marketPhaseColor = color;
     finalRes.healthScore = score;
+    finalRes.stage = stage;
 
     // Friendly names for Indian indices & sectors
     const NAME_MAP_IN = {
