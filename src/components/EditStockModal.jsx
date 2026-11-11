@@ -369,6 +369,7 @@ export default function EditStockModal({
   const groupingPopoverRef = useRef(null);
   const leftPanelRef = useRef(null);
   const fundamentalsRef = useRef(null);
+  const lastChartFetchRef = useRef({ symbol: null, interval: null, isIntraday: false });
   const [isScrolledToFundamentals, setIsScrolledToFundamentals] = useState(false);
 
   const handleLeftPanelScroll = useCallback(() => {
@@ -552,6 +553,25 @@ export default function EditStockModal({
   const [newsFetchedSymbol, setNewsFetchedSymbol] = useState(null);
   const popoverRef = useRef(null);
   const railRef = useRef(null);
+
+  const liveRsInfo = useMemo(() => {
+    const stockCandles = formData?.candlesticks || sidebarStockData?.[formData?.symbol]?.candlesticks;
+    if (stockCandles && stockCandles.length > 0 && benchmarkCandles && benchmarkCandles.length > 0) {
+      const tfNorm = (timeframe || '').toLowerCase();
+      const targetDays = tfNorm === '1mo' ? 21 : (tfNorm === '6mo' ? 126 : (tfNorm === '1y' ? 252 : 63));
+      const res = calculateStockRsForCandles(stockCandles, benchmarkCandles, {}, targetDays);
+      const benchOpt = getBenchmarkOptions(country).find(o => o.key === selectedBenchmark);
+      const bName = benchOpt?.shortLabel || benchOpt?.label || 'Benchmark';
+      const sign = (res?.outperformancePct > 0) ? '+' : '';
+      return {
+        category: res?.category || null,
+        outperformancePct: res?.outperformancePct,
+        diffStr: typeof res?.outperformancePct === 'number' ? ` (${sign}${res.outperformancePct}% vs ${bName})` : '',
+        benchmarkName: bName
+      };
+    }
+    return null;
+  }, [formData?.candlesticks, formData?.symbol, sidebarStockData, benchmarkCandles, timeframe, country, selectedBenchmark]);
 
   const activeNewsFeed = useMemo(() => {
     if (customNewsList !== null) return customNewsList;
@@ -1342,6 +1362,21 @@ export default function EditStockModal({
     if (!isOpen || !symbolToFetch) return;
 
     let isCurrent = true;
+    const isIntraday = (interval === 'auto' && ['1d', '5d', '1w'].includes(timeframe)) || ['1m', '5m', '15m', '30m', '1h'].includes(interval);
+    const isDailySharedPreset = !isIntraday && ['1mo', '3mo', '6mo', 'ytd', '1y'].includes(timeframe) && (interval === 'auto' || interval === '1d');
+
+    // If stock already has 2y daily candle series and user just switched between daily camera presets (1MO, 3MO, 6MO, 1Y),
+    // skip network roundtrip so MiniCandlestickChart can position its camera instantly without re-mounting.
+    if (
+      isDailySharedPreset &&
+      lastChartFetchRef.current.symbol === symbolToFetch &&
+      !lastChartFetchRef.current.isIntraday &&
+      formData?.symbol === symbolToFetch &&
+      Array.isArray(formData?.candlesticks) &&
+      formData.candlesticks.length > 30
+    ) {
+      return;
+    }
 
     const loadChartData = async () => {
       setLoadingChart(true);
@@ -1349,6 +1384,7 @@ export default function EditStockModal({
         const fetchTimeframe = (interval === '1d' || interval === '1wk' || (interval === 'auto' && ['1mo', '3mo', '6mo', 'ytd', '1y'].includes(timeframe))) ? '2y' : timeframe;
         const results = await fetchStockData([symbolToFetch], country, fetchTimeframe, interval);
         if (isCurrent && results && results.length > 0) {
+          lastChartFetchRef.current = { symbol: symbolToFetch, interval, isIntraday };
           // Double check that the symbol fetched matches the current stock prop
           if (symbolToFetch === stock.symbol) {
             setFormData(prev => {
@@ -1455,8 +1491,13 @@ export default function EditStockModal({
       setActiveGroupKey(groupKey);
     }
     if (formData) {
+      const finalParams = { ...(formData?.params || {}) };
+      if (selectedBenchmark !== 'none' && liveRsInfo?.category) {
+        finalParams.rs = liveRsInfo.category;
+      }
       const finalData = {
         ...formData,
+        params: finalParams,
         aiAnalysis,
         aiAnalysisDate,
         aiTaggedAt: formData?.aiTaggedAt || stock?.aiTaggedAt || (aiAnalysisDate ? new Date().toISOString() : null)
@@ -1472,7 +1513,7 @@ export default function EditStockModal({
     if (onSelectStock) {
       onSelectStock(targetStock);
     }
-  }, [formData, aiAnalysis, aiAnalysisDate, stock, paramDefinitions, onUpdateStock, onSave, onSelectStock]);
+  }, [formData, aiAnalysis, aiAnalysisDate, stock, paramDefinitions, onUpdateStock, onSave, onSelectStock, selectedBenchmark, liveRsInfo]);
 
   const handleNavigate = useCallback((direction) => {
     if (!effectiveNavigationItems || effectiveNavigationItems.length <= 1 || currentIndex === -1) return;
@@ -1596,8 +1637,13 @@ export default function EditStockModal({
   const [justSaved, setJustSaved] = useState(false);
 
   const handleSave = useCallback((shouldClose = true) => {
+    const finalParams = { ...(formData?.params || {}) };
+    if (selectedBenchmark !== 'none' && liveRsInfo?.category) {
+      finalParams.rs = liveRsInfo.category;
+    }
     const finalData = {
       ...formData,
+      params: finalParams,
       aiAnalysis,
       aiAnalysisDate,
       aiTaggedAt: formData?.aiTaggedAt || stock?.aiTaggedAt || (aiAnalysisDate ? new Date().toISOString() : null)
@@ -1615,7 +1661,7 @@ export default function EditStockModal({
       setJustSaved(true);
       setTimeout(() => setJustSaved(false), 2000);
     }
-  }, [formData, aiAnalysis, aiAnalysisDate, stock?.aiTaggedAt, onUpdateStock, onSave, onClose]);
+  }, [formData, aiAnalysis, aiAnalysisDate, stock?.aiTaggedAt, onUpdateStock, onSave, onClose, selectedBenchmark, liveRsInfo]);
 
   const handleDeleteStockItem = useCallback(async (targetSymbol) => {
     if (!onDeleteStock || !targetSymbol) return;
@@ -2950,19 +2996,13 @@ export default function EditStockModal({
                   )}
 
                   {(() => {
-                    let liveRsCat = null;
-                    let liveDiffStr = '';
-                    const stockCandles = formData?.candlesticks || sidebarStockData?.[formData?.symbol]?.candlesticks;
-                    if (stockCandles && stockCandles.length > 0 && benchmarkCandles && benchmarkCandles.length > 0) {
-                      const res = calculateStockRsForCandles(stockCandles, benchmarkCandles);
-                      liveRsCat = res?.category;
-                      if (typeof res?.outperformancePct === 'number') {
-                        liveDiffStr = ` (${res.outperformancePct > 0 ? '+' : ''}${res.outperformancePct}% vs Benchmark)`;
-                      }
-                    }
+                    const liveRsCat = liveRsInfo?.category || null;
+                    const liveDiffStr = liveRsInfo?.diffStr || '';
 
-                    // Watchlist stock parameter value is the primary source of truth (falling back to liveRsCat if missing)
-                    const rsVal = formData?.params?.rs || formData?.parameters?.rs || stock?.params?.rs || stock?.parameters?.rs || liveRsCat;
+                    // When benchmark is selected, live calculated RS is the primary source of truth
+                    const rsVal = (selectedBenchmark !== 'none' && liveRsCat)
+                      ? liveRsCat
+                      : (formData?.params?.rs || formData?.parameters?.rs || stock?.params?.rs || stock?.parameters?.rs || liveRsCat);
                     if (!rsVal) return null;
 
                     const getRsEmoji = (cat) => {
@@ -3251,6 +3291,7 @@ export default function EditStockModal({
                     </div>
                   )}
                   <MiniCandlestickChart
+                    key={`${formData?.symbol || stock?.symbol || 'stock'}_${country}`}
                     data={formData}
                     country={country}
                     hideHeaders={true}
@@ -3259,6 +3300,7 @@ export default function EditStockModal({
                     height="100%"
                     maSettings={maSettings}
                     timeframe={timeframe}
+                    interval={interval}
                     selectedBenchmark={selectedBenchmark}
                     benchmarkMode={benchmarkMode}
                     benchmarkCandles={benchmarkCandles}

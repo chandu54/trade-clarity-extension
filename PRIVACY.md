@@ -16,9 +16,9 @@ To provide professional research features, the extension requires access to the 
 - **Google Gemini AI:** When you request an AI Analysis or Category Research report, sectoral data (symbols and industry names only) is sent to Google's Gemini API to generate insights. No personal notes are ever shared with the AI.
 
 ## 3. Permissions Justification
-- **Storage:** Required to save your trading weeks and settings across browser sessions.
-- **Host Permissions:** Required to securely fetch financial data from external financial sources.
-- **ActiveTab:** Used to interact with TradingView or Screener.in only when you are actively using those sites.
+- **Storage & Unlimited Storage:** Required to save your trading weeks, settings, and cached market analysis locally without hitting browser quota limits.
+- **Alarms:** Used for scheduling and persisting background AI queue jobs without interrupting your workflow.
+- **Host Permissions:** Required to securely fetch financial data from external financial and AI sources.
 
 ## 4. Data Control
 You have absolute control over your data.

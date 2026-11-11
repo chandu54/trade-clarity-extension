@@ -96,7 +96,7 @@ export class LRUQuoteCache {
 }
 
 export const globalQuoteCache = new LRUQuoteCache(300);
-const QUOTE_CACHE_VERSION = 'v5_post_market_close_fix';
+const QUOTE_CACHE_VERSION = 'v6_ohlc_consistency_fix';
 const inflightRequestsMap = new Map();
 
 let saveTimer = null;
@@ -417,20 +417,20 @@ export async function fetchStockData(symbols, country, timeframe = '6mo', custom
       const highs = quote.high || [];
       const lows = quote.low || [];
 
-      // Build candlesticks with strict validation and optional adjusted close support
+      // Build candlesticks with strict validation and consistent OHLC prices
       let rawBars = [];
       for (let i = 0; i < timestamps.length; i++) {
         let closePrice = null;
-        if (adjIndicators[i] !== null && adjIndicators[i] !== undefined && adjIndicators[i] > 0) {
-          closePrice = adjIndicators[i];
-        } else if (closes[i] !== null && closes[i] !== undefined && closes[i] > 0) {
+        if (closes[i] !== null && closes[i] !== undefined && closes[i] > 0) {
           closePrice = closes[i];
+        } else if (adjIndicators[i] !== null && adjIndicators[i] !== undefined && adjIndicators[i] > 0) {
+          closePrice = adjIndicators[i];
         }
         
         if (timestamps[i] != null && closePrice != null && closePrice > 0) {
           const openPrice = (opens[i] != null && opens[i] > 0) ? opens[i] : closePrice;
-          const highPrice = (highs[i] != null && highs[i] > 0) ? highs[i] : closePrice;
-          const lowPrice = (lows[i] != null && lows[i] > 0) ? lows[i] : closePrice;
+          const highPrice = (highs[i] != null && highs[i] > 0) ? highs[i] : Math.max(openPrice, closePrice);
+          const lowPrice = (lows[i] != null && lows[i] > 0) ? lows[i] : Math.min(openPrice, closePrice);
           rawBars.push({
             time: timestamps[i],
             open: Number(openPrice.toFixed(2)),
@@ -504,6 +504,49 @@ export async function fetchStockData(symbols, country, timeframe = '6mo', custom
             }
           }
           return item.data;
+        }
+      }
+
+      // Superset daily timeframe cache reuse:
+      // If requesting shorter daily bars (e.g. 5d, 1d, 1mo, 3mo), check if a longer daily timeframe is already cached and valid!
+      if (fetchInterval === '1d') {
+        const tfHierarchy = ['1d', '5d', '1w', '1mo', '3mo', '6mo', '1y', '2y'];
+        const reqIdx = tfHierarchy.indexOf(tfKey);
+        if (reqIdx !== -1 && reqIdx < tfHierarchy.length - 1) {
+          const barCounts = { '1d': 2, '5d': 5, '1w': 5, '1mo': 22, '3mo': 65, '6mo': 130, '1y': 260 };
+          const neededBars = barCounts[tfKey] || 5;
+
+          for (let i = reqIdx + 1; i < tfHierarchy.length; i++) {
+            const superTf = tfHierarchy[i];
+            const superKey = `${symbol}:${country || 'US'}:${superTf}:1d`;
+            if (globalQuoteCache.isValid(superKey, superTf, country)) {
+              const superItem = globalQuoteCache.get(superKey);
+              if (superItem && superItem.data && Array.isArray(superItem.data.candlesticks) && superItem.data.candlesticks.length >= neededBars) {
+                const fullCandles = superItem.data.candlesticks;
+                const curPx = superItem.data.currentPrice || fullCandles[fullCandles.length - 1].close;
+                const prevPx = extractPreviousClose(superItem.data._meta, fullCandles, curPx) || curPx;
+                const diff = curPx - prevPx;
+                const dailyChangePct = prevPx > 0 ? Number(((diff / prevPx) * 100).toFixed(2)) : 0;
+                
+                const slicedCandles = fullCandles.slice(-neededBars);
+                const periodStartPx = tfKey === '1d' ? prevPx : slicedCandles[0].close;
+                const periodChangePct = tfKey === '1d' ? dailyChangePct : (periodStartPx > 0 ? Number((((curPx - periodStartPx) / periodStartPx) * 100).toFixed(2)) : 0);
+
+                const synthesized = {
+                  ...superItem.data,
+                  currentPrice: Number(curPx.toFixed(2)),
+                  previousClose: Number(prevPx.toFixed(2)),
+                  periodStartPrice: Number(periodStartPx.toFixed(2)),
+                  periodChangePct,
+                  dailyChangePct,
+                  isAdvancing: diff >= 0,
+                  candlesticks: slicedCandles
+                };
+                globalQuoteCache.set(cacheKey, synthesized, superItem.isMarketOpen ?? false);
+                return synthesized;
+              }
+            }
+          }
         }
       }
     }
@@ -618,12 +661,29 @@ export async function fetchStockQuotes(symbols, country, signal = null, forceRef
 export async function fetchStockDataByRange(symbol, country, period1, period2, customInterval = '1d', signal = null) {
   if (!symbol) return { symbol: '', candlesticks: [], error: 'Invalid symbol' };
 
-  let ticker = symbol;
-  if (country === 'IN' && !symbol.endsWith('.NS') && !symbol.endsWith('.BO') && !symbol.startsWith('^')) {
-    ticker = `${symbol}.NS`;
+  const PROXY_MAP = {
+    "^CNXSC": { symbol: "HDFCSML250.NS", ratio: 105 }, 
+    "NIFTY_MIDCAP_100.NS": { symbol: "MOM100.NS", ratio: 925 },
+    "^CRSLDX": { symbol: "MONIFTY500.NS", ratio: 980 },
+    "HEALTHIETF.NS": { symbol: "HEALTHIETF.NS", ratio: 1 },
+    "OILIETF.NS": { symbol: "OILIETF.NS", ratio: 1 },
+    "NIFTY_CHEMICALS.NS": { symbol: "SRF.NS", ratio: 13.5 },
+    "NIFTY_EV.NS": { symbol: "M&M.NS", ratio: 0.97 }
+  };
+
+  const proxyInfo = PROXY_MAP[symbol];
+  let ticker = proxyInfo ? proxyInfo.symbol : symbol;
+  if (country === 'IN' && !ticker.endsWith('.NS') && !ticker.endsWith('.BO') && !ticker.startsWith('^')) {
+    ticker = `${ticker}.NS`;
   }
 
-  const cacheKey = `${ticker}:${country || 'US'}:range:${period1}:${period2}:${customInterval}`;
+  const p1 = Math.max(0, Math.floor(Number(period1) || 0));
+  const p2 = Math.floor(Number(period2) || Math.floor(Date.now() / 1000));
+  if (p1 >= p2) {
+    return { symbol, candlesticks: [], _meta: {} };
+  }
+
+  const cacheKey = `${ticker}:${country || 'US'}:range:${p1}:${p2}:${customInterval}`;
   if (globalQuoteCache.cache.has(cacheKey)) {
     const item = globalQuoteCache.get(cacheKey);
     if (item && item.data) return item.data;
@@ -631,8 +691,8 @@ export async function fetchStockDataByRange(symbol, country, period1, period2, c
 
   const isLocalhost = typeof window !== 'undefined' && window.location.hostname === 'localhost';
   const baseUrl = isLocalhost ? '/yahoo-api' : 'https://query1.finance.yahoo.com';
-  const url = `${baseUrl}/v8/finance/chart/${encodeURIComponent(ticker)}?period1=${period1}&period2=${period2}&interval=${customInterval}`;
-  const fallbackUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?period1=${period1}&period2=${period2}&interval=${customInterval}`;
+  const url = `${baseUrl}/v8/finance/chart/${encodeURIComponent(ticker)}?period1=${p1}&period2=${p2}&interval=${customInterval}&includeAdjustedClose=true`;
+  const fallbackUrl = `https://query2.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(ticker)}?period1=${p1}&period2=${p2}&interval=${customInterval}&includeAdjustedClose=true`;
 
   const isSingleStockCall = true;
   try {
@@ -673,18 +733,18 @@ export async function fetchStockDataByRange(symbol, country, period1, period2, c
     let rawBars = [];
     for (let i = 0; i < timestamps.length; i++) {
       let closePrice = null;
-      if (adjIndicators[i] !== null && adjIndicators[i] !== undefined && adjIndicators[i] > 0) {
-        closePrice = adjIndicators[i];
-      } else if (closes[i] !== null && closes[i] !== undefined && closes[i] > 0) {
+      if (closes[i] !== null && closes[i] !== undefined && closes[i] > 0) {
         closePrice = closes[i];
+      } else if (adjIndicators[i] !== null && adjIndicators[i] !== undefined && adjIndicators[i] > 0) {
+        closePrice = adjIndicators[i];
       }
       
       if (timestamps[i] != null && closePrice != null && closePrice > 0) {
         const openPrice = (opens[i] != null && opens[i] > 0) ? opens[i] : closePrice;
-        const highPrice = (highs[i] != null && highs[i] > 0) ? highs[i] : closePrice;
-        const lowPrice = (lows[i] != null && lows[i] > 0) ? lows[i] : closePrice;
+        const highPrice = (highs[i] != null && highs[i] > 0) ? highs[i] : Math.max(openPrice, closePrice);
+        const lowPrice = (lows[i] != null && lows[i] > 0) ? lows[i] : Math.min(openPrice, closePrice);
         rawBars.push({
-          time: timestamps[i],
+          time: Math.floor(timestamps[i]),
           open: Number(openPrice.toFixed(2)),
           high: Number(highPrice.toFixed(2)),
           low: Number(lowPrice.toFixed(2)),
@@ -692,6 +752,16 @@ export async function fetchStockDataByRange(symbol, country, period1, period2, c
           volume: quote.volume?.[i] || 0
         });
       }
+    }
+
+    if (proxyInfo && proxyInfo.ratio && proxyInfo.ratio !== 1 && rawBars.length > 0) {
+      rawBars = rawBars.map(b => ({
+        ...b,
+        open: Number((b.open * proxyInfo.ratio).toFixed(2)),
+        high: Number((b.high * proxyInfo.ratio).toFixed(2)),
+        low: Number((b.low * proxyInfo.ratio).toFixed(2)),
+        close: Number((b.close * proxyInfo.ratio).toFixed(2))
+      }));
     }
 
     const resObj = {

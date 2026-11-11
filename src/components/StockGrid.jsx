@@ -777,11 +777,13 @@ export default function StockGrid({
         const rsInfo = getActualParamKeyAndDef(data?.paramDefinitions, 'rs', 'rs', country);
         const rsKey = rsInfo?.key || (country === 'IN' ? 'in.rs' : 'us.rs');
 
+        const activeRsTf = data?.uiConfig?.rsTimeframe || '3mo';
+        const nowTs = Date.now();
         Object.keys(stocksMap).forEach(sym => {
           if (!mergedStocks[sym]) return;
           const newRs = stocksMap[sym]?.params?.rs || stocksMap[sym]?.parameters?.rs || stocksMap[sym]?.params?.[rsKey] || stocksMap[sym]?.parameters?.[rsKey];
           const oldRs = mergedStocks[sym]?.params?.[rsKey] || mergedStocks[sym]?.params?.rs;
-          if (newRs && newRs !== oldRs) {
+          if (newRs && (newRs !== oldRs || !mergedStocks[sym]?.params?.rsUpdatedAt)) {
             hasChanges = true;
             mergedStocks[sym] = {
               ...mergedStocks[sym],
@@ -790,14 +792,18 @@ export default function StockGrid({
                 rs: newRs,
                 [rsKey]: newRs,
                 'in.rs': newRs,
-                'us.rs': newRs
+                'us.rs': newRs,
+                rsUpdatedAt: nowTs,
+                rsTimeframe: activeRsTf
               },
               parameters: {
                 ...(mergedStocks[sym].parameters || {}),
                 rs: newRs,
                 [rsKey]: newRs,
                 'in.rs': newRs,
-                'us.rs': newRs
+                'us.rs': newRs,
+                rsUpdatedAt: nowTs,
+                rsTimeframe: activeRsTf
               }
             };
           }

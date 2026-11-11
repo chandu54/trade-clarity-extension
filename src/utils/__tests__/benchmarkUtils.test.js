@@ -14,19 +14,34 @@ import {
 describe('benchmarkUtils', () => {
   test('getBenchmarkSymbol returns correct symbols for IN and US', () => {
     expect(getBenchmarkSymbol('IN', 'main')).toBe('^NSEI');
-    expect(getBenchmarkSymbol('IN', 'smallcap')).toBe('^NSEI');
-    expect(getBenchmarkSymbol('IN', 'midsmallcap')).toBe('^BSESN');
+    expect(getBenchmarkSymbol('IN', 'nifty50')).toBe('^NSEI');
+    expect(getBenchmarkSymbol('IN', 'midcap100')).toBe('MOM100.NS');
+    expect(getBenchmarkSymbol('IN', 'smallcap100')).toBe('SML100CASE.NS');
+    expect(getBenchmarkSymbol('IN', 'midsmall400')).toBe('MIDSMALL.NS');
+    expect(getBenchmarkSymbol('IN', 'nifty500')).toBe('^CRSLDX');
 
     expect(getBenchmarkSymbol('US', 'main')).toBe('^GSPC');
+    expect(getBenchmarkSymbol('US', 'sp500')).toBe('^GSPC');
+    expect(getBenchmarkSymbol('US', 'nasdaq100')).toBe('^NDX');
+    expect(getBenchmarkSymbol('US', 'midcap400')).toBe('IJH');
     expect(getBenchmarkSymbol('US', 'smallcap')).toBe('^RUT');
-    expect(getBenchmarkSymbol('US', 'midsmallcap')).toBe('^NDX');
+    expect(getBenchmarkSymbol('US', 'russell2000')).toBe('^RUT');
   });
 
   test('getBenchmarkOptions returns dropdown array with country labels', () => {
     const inOptions = getBenchmarkOptions('IN');
-    expect(inOptions).toHaveLength(4);
+    expect(inOptions).toHaveLength(6);
     expect(inOptions[0].key).toBe('none');
     expect(inOptions[1].label).toContain('Nifty 50');
+    expect(inOptions[2].label).toContain('Nifty Midcap 100');
+    expect(inOptions[3].label).toContain('Nifty Smallcap 100');
+    expect(inOptions[4].label).toContain('Nifty MidSmallcap 400');
+    expect(inOptions[5].label).toContain('Nifty 500');
+
+    const usOptions = getBenchmarkOptions('US');
+    expect(usOptions).toHaveLength(5);
+    expect(usOptions[0].key).toBe('none');
+    expect(usOptions[1].label).toContain('S&P 500');
   });
 
   test('findClosestCandle finds closest candle by timestamp within threshold', () => {
@@ -63,6 +78,23 @@ describe('benchmarkUtils', () => {
     expect(benchmarkSeries[0].value).toBe(0);
     expect(benchmarkSeries[1].value).toBe(10);
     expect(benchmarkSeries[2].value).toBe(-5);
+  });
+
+  test('calculateNormalizedPctSeries aligns 0% to the selected timeframe base candle', () => {
+    // 200 candles (simulating ~10 months of data)
+    const stockCandles = Array.from({ length: 200 }, (_, i) => ({
+      time: 1700000000 + i * 86400,
+      close: 100 + i
+    }));
+    const benchCandles = Array.from({ length: 200 }, (_, i) => ({
+      time: 1700000000 + i * 86400,
+      close: 200 + i * 2
+    }));
+
+    // For 6mo (126 trading days), base candle is at index 200 - 126 = 74
+    const { stockSeries, benchmarkSeries } = calculateNormalizedPctSeries(stockCandles, benchCandles, '6mo');
+    expect(stockSeries[74].value).toBe(0);
+    expect(benchmarkSeries[74].value).toBe(0);
   });
 
   test('calculateRsRatioSeries calculates Mansfield relative strength line', () => {
@@ -116,6 +148,11 @@ describe('benchmarkUtils', () => {
 
     // < -15% -> Very Weak
     expect(calculateStockRsCategory(-20, 0).category).toBe('Very Weak');
+
+    // Real-world Aarti Pharmalabs scenario (+45.8% stock vs +3.0% bench = +42.8% net outperformance -> Very Strong)
+    const aartiResult = calculateStockRsCategory(45.8, 3.0);
+    expect(aartiResult.category).toBe('Very Strong');
+    expect(aartiResult.outperformancePct).toBe(42.8);
   });
 
   test('calculateStockRsForCandles handles fresh IPOs and recent IPOs gracefully', () => {
@@ -166,5 +203,56 @@ describe('benchmarkUtils', () => {
     expect(hydrated[0].params.rs).toBeDefined();
     expect(hydrated[1].params).toBeDefined();
     expect(hydrated[1].params.rs).toBeDefined();
+  });
+
+  test('hydrateStockRsValues preserves fresh RS and skips redundant network calls', async () => {
+    const now = Date.now();
+    const originalFetch = global.fetch;
+    global.fetch = vi.fn().mockResolvedValue({
+      ok: true,
+      status: 200,
+      json: async () => ({
+        chart: {
+          result: [{
+            meta: { regularMarketPrice: 150, regularMarketPreviousClose: 145 },
+            indicators: { quote: [{ open: [140], high: [155], low: [135], close: [150], volume: [1000] }] },
+            timestamp: [1700000000]
+          }]
+        }
+      })
+    });
+
+    try {
+      const stocks = [
+        {
+          symbol: 'FRESH_STK',
+          params: {
+            rs: 'Leader',
+            rsUpdatedAt: now,
+            rsTimeframe: '3mo'
+          }
+        },
+        {
+          symbol: 'STALE_STK',
+          params: {
+            rs: 'Lagging',
+            rsUpdatedAt: now - (5 * 60 * 60 * 1000), // 5 hours ago (stale)
+            rsTimeframe: '3mo'
+          }
+        }
+      ];
+
+      const uiConfig = { rsTimeframe: '3mo' };
+      const hydrated = await hydrateStockRsValues(stocks, 'IN', uiConfig);
+
+      expect(hydrated).toHaveLength(2);
+      // Fresh stock preserved without change
+      expect(hydrated[0].params.rs).toBe('Leader');
+      // Stale stock updated with fresh timestamp
+      expect(hydrated[1].params.rs).toBeDefined();
+      expect(hydrated[1].params.rsUpdatedAt).toBeGreaterThanOrEqual(now);
+    } finally {
+      global.fetch = originalFetch;
+    }
   });
 });

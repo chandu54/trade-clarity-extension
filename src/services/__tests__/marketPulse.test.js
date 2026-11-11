@@ -1,5 +1,5 @@
 import { describe, it, vi, beforeEach, expect } from 'vitest';
-import { fetchMarketPulseData, generateTechnicalThesis } from '../marketPulse';
+import { fetchMarketPulseData, generateTechnicalThesis, filterToLatestActiveSession } from '../marketPulse';
 import * as yahooFinanceMap from '../../utils/yahooFinanceMap';
 
 vi.mock('../../utils/yahooFinanceMap', () => ({
@@ -191,5 +191,43 @@ describe('marketPulse service', () => {
     const thesis = generateTechnicalThesis(mockCategorizedData);
     expect(thesis).toContain('Market Regime: STRUCTURAL BULL');
     expect(thesis).toContain('Breadth: 100% above 200SMA');
+  });
+
+  describe('filterToLatestActiveSession', () => {
+    it('discards weekend/holiday dummy bars and retains the full prior active trading session', () => {
+      // Friday session: 25 candles (1754634600 = Fri Nov 06 2026 09:15 UTC)
+      const fridayBaseTime = 1754634600;
+      const fridayCandles = Array.from({ length: 25 }, (_, i) => ({
+        time: fridayBaseTime + i * 900,
+        open: 24000 + i,
+        high: 24010 + i,
+        low: 23990 + i,
+        close: 24005 + i
+      }));
+
+      // Sunday off-market dummy bar (1 candle on Sunday Nov 08 2026)
+      const sundayTime = 1754807400; // Sunday
+      const sundayCandle = {
+        time: sundayTime,
+        open: 24986.40,
+        high: 24986.40,
+        low: 24986.40,
+        close: 24986.40
+      };
+
+      const mixedCandles = [...fridayCandles, sundayCandle];
+      const result = filterToLatestActiveSession(mixedCandles);
+
+      // Must discard the 1-bar Sunday dummy and return all 25 Friday bars
+      expect(result.length).toBe(25);
+      expect(result[0].time).toBe(fridayBaseTime);
+      expect(result[24].close).toBe(24005 + 24);
+    });
+
+    it('returns empty array or intact array when inputs are empty or small single session', () => {
+      expect(filterToLatestActiveSession([])).toEqual([]);
+      const single = [{ time: 1754634600, open: 10, high: 11, low: 9, close: 10 }];
+      expect(filterToLatestActiveSession(single)).toEqual(single);
+    });
   });
 });

@@ -5,6 +5,9 @@ import { fetchStockDataByRange } from '../utils/yahooFinanceMap';
 import { getDrawingsForSymbol, saveDrawingForSymbol, deleteDrawingForSymbol, clearDrawingsForSymbol } from '../services/storage';
 import ChartDrawingToolbar from './ChartDrawingToolbar';
 
+const DEFAULT_MA_SETTINGS = {};
+const DEFAULT_BENCHMARK_CANDLES = [];
+
 export default function MiniCandlestickChart({ 
   data, 
   country, 
@@ -14,11 +17,11 @@ export default function MiniCandlestickChart({
   disableZoom = false,
   height = '150px',
   accountCapital,
-  maSettings = {},
+  maSettings = DEFAULT_MA_SETTINGS,
   timeframe = '6mo',
   selectedBenchmark = 'none',
   benchmarkMode = 'pct',
-  benchmarkCandles = [],
+  benchmarkCandles = DEFAULT_BENCHMARK_CANDLES,
   stockLineColor = '#3b82f6',
   benchmarkLineColor = '#f97316',
   rsLineColor = '#a855f7',
@@ -28,9 +31,13 @@ export default function MiniCandlestickChart({
   drawWidthProp,
   drawStyleProp,
   onDrawingsCountChange,
-  clearDrawingsTrigger
+  clearDrawingsTrigger,
+  onCandlesUpdate,
+  interval = '1d'
 }) {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
+  const maSettingsKey = JSON.stringify(maSettings || {});
+  const benchmarkCandlesKey = `${selectedBenchmark}:${benchmarkCandles?.length || 0}`;
   const [drawings, setDrawings] = useState([]);
   
   const [internalActiveTool, setInternalActiveTool] = useState('select');
@@ -71,8 +78,60 @@ export default function MiniCandlestickChart({
   const allCandlesRef = useRef([]);
   const hasMoreHistoryRef = useRef(true);
   const isFetchingRef = useRef(false);
+  const userHasNavigatedRef = useRef(false);
   const isUserInteractingRef = useRef(false);
+  const isClampingRef = useRef(false);
+  const emptyAttemptsRef = useRef(0);
+  const firstTradeDateRef = useRef(null);
   const debounceTimerRef = useRef(null);
+  const lastAssetRef = useRef(null);
+  const lastLogicalRangeRef = useRef(null);
+  const prevTimeframeRef = useRef(timeframe);
+
+  const applyTimeframeCamera = useCallback((tf) => {
+    if (!chartRef.current || !allCandlesRef.current || allCandlesRef.current.length === 0) return;
+    const candles = allCandlesRef.current;
+    const totalBars = candles.length;
+    const tfCandles = getVisibleCandlesticks(candles, tf);
+    const count = tfCandles.length;
+    if (count > 0 && count < totalBars) {
+      const fromIdx = Math.max(0, totalBars - count);
+      const toIdx = totalBars + 8;
+      try {
+        chartRef.current.timeScale().setVisibleLogicalRange({ from: fromIdx, to: toIdx });
+        lastLogicalRangeRef.current = { from: fromIdx, to: toIdx };
+      } catch (_e) {}
+    } else {
+      try {
+        chartRef.current.timeScale().fitContent();
+      } catch (_e) {}
+    }
+  }, []);
+
+  // Decoupled timeframe camera navigation preset: adjusts camera viewport smoothly without canvas re-creation
+  useEffect(() => {
+    if (prevTimeframeRef.current !== timeframe) {
+      prevTimeframeRef.current = timeframe;
+      userHasNavigatedRef.current = false;
+      isUserInteractingRef.current = false;
+
+      // Re-normalize percentage overlay or RS line to the new timeframe base
+      if (allCandlesRef.current?.length > 0 && benchmarkCandles?.length > 0) {
+        if (benchmarkMode === 'pct' && seriesRef.current && benchSeriesRef.current) {
+          const { stockSeries, benchmarkSeries } = calculateNormalizedPctSeries(allCandlesRef.current, benchmarkCandles, timeframe);
+          if (seriesRef.current?.setData) seriesRef.current.setData(stockSeries);
+          if (benchSeriesRef.current?.setData) benchSeriesRef.current.setData(benchmarkSeries);
+        } else if (benchmarkMode === 'rs' && rsSeriesRef.current) {
+          const { rsSeries } = calculateRsRatioSeries(allCandlesRef.current, benchmarkCandles, timeframe);
+          if (rsSeriesRef.current?.setData) rsSeriesRef.current.setData(rsSeries);
+        }
+      }
+
+      if (chartRef.current && allCandlesRef.current?.length > 0) {
+        applyTimeframeCamera(timeframe);
+      }
+    }
+  }, [timeframe, applyTimeframeCamera, benchmarkMode, benchmarkCandles]);
 
   const handleClearAllDrawings = useCallback(() => {
     if (data?.symbol) {
@@ -117,38 +176,72 @@ export default function MiniCandlestickChart({
     const containerEl = chartContainerRef.current;
     const handlePointerInteraction = () => {
       isUserInteractingRef.current = true;
+      userHasNavigatedRef.current = true;
+    };
+
+    const handleDblClick = (e) => {
+      if (!chartRef.current || !interactive) return;
+      const rect = containerEl.getBoundingClientRect();
+      const isOverPriceAxis = e.clientX >= (rect.right - 65);
+      const isOverTimeAxis = e.clientY >= (rect.bottom - 30);
+      // Double click on chart body resets both time and price scale
+      if (!isOverPriceAxis && !isOverTimeAxis) {
+        chartRef.current.timeScale().fitContent();
+        try {
+          chartRef.current.priceScale('right').applyOptions({ autoScale: true });
+        } catch (_e) {}
+      }
+    };
+
+    const findScrollableParent = (el) => {
+      let current = el?.parentElement;
+      while (current && current !== document.body && current !== document.documentElement) {
+        if (current.classList && current.classList.contains('deep-view-left-panel')) {
+          return current;
+        }
+        try {
+          const style = window.getComputedStyle(current);
+          const overflowY = style?.overflowY;
+          if ((overflowY === 'auto' || overflowY === 'scroll') && current.scrollHeight > current.clientHeight) {
+            return current;
+          }
+        } catch (_e) {}
+        current = current.parentElement;
+      }
+      return window;
     };
 
     const handleWheel = (e) => {
-      // Zoom with mousewheel ONLY when Ctrl (or Cmd) is pressed, or when trackpad pinch gesture triggers (which sends ctrlKey in Chromium)
-      if (interactive && !disableZoom && (e.ctrlKey || e.metaKey)) {
-        e.preventDefault();
-        e.stopPropagation();
-        if (!chartRef.current) return;
-        const ts = chartRef.current.timeScale();
-        const range = ts.getVisibleLogicalRange();
-        if (!range) return;
-        isUserInteractingRef.current = true;
-        const span = range.to - range.from;
-        const zoomDelta = e.deltaY > 0 ? 0.08 : -0.08;
-        const change = span * zoomDelta;
-        const newFrom = range.from - change / 2;
-        const newTo = range.to + change / 2;
-        if (newTo - newFrom >= 5) {
-          ts.setVisibleLogicalRange({ from: newFrom, to: newTo });
+      if (!chartRef.current || !interactive) return;
+
+      // When Ctrl or Meta is held, allow native chart zoom (trackpad pinch also sends ctrlKey: true in browsers)
+      if (e.ctrlKey || e.metaKey) {
+        handlePointerInteraction();
+        return;
+      }
+
+      // Vertical wheel scroll over chart: freely scroll the parent panel towards Fundamentals / Chart
+      // instead of congesting/scaling the candlesticks or getting trapped inside the canvas!
+      if (Math.abs(e.deltaY) > Math.abs(e.deltaX)) {
+        if (e.cancelable) e.preventDefault();
+        e.stopImmediatePropagation();
+
+        const scrollable = findScrollableParent(containerEl);
+        if (scrollable && typeof scrollable.scrollBy === 'function') {
+          scrollable.scrollBy({
+            top: e.deltaY,
+            behavior: 'auto'
+          });
         }
       }
-      // When Ctrl/Cmd is not pressed:
-      // DO NOT call preventDefault or stopPropagation!
-      // This allows natural two-finger vertical scrolling on mousepad/touchpad
-      // to scroll the parent container (e.g. EditStockModal left panel) vertically
-      // without modifying chart content or hijacking scroll.
     };
 
     if (containerEl) {
-      containerEl.addEventListener('pointerdown', handlePointerInteraction, { passive: true });
-      containerEl.addEventListener('touchstart', handlePointerInteraction, { passive: true });
-      containerEl.addEventListener('wheel', handleWheel, { passive: false });
+      containerEl.addEventListener('pointerdown', handlePointerInteraction, { capture: true, passive: true });
+      containerEl.addEventListener('mousedown', handlePointerInteraction, { capture: true, passive: true });
+      containerEl.addEventListener('touchstart', handlePointerInteraction, { capture: true, passive: true });
+      containerEl.addEventListener('wheel', handleWheel, { capture: true, passive: false });
+      containerEl.addEventListener('dblclick', handleDblClick, { passive: true });
     }
 
     const {
@@ -164,9 +257,11 @@ export default function MiniCandlestickChart({
     } = data;
 
     maSettingsRef.current = maSettings;
-    const visibleCandlesticks = getVisibleCandlesticks(candlesticks, timeframe);
-    allCandlesRef.current = visibleCandlesticks || [];
+    const visibleCandlesticks = interactive ? candlesticks : getVisibleCandlesticks(candlesticks, timeframe);
+    allCandlesRef.current = candlesticks || [];
     hasMoreHistoryRef.current = true;
+    emptyAttemptsRef.current = 0;
+    firstTradeDateRef.current = data?._meta?.firstTradeDate || null;
     maSeriesMapRef.current = {};
 
     const hasPosition = typeof avgEntryPrice === 'number' && avgEntryPrice > 0;
@@ -202,8 +297,11 @@ export default function MiniCandlestickChart({
         visible: interactive,
         borderVisible: false,
         timeVisible: true,
-        rightOffset: 8,
-        fixLeftEdge: !interactive,
+        rightOffset: 12,
+        minBarSpacing: 0.5,
+        maxBarSpacing: 100,
+        fixRightEdge: false,
+        fixLeftEdge: false,
       },
       rightPriceScale: {
         visible: true,
@@ -236,9 +334,10 @@ export default function MiniCandlestickChart({
         vertTouchDrag: interactive,
       },
       handleScale: {
-        mouseWheel: false,
+        mouseWheel: interactive && !disableZoom,
         pinch: interactive && !disableZoom,
-        axisPressedMouseMove: interactive,
+        axisPressedMouseMove: interactive ? { time: true, price: true } : false,
+        axisDoubleClickReset: interactive ? { time: true, price: true } : false,
       },
     });
 
@@ -251,7 +350,7 @@ export default function MiniCandlestickChart({
 
       if (isPctMode) {
         // Percentage Overlay mode: Render normalized Stock line + Benchmark line starting at 0%
-        const { stockSeries, benchmarkSeries } = calculateNormalizedPctSeries(visibleCandlesticks, benchmarkCandles);
+        const { stockSeries, benchmarkSeries } = calculateNormalizedPctSeries(visibleCandlesticks, benchmarkCandles, timeframe);
 
         series = chart.addSeries(LineSeries, {
           color: stockLineColor || '#3b82f6', // Stock line primary accent
@@ -297,7 +396,7 @@ export default function MiniCandlestickChart({
 
         // If RS Ratio mode active: Add Mansfield RS line in dedicated separate bottom pane (Pane 1)
         if (isBenchmarkActive && benchmarkMode === 'rs') {
-          const { rsSeries } = calculateRsRatioSeries(visibleCandlesticks, benchmarkCandles);
+          const { rsSeries } = calculateRsRatioSeries(visibleCandlesticks, benchmarkCandles, timeframe);
           if (rsSeries.length > 0) {
             // Candlesticks in Pane 0 use standard comfortable margins (no artificial bottom cutoff needed)
             if (typeof chart.priceScale === 'function') {
@@ -484,7 +583,34 @@ export default function MiniCandlestickChart({
           }
       }
 
-      chart.timeScale().fitContent();
+      if (interactive && candlesticks && candlesticks.length > 0) {
+        const isSameAssetAndTimeframe = 
+          lastAssetRef.current?.symbol === data?.symbol && 
+          lastAssetRef.current?.timeframe === timeframe &&
+          lastAssetRef.current?.interval === interval;
+
+        if (!isSameAssetAndTimeframe || !lastLogicalRangeRef.current) {
+          const timeframeCandles = getVisibleCandlesticks(candlesticks, timeframe);
+          const count = timeframeCandles.length;
+          if (count > 0 && count < candlesticks.length) {
+            const fromIdx = Math.max(0, candlesticks.length - count);
+            const toIdx = candlesticks.length + 8;
+            chart.timeScale().setVisibleLogicalRange({ from: fromIdx, to: toIdx });
+            lastLogicalRangeRef.current = { from: fromIdx, to: toIdx };
+          } else {
+            chart.timeScale().fitContent();
+          }
+        } else {
+          try {
+            chart.timeScale().setVisibleLogicalRange(lastLogicalRangeRef.current);
+          } catch (_e) {
+            chart.timeScale().fitContent();
+          }
+        }
+        lastAssetRef.current = { symbol: data?.symbol, timeframe, interval };
+      } else {
+        chart.timeScale().fitContent();
+      }
 
       // Only draw default prevClose line if it's not an active journal position card
       if (interactive && !hasPosition && typeof series.createPriceLine === 'function') {
@@ -523,49 +649,80 @@ export default function MiniCandlestickChart({
       const oldestTimeSec = getTimeSec(oldestBar.time);
       if (!oldestTimeSec || isNaN(oldestTimeSec) || oldestTimeSec <= 0) return;
 
+      const firstTradeDate = firstTradeDateRef.current || data?._meta?.firstTradeDate;
+      if (firstTradeDate && oldestTimeSec <= (firstTradeDate + 86400 * 7)) {
+        hasMoreHistoryRef.current = false;
+        return;
+      }
+
       isFetchingRef.current = true;
       setIsHistoryLoading(true);
 
       try {
-        const period2 = oldestTimeSec - 86400;
-        const period1 = Math.max(0, period2 - 90 * 86400);
+        const fetchInterval = interval && ['1d', '1wk', '1mo'].includes(interval) ? interval : '1d';
+        const baseLookback = fetchInterval === '1mo' ? 1500 : (fetchInterval === '1wk' ? 1000 : 730);
+        const lookbackDays = emptyAttemptsRef.current > 0 ? baseLookback * 2 : baseLookback;
 
-        const res = await fetchStockDataByRange(data.symbol, country, period1, period2, '1d');
+        // In Yahoo Finance chart API, period2 is the end timestamp.
+        // Using oldestTimeSec ensures we cover right up to the oldest bar with safe overlap for deduplication.
+        const period2 = Math.floor(oldestTimeSec);
+        let period1 = Math.max(0, period2 - lookbackDays * 86400);
+        if (firstTradeDate && period1 < firstTradeDate) {
+          period1 = Math.floor(firstTradeDate);
+        }
+
+        if (period2 <= period1) {
+          hasMoreHistoryRef.current = false;
+          return;
+        }
+
+        const effectiveCountry = country || data?.country || (data?.symbol?.endsWith('.NS') || data?.symbol?.endsWith('.BO') ? 'IN' : 'US');
+        const res = await fetchStockDataByRange(data.symbol, effectiveCountry, period1, period2, fetchInterval);
+
+        if (res?._meta?.firstTradeDate) {
+          firstTradeDateRef.current = res._meta.firstTradeDate;
+        }
 
         if (res && Array.isArray(res.candlesticks) && res.candlesticks.length > 0) {
+          const prevOldestTs = oldestTimeSec;
           const barMap = new Map();
-          res.candlesticks.forEach(b => {
-            const timeKey = typeof b.time === 'object' ? `${b.time.year}-${String(b.time.month).padStart(2,'0')}-${String(b.time.day).padStart(2,'0')}` : String(b.time);
-            barMap.set(timeKey, b);
-          });
           sortedBars.forEach(b => {
-            const timeKey = typeof b.time === 'object' ? `${b.time.year}-${String(b.time.month).padStart(2,'0')}-${String(b.time.day).padStart(2,'0')}` : String(b.time);
-            barMap.set(timeKey, b);
+            const t = getTimeSec(b.time);
+            if (t > 0) barMap.set(t, b);
+          });
+          res.candlesticks.forEach(b => {
+            const t = getTimeSec(b.time);
+            if (t > 0 && !barMap.has(t)) {
+              barMap.set(t, b);
+            }
           });
 
           const updatedCandles = Array.from(barMap.values()).sort((a, b) => getTimeSec(a.time) - getTimeSec(b.time));
-          const addedCount = updatedCandles.length - sortedBars.length;
+          const olderBarsAdded = updatedCandles.filter(b => getTimeSec(b.time) < prevOldestTs).length;
 
-          if (addedCount > 0) {
+          if (olderBarsAdded > 0) {
+            emptyAttemptsRef.current = 0;
             allCandlesRef.current = updatedCandles;
+
+            const rangeBefore = chartRef.current?.timeScale().getVisibleLogicalRange() || currentLogicalRange;
 
             if (isPctMode) {
               if (benchmarkCandles && benchmarkCandles.length > 0) {
-                const { stockSeries, benchmarkSeries } = calculateNormalizedPctSeries(updatedCandles, benchmarkCandles);
-                if (seriesRef.current && typeof seriesRef.current.setData === 'function') {
+                const { stockSeries, benchmarkSeries } = calculateNormalizedPctSeries(updatedCandles, benchmarkCandles, timeframe);
+                if (seriesRef.current?.setData) {
                   seriesRef.current.setData(stockSeries);
                 }
-                if (benchSeriesRef.current && typeof benchSeriesRef.current.setData === 'function') {
+                if (benchSeriesRef.current?.setData) {
                   benchSeriesRef.current.setData(benchmarkSeries);
                 }
               }
             } else {
-              if (seriesRef.current && typeof seriesRef.current.setData === 'function') {
+              if (seriesRef.current?.setData) {
                 seriesRef.current.setData(updatedCandles);
               }
 
-              if (rsSeriesRef.current && typeof rsSeriesRef.current.setData === 'function' && benchmarkCandles && benchmarkCandles.length > 0) {
-                const { rsSeries: updatedRs } = calculateRsRatioSeries(updatedCandles, benchmarkCandles);
+              if (rsSeriesRef.current?.setData && benchmarkCandles && benchmarkCandles.length > 0) {
+                const { rsSeries: updatedRs } = calculateRsRatioSeries(updatedCandles, benchmarkCandles, timeframe);
                 if (updatedRs && updatedRs.length > 0) {
                   rsSeriesRef.current.setData(updatedRs);
                 }
@@ -574,12 +731,12 @@ export default function MiniCandlestickChart({
 
             if (maSettingsRef.current && maSeriesMapRef.current) {
               Object.entries(maSettingsRef.current).forEach(([maKey, config]) => {
-                if (config && config.visible) {
+                if (config?.visible) {
                   const period = parseInt(maKey, 10);
                   if (!isNaN(period)) {
                     const fullSmaData = calculateSMA(updatedCandles, period);
                     const lineSeries = maSeriesMapRef.current[maKey];
-                    if (lineSeries) {
+                    if (lineSeries?.setData) {
                       lineSeries.setData(fullSmaData);
                     }
                   }
@@ -587,21 +744,40 @@ export default function MiniCandlestickChart({
               });
             }
 
-            if (currentLogicalRange && chartRef.current) {
+            if (chartRef.current) {
               try {
-                chartRef.current.timeScale().setVisibleLogicalRange({
-                  from: currentLogicalRange.from + addedCount,
-                  to: currentLogicalRange.to + addedCount,
-                });
+                // Lightweight Charts automatically shifts visibleLogicalRange by olderBarsAdded when new data is prepended.
+                // We check if LWC already shifted the range to prevent double-shifting which causes half-blank canvas.
+                const rangeAfter = chartRef.current.timeScale().getVisibleLogicalRange();
+                const alreadyShifted = rangeAfter && rangeBefore && Math.abs((rangeAfter.to - rangeBefore.to) - olderBarsAdded) < 2;
+
+                if (!alreadyShifted && rangeBefore) {
+                  const targetFrom = rangeBefore.from + olderBarsAdded;
+                  const targetTo = rangeBefore.to + olderBarsAdded;
+                  chartRef.current.timeScale().setVisibleLogicalRange({
+                    from: targetFrom,
+                    to: targetTo,
+                  });
+                  lastLogicalRangeRef.current = { from: targetFrom, to: targetTo };
+                } else if (rangeAfter) {
+                  lastLogicalRangeRef.current = rangeAfter;
+                }
+                userHasNavigatedRef.current = true;
               } catch (_e) {
                 // Ignore range setting errors if chart unmounted
               }
             }
           } else {
-            hasMoreHistoryRef.current = false;
+            emptyAttemptsRef.current += 1;
+            if (emptyAttemptsRef.current >= 3 || (firstTradeDate && oldestTimeSec <= firstTradeDate + 86400 * 7)) {
+              hasMoreHistoryRef.current = false;
+            }
           }
         } else {
-          hasMoreHistoryRef.current = false;
+          emptyAttemptsRef.current += 1;
+          if (emptyAttemptsRef.current >= 3 || (firstTradeDate && oldestTimeSec <= firstTradeDate + 86400 * 7)) {
+            hasMoreHistoryRef.current = false;
+          }
         }
       } catch (err) {
         console.warn("[InfiniteScroll] Error lazy fetching historical bars:", err);
@@ -614,14 +790,41 @@ export default function MiniCandlestickChart({
     if (interactive && data?.symbol) {
       const timeScale = chart.timeScale();
       const handleRangeChange = (logicalRange) => {
-        if (!logicalRange) return;
-        if (logicalRange.from <= 2 && isUserInteractingRef.current && !isFetchingRef.current && hasMoreHistoryRef.current) {
-          if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
-          debounceTimerRef.current = setTimeout(() => {
-            if (!isFetchingRef.current && hasMoreHistoryRef.current) {
-              fetchMoreHistory(logicalRange);
-            }
-          }, 180);
+        if (!logicalRange || !chartRef.current) return;
+        const totalBars = allCandlesRef.current?.length || 100;
+        const span = logicalRange.to - logicalRange.from;
+
+        // Terminal-grade elastic right projection zone: allows up to 80 bars or 50% of span into the future
+        const maxAllowedRightOffset = Math.max(80, Math.round(span * 0.5));
+        const maxAllowedTo = totalBars + maxAllowedRightOffset;
+
+        // Smooth right-boundary clamping for excessive future voids
+        if (logicalRange.to > maxAllowedTo) {
+          if (!isClampingRef.current) {
+            isClampingRef.current = true;
+            const clampedTo = maxAllowedTo;
+            const clampedFrom = clampedTo - span;
+            try {
+              chartRef.current.timeScale().setVisibleLogicalRange({
+                from: clampedFrom,
+                to: clampedTo,
+              });
+            } catch (_e) {}
+            isClampingRef.current = false;
+            return;
+          }
+        }
+
+        if (logicalRange.to <= maxAllowedTo && (logicalRange.to - logicalRange.from) >= 5) {
+          lastLogicalRangeRef.current = logicalRange;
+          if (isUserInteractingRef.current) {
+            userHasNavigatedRef.current = true;
+          }
+        }
+
+        // Pre-emptive fetch threshold: Fetch earlier chunk when from <= 15
+        if (logicalRange.from <= 15 && !isFetchingRef.current && hasMoreHistoryRef.current) {
+          fetchMoreHistory(logicalRange);
         }
       };
       timeScale.subscribeVisibleLogicalRangeChange(handleRangeChange);
@@ -666,7 +869,9 @@ export default function MiniCandlestickChart({
     themeObserver.observe(document.documentElement, { attributes: true });
 
     const handleTimeScaleChange = () => {
-      setTick((t) => t + 1);
+      if (drawings.length > 0 || trendPreview) {
+        setTick((t) => t + 1);
+      }
     };
     const ts = chart.timeScale();
     if (ts && typeof ts.subscribeVisibleTimeScaleChange === 'function') {
@@ -676,9 +881,11 @@ export default function MiniCandlestickChart({
     return () => {
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (containerEl) {
-        containerEl.removeEventListener('pointerdown', handlePointerInteraction);
-        containerEl.removeEventListener('touchstart', handlePointerInteraction);
-        containerEl.removeEventListener('wheel', handleWheel);
+        containerEl.removeEventListener('pointerdown', handlePointerInteraction, { capture: true });
+        containerEl.removeEventListener('mousedown', handlePointerInteraction, { capture: true });
+        containerEl.removeEventListener('touchstart', handlePointerInteraction, { capture: true });
+        containerEl.removeEventListener('wheel', handleWheel, { capture: true });
+        containerEl.removeEventListener('dblclick', handleDblClick);
       }
       if (ts && typeof ts.unsubscribeVisibleTimeScaleChange === 'function') {
         ts.unsubscribeVisibleTimeScaleChange(handleTimeScaleChange);
@@ -689,7 +896,22 @@ export default function MiniCandlestickChart({
       benchSeriesRef.current = null;
       chart.remove();
     };
-  }, [data, interactive, disableZoom, maSettings, timeframe, selectedBenchmark, benchmarkMode, benchmarkCandles, stockLineColor, benchmarkLineColor, rsLineColor, country]);
+  }, [data?.symbol, Boolean(data?.candlesticks && data.candlesticks.length > 0), interactive, disableZoom, maSettingsKey, interval, selectedBenchmark, benchmarkMode, benchmarkCandlesKey, stockLineColor, benchmarkLineColor, rsLineColor, country]);
+
+  // Live in-place update of series without destroying chart canvas
+  useEffect(() => {
+    if (!chartRef.current || !seriesRef.current || !data?.candlesticks || data.candlesticks.length === 0) return;
+    if (data.candlesticks.length > allCandlesRef.current.length) {
+      allCandlesRef.current = data.candlesticks;
+      const visible = interactive ? data.candlesticks : getVisibleCandlesticks(data.candlesticks, timeframe);
+      if (seriesRef.current?.setData) {
+        seriesRef.current.setData(visible);
+      }
+      if (!userHasNavigatedRef.current && !isUserInteractingRef.current) {
+        applyTimeframeCamera(timeframe);
+      }
+    }
+  }, [data?.candlesticks, interactive, timeframe, applyTimeframeCamera]);
 
   const getPointPixel = useCallback((time, price) => {
     if (!chartRef.current || !seriesRef.current) return null;
@@ -762,6 +984,27 @@ export default function MiniCandlestickChart({
     const time = chartRef.current.timeScale().coordinateToTime(x);
     if (price !== null && time !== null) {
       setTrendPreview((prev) => (prev ? { ...prev, p2: { time, price: Number(price.toFixed(2)) } } : null));
+    }
+  };
+
+  const handleContainerMouseMove = (e) => {
+    if (activeTool === 'trend' && trendPreview && chartContainerRef.current && seriesRef.current) {
+      handleCanvasMouseMove(e);
+      return;
+    }
+    if (!interactive || activeTool !== 'select' || !chartContainerRef.current) return;
+    const rect = chartContainerRef.current.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const isOverPriceScale = x >= rect.width - 65;
+    const isOverTimeScale = y >= rect.height - 28;
+
+    if (isOverTimeScale) {
+      chartContainerRef.current.style.cursor = 'ew-resize';
+    } else if (isOverPriceScale) {
+      chartContainerRef.current.style.cursor = 'ns-resize';
+    } else {
+      chartContainerRef.current.style.cursor = 'default';
     }
   };
 
@@ -981,13 +1224,18 @@ export default function MiniCandlestickChart({
       
       <div 
         ref={chartContainerRef} 
-        className="chart-canvas-container relative"
-        style={{ height: chartHeight, cursor: activeTool !== 'select' ? 'crosshair' : (interactive ? 'crosshair' : 'pointer') }}
+        className={`chart-canvas-container ${interactive ? 'interactive-chart-container' : ''} relative`}
+        style={{ height: chartHeight, cursor: activeTool !== 'select' ? 'crosshair' : (interactive ? 'default' : 'pointer') }}
         onClick={(e) => {
           onClick?.(e);
           handleCanvasClick(e);
         }}
-        onMouseMove={handleCanvasMouseMove}
+        onMouseMove={handleContainerMouseMove}
+        onMouseLeave={() => {
+          if (chartContainerRef.current && activeTool === 'select') {
+            chartContainerRef.current.style.cursor = interactive ? 'default' : 'pointer';
+          }
+        }}
       >
         {isHistoryLoading && (
           <div className="absolute top-2 left-2 z-20 flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-slate-900/80 text-sky-300 text-[10px] font-medium backdrop-blur-sm border border-sky-500/20 shadow-sm pointer-events-none animate-pulse">
@@ -1139,6 +1387,7 @@ function getVisibleCandlesticks(candlesticks, timeframe) {
   if (!candlesticks || candlesticks.length === 0) return [];
   if (!timeframe || timeframe === 'all' || timeframe === '2y' || timeframe === '5y') return candlesticks;
 
+  const tf = String(timeframe).toLowerCase();
   const daysMap = {
     '1d': 1,
     '5d': 5,
@@ -1150,21 +1399,36 @@ function getVisibleCandlesticks(candlesticks, timeframe) {
     '1y': 365
   };
 
-  const days = daysMap[timeframe];
+  const days = daysMap[tf];
   if (!days) return candlesticks;
 
-  if (timeframe === 'ytd') {
+  const getTimeMs = (c) => {
+    if (!c || !c.time) return 0;
+    if (typeof c.time === 'number') {
+      return c.time < 1e11 ? c.time * 1000 : c.time;
+    }
+    if (typeof c.time === 'string') {
+      return new Date(c.time).getTime();
+    }
+    if (typeof c.time === 'object' && c.time.year) {
+      return Date.UTC(c.time.year, c.time.month - 1, c.time.day);
+    }
+    return 0;
+  };
+
+  if (tf === 'ytd') {
     const currentYear = new Date().getFullYear();
     return candlesticks.filter(c => {
-      const date = new Date(c.time * 1000);
-      return date.getFullYear() === currentYear;
+      const tMs = getTimeMs(c);
+      return new Date(tMs).getFullYear() === currentYear;
     });
   }
 
   const lastCandle = candlesticks[candlesticks.length - 1];
-  const lastTime = lastCandle.time;
-  const cutoffTime = lastTime - (days * 24 * 60 * 60);
+  const lastTimeMs = getTimeMs(lastCandle);
+  if (!lastTimeMs) return candlesticks;
+  const cutoffTimeMs = lastTimeMs - (days * 24 * 60 * 60 * 1000);
 
-  return candlesticks.filter(c => c.time >= cutoffTime);
+  return candlesticks.filter(c => getTimeMs(c) >= cutoffTimeMs);
 }
 

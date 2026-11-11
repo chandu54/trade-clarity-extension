@@ -5,13 +5,22 @@ import MarketPulseView from '../MarketPulseView';
 import { fetchMarketPulseData, generateTechnicalThesis } from '../../services/marketPulse';
 
 // Mock child components & services
-vi.mock('../../services/marketPulse', () => ({
-  fetchMarketPulseData: vi.fn(),
-  generateTechnicalThesis: vi.fn()
+vi.mock('../../services/marketPulse', async (importOriginal) => {
+  const actual = await importOriginal();
+  return {
+    ...actual,
+    fetchMarketPulseData: vi.fn(),
+    generateTechnicalThesis: vi.fn(),
+    fetchSingleIndexDetails: vi.fn()
+  };
+});
+
+vi.mock('../MiniCandlestickChart', () => ({
+  default: () => <div data-testid="mini-candlestick-chart">Mini Chart</div>
 }));
 
-vi.mock('./MiniCandlestickChart', () => ({
-  default: () => <div data-testid="mini-candlestick-chart">Mini Chart</div>
+vi.mock('../IndexDetailModal', () => ({
+  default: () => <div data-testid="index-detail-modal">Index Detail Modal</div>
 }));
 
 // Mock chrome

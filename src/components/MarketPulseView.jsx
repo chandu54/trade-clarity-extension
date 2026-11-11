@@ -1,6 +1,14 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { fetchMarketPulseData, generateTechnicalThesis } from '../services/marketPulse';
+import { 
+  fetchMarketPulseData, 
+  generateTechnicalThesis, 
+  fetchSingleIndexDetails, 
+  INDEX_NAME_MAP, 
+  INDEX_CONSTITUENTS, 
+  getInstitutionalTrend 
+} from '../services/marketPulse';
 import MiniCandlestickChart from './MiniCandlestickChart';
+import IndexDetailModal from './IndexDetailModal';
 import { getSingleStockAnalysis, PROMPT_TEMPLATES } from '../services/ai';
 
 const checkIsAiBlocked = (blockedUntil) => {
@@ -10,9 +18,19 @@ const checkIsAiBlocked = (blockedUntil) => {
 
 const formatSymbolBadge = (symbol) => {
   if (!symbol) return '';
-  if (symbol === "HEALTHIETF.NS") return "HEALTHCARE";
-  if (symbol === "OILIETF.NS") return "OIL_AND_GAS";
-  return symbol.replace('^', '').replace('.NS', '');
+  if (INDEX_NAME_MAP && INDEX_NAME_MAP[symbol]?.badge) {
+    return INDEX_NAME_MAP[symbol].badge;
+  }
+  if (symbol === "HEALTHIETF.NS") return "HEALTHCARE • NSE INDIA";
+  if (symbol === "OILIETF.NS") return "OIL & GAS • NSE INDIA";
+  const clean = symbol.replace('^', '').replace('.NS', '').replace('.BO', '').replace(/_/g, ' ');
+  if (symbol.includes('.NS') || symbol.startsWith('^CNX') || symbol.startsWith('^NSE') || symbol === '^CRSLDX') {
+    return `${clean} • NSE INDIA`;
+  }
+  if (['GSPC', 'IXIC', 'DJI', 'RUT'].includes(clean)) {
+    return `${clean} • US INDEX`;
+  }
+  return clean;
 };
 
 // Safe markdown-lite parser to handle bullet points and inline bold formatting safely
@@ -260,8 +278,39 @@ const OVERFLOW_TIMEFRAMES = [
   { id: '5y', label: '5Y', title: '5 Years' },
 ];
 
+const DEFAULT_INDEX_MA_SETTINGS = {
+  '5': { visible: false, color: '#10b981', thickness: 1.2 },
+  '10': { visible: false, color: '#06b6d4', thickness: 1.2 },
+  '21': { visible: true, color: '#3b82f6', thickness: 1.5 },
+  '50': { visible: true, color: '#f59e0b', thickness: 1.5 },
+  '200': { visible: true, color: '#ef4444', thickness: 2.0 },
+};
+
 export default function MarketPulseView({ country, aiSettings }) {
-  const [subTab, setSubTab] = useState('snapshot'); // snapshot | intelligence | heatmap
+  const [subTab, setSubTab] = useState('snapshot');
+  const [indexMaSettings, setIndexMaSettings] = useState(() => {
+    try {
+      const saved = localStorage.getItem('trade_clarity_index_ma_settings');
+      if (saved) return JSON.parse(saved);
+    } catch (_e) {}
+    return DEFAULT_INDEX_MA_SETTINGS;
+  });
+
+  const toggleIndexMa = useCallback((period) => {
+    setIndexMaSettings(prev => {
+      const next = {
+        ...prev,
+        [period]: {
+          ...prev[period],
+          visible: !prev[period]?.visible,
+        }
+      };
+      try {
+        localStorage.setItem('trade_clarity_index_ma_settings', JSON.stringify(next));
+      } catch (_e) {}
+      return next;
+    });
+  }, []); // snapshot | intelligence | heatmap
   const [data, setData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [lastUpdated, setLastUpdated] = useState(null);
@@ -280,67 +329,9 @@ export default function MarketPulseView({ country, aiSettings }) {
   const [matrixFilter, setMatrixFilter] = useState('all'); // all | bull | pullback | bear
   const searchInputRef = React.useRef(null);
 
-  // AI Sector Analysis State
-  const [aiAnalysis, setAiAnalysis] = useState(null);
-  const [loadingAi, setLoadingAi] = useState(false);
-  const [aiError, setAiError] = useState(null);
-  const [showAiPane, setShowAiPane] = useState(false);
-
-  // Reset AI state when switching fullscreen index or timeframe
-  useEffect(() => {
-    Promise.resolve().then(() => {
-      setAiAnalysis(null);
-      setLoadingAi(false);
-      setAiError(null);
-      setShowAiPane(false);
-    });
-  }, [fullScreenIndex, timeframe]);
-
-  const handleRunAi = async () => {
-    const isAiBlocked = aiSettings?.aiState?.blockedUntil && aiSettings.aiState.blockedUntil > Date.now();
-    if (isAiBlocked) {
-      const remainingSecs = Math.ceil((aiSettings.aiState.blockedUntil - Date.now()) / 1000);
-      setAiError(`AI Request Limit Reached. Available again in ${remainingSecs}s.`);
-      setShowAiPane(true);
-      return;
-    }
-
-    if (!aiSettings?.apiKey) {
-      setAiError("API Key is missing. Please configure it in Settings.");
-      setShowAiPane(true);
-      return;
-    }
-    setLoadingAi(true);
-    setAiError(null);
-    setShowAiPane(true);
-    try {
-      const defaultPrompt = PROMPT_TEMPLATES.find(t => t.value === 'deep_view')?.text;
-      
-      const stockPayload = {
-        symbol: fullScreenIndex.symbol,
-        longName: fullScreenIndex.longName || fullScreenIndex.symbol,
-        currentPrice: fullScreenIndex.currentPrice || 0,
-        dailyChangePct: fullScreenIndex.dailyChangePct || 0,
-        periodChangePct: timeframe === '1d' ? (fullScreenIndex.dailyChangePct || 0) : (fullScreenIndex.periodChangePct || 0),
-        sector: "Market Index / Sector ETF",
-        tags: [],
-        notes: `RSI(14): ${fullScreenIndex.rsi ? fullScreenIndex.rsi.toFixed(1) : 'N/A'}. SMA 5: ${fullScreenIndex.sma5 ? fullScreenIndex.sma5.toFixed(1) : 'N/A'}. SMA 10: ${fullScreenIndex.sma10 ? fullScreenIndex.sma10.toFixed(1) : 'N/A'}. SMA 21: ${fullScreenIndex.sma21 ? fullScreenIndex.sma21.toFixed(1) : 'N/A'}. SMA 50: ${fullScreenIndex.sma50 ? fullScreenIndex.sma50.toFixed(1) : 'N/A'}. SMA 200: ${fullScreenIndex.sma200 ? fullScreenIndex.sma200.toFixed(1) : 'N/A'}. Dist from 52W High: ${fullScreenIndex.dist52wH ? fullScreenIndex.dist52wH.toFixed(2) + '%' : 'N/A'}.`
-      };
-
-      const result = await getSingleStockAnalysis(
-        aiSettings.apiKey,
-        aiSettings.model,
-        stockPayload,
-        timeframe,
-        defaultPrompt
-      );
-      setAiAnalysis(result.rawText || result.text || result.content || "No analysis returned.");
-    } catch (err) {
-      setAiError(err.message || "An error occurred during AI analysis.");
-    } finally {
-      setLoadingAi(false);
-    }
-  };
+  const handleOpenFullScreen = useCallback((idx) => {
+    setFullScreenIndex(idx);
+  }, []);
 
   // Global Ctrl+K / Cmd+K handler
   useEffect(() => {
@@ -528,17 +519,15 @@ export default function MarketPulseView({ country, aiSettings }) {
     setLoading(true);
   }
 
-  // Keep fullScreenIndex data fresh if data refreshes in the background
+  // Keep fullScreenIndex data fresh if data refreshes in the background without blowing away detailed modal state
   useEffect(() => {
     if (fullScreenIndex && data.length > 0) {
       const freshIndex = data.flatMap(g => g.indices).find(idx => idx.symbol === fullScreenIndex.symbol);
-      if (freshIndex && freshIndex !== fullScreenIndex) {
-        Promise.resolve().then(() => {
-          setFullScreenIndex(freshIndex);
-        });
+      if (freshIndex && (freshIndex.currentPrice !== fullScreenIndex.currentPrice || freshIndex.changePct !== fullScreenIndex.changePct)) {
+        setFullScreenIndex(prev => prev ? { ...prev, currentPrice: freshIndex.currentPrice, changePct: freshIndex.changePct } : null);
       }
     }
-  }, [data, fullScreenIndex]);
+  }, [data]);
 
   useEffect(() => {
     Promise.resolve().then(() => {
@@ -909,14 +898,14 @@ export default function MarketPulseView({ country, aiSettings }) {
                                     </svg>
                                   </button>
                                   <button className="action-icon-btn" style={{ opacity: 0.4 }} onClick={() => handleOpenTV(idx.symbol)} title="Open in TradingView"><svg viewBox="0 0 36 28" width="12" height="12" fill="currentColor"><path d="M14 22H7V11H0V4h14v18zM28 22h-7V11h7v11zm8-18H22v18h14V4z" /></svg></button>
-                                  <button className="action-icon-btn" style={{ opacity: 0.4 }} onClick={() => setFullScreenIndex(idx)} title="Expand Chart"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg></button>
+                                  <button className="action-icon-btn" style={{ opacity: 0.4 }} onClick={() => handleOpenFullScreen(idx)} title="Expand Chart"><svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" strokeWidth="3"><polyline points="15 3 21 3 21 9"></polyline><polyline points="9 21 3 21 3 15"></polyline><line x1="21" y1="3" x2="14" y2="10"></line><line x1="3" y1="21" x2="10" y2="14"></line></svg></button>
                                 </div>
                               </div>
                             </div>
 
                             <div 
                               className="index-chart-container cursor-pointer hover:opacity-90 transition-opacity"
-                              onClick={() => setFullScreenIndex(idx)}
+                              onClick={() => handleOpenFullScreen(idx)}
                               title="Expand Chart"
                             >
                               <MiniCandlestickChart 
@@ -925,6 +914,7 @@ export default function MarketPulseView({ country, aiSettings }) {
                                 hideHeaders={true}
                                 interactive={false}
                                 height="140px"
+                                timeframe={timeframe}
                               />
                             </div>
 
@@ -937,11 +927,16 @@ export default function MarketPulseView({ country, aiSettings }) {
                               <div className="ma-bars-row">
                                 {[5, 10, 21, 50, 200].map(period => {
                                   const maValue = idx[`sma${period}`];
-                                  const isAbove = idx.currentPrice > maValue;
+                                  const isAbove = idx.currentPrice >= maValue;
+                                  const distPct = (maValue && maValue > 0) ? (((idx.currentPrice - maValue) / maValue) * 100) : null;
+                                  const tooltipText = maValue 
+                                    ? `${period} SMA: ${formatPrice(maValue)} (${distPct >= 0 ? '+' : ''}${distPct?.toFixed(1)}%) - Price is ${isAbove ? 'Above' : 'Below'}`
+                                    : `${period} SMA: Not Available`;
                                   return (
                                     <div 
                                       key={period} 
                                       className={`ma-bar ${!maValue ? 'ma-empty' : (isAbove ? 'ma-bullish' : 'ma-bearish')}`}
+                                      title={tooltipText}
                                     ></div>
                                   );
                                 })}
@@ -1006,7 +1001,7 @@ export default function MarketPulseView({ country, aiSettings }) {
                         color: isBright ? '#fff' : 'var(--text)',
                         borderColor: isBright ? 'rgba(255,255,255,0.1)' : 'var(--border)'
                       }}
-                      onClick={() => setFullScreenIndex(idx)}
+                      onClick={() => handleOpenFullScreen(idx)}
                     >
                       <div className="heatmap-name">
                         {idx.longName?.replace('NIFTY ', '')?.replace(' INDEX', '')?.replace(' ETF', '')}
@@ -1278,164 +1273,12 @@ export default function MarketPulseView({ country, aiSettings }) {
       </div>
       
       {fullScreenIndex && (
-        <div className="fs-overlay" onClick={() => setFullScreenIndex(null)}>
-          <div className="fs-modal" onClick={e => e.stopPropagation()}>
-            <div className="fs-header">
-              <div className="fs-header-left">
-                <div className="fs-title-col">
-                  <span className="fs-index-name">
-                    {fullScreenIndex.longName || fullScreenIndex.symbol}
-                  </span>
-                  <span className="fs-index-symbol">
-                    {formatSymbolBadge(fullScreenIndex.symbol)}
-                  </span>
-                </div>
-                <div className="fs-price-block">
-                  <span className="fs-price">
-                    {country === 'US' ? '$' : '₹'}{formatPrice(fullScreenIndex.currentPrice)}
-                  </span>
-                  <span className={`fs-pct ${(timeframe === '1d' ? fullScreenIndex.dailyChangePct : fullScreenIndex.periodChangePct) >= 0 ? 'up' : 'down'}`}>
-                    {(timeframe === '1d' ? fullScreenIndex.dailyChangePct : fullScreenIndex.periodChangePct) >= 0 ? '+' : '-'}
-                    {formatPct(Math.abs(timeframe === '1d' ? fullScreenIndex.dailyChangePct : fullScreenIndex.periodChangePct))}
-                  </span>
-                </div>
-              </div>
-              
-              <div className="fs-header-right">
-                <div className="fs-ma-summary">
-                  {[5, 10, 21, 50, 200].map(period => {
-                    const sma = fullScreenIndex[`sma${period}`];
-                    const isAbove = fullScreenIndex.currentPrice > sma;
-                    return (
-                      <div key={period} className="fs-ma-item">
-                        <span className="label">{period}MA</span>
-                        <span className={`value ${isAbove ? 'up' : 'down'}`}>
-                          {formatPrice(sma)}
-                        </span>
-                      </div>
-                    );
-                  })}
-                </div>
-                <button className="modal-close-btn" onClick={() => setFullScreenIndex(null)}>
-                  ×
-                </button>
-              </div>
-            </div>
-            
-            <div className="fs-body">
-              <div className="fs-controls">
-                <div className="timeframe-toggles">
-                  {['1d', '1w', '1mo', '3mo', '6mo', 'ytd', '1y', '2y', '5y'].map(tf => (
-                    <button 
-                      key={tf} 
-                      className={timeframe === tf ? 'active' : ''}
-                      onClick={() => setTimeframe(tf)}
-                    >
-                      {tf}
-                    </button>
-                  ))}
-                </div>
-                <div className="fs-interval-info">
-                  <div className="fs-interval-text">
-                    <span style={{ marginRight: '6px', opacity: 0.5 }}>●</span> 
-                    Interval: {fullScreenIndex.candlesticks?.length || 0} bars
-                    {loading && <span style={{ marginLeft: '12px', color: 'var(--primary)' }}>↻ Syncing...</span>}
-                  </div>
-                  {(() => {
-                    const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
-                    return (
-                      <button 
-                        className={`btn-ai-gradient fs-ai-btn-gradient ${showAiPane ? 'active' : ''}`}
-                        onClick={() => {
-                          if (aiAnalysis) {
-                            setShowAiPane(!showAiPane);
-                          } else {
-                            handleRunAi();
-                          }
-                        }}
-                        disabled={loadingAi || (isAiBlocked && !aiAnalysis)}
-                        title={isAiBlocked && !aiAnalysis ? "AI requests blocked due to rate limit/errors" : "Run Gemini AI Technical Analysis on this chart"}
-                      >
-                        {loadingAi ? (
-                          <>
-                            <span className="spinner-mini"></span>
-                            Analyzing...
-                          </>
-                        ) : (
-                          <>
-                            <span>✨</span>
-                            {aiAnalysis ? (showAiPane ? 'Hide AI' : 'Show AI') : 'Analyze with AI'}
-                          </>
-                        )}
-                      </button>
-                    );
-                  })()}
-                </div>
-              </div>
-
-              <div className={`fs-main-layout ${showAiPane ? 'with-sidebar' : ''}`}>
-                <div className="fs-chart-main">
-                  <MiniCandlestickChart 
-                    data={fullScreenIndex} 
-                    country={country}
-                    interactive={true}
-                    hideHeaders={true}
-                    disableZoom={true}
-                    height="550px"
-                  />
-                </div>
-                {showAiPane && (
-                  <div className="fs-ai-panel">
-                    <div className="fs-ai-panel-header">
-                      <h4>AI Technical Thesis</h4>
-                       {aiAnalysis && (() => {
-                         const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
-                         return (
-                           <button 
-                             className="fs-ai-refresh-btn" 
-                             onClick={handleRunAi} 
-                             disabled={loadingAi || isAiBlocked} 
-                             title={isAiBlocked ? "AI requests blocked due to rate limit/errors" : "Recalculate AI analysis"}
-                           >
-                             ↻
-                           </button>
-                         );
-                       })()}
-                    </div>
-                    <div className="fs-ai-panel-content themed-scroll">
-                      {loadingAi ? (
-                        <div className="ai-loading-state">
-                          <div className="spinner"></div>
-                          <span>Generating AI Technical Analysis...</span>
-                        </div>
-                      ) : aiError ? (
-                        <div className="ai-error-state">
-                          <div className="error-icon">⚠️</div>
-                          <span className="error-text">{aiError}</span>
-                           {(() => {
-                             const isAiBlocked = checkIsAiBlocked(aiSettings?.aiState?.blockedUntil);
-                             return (
-                               <button 
-                                 className="fs-ai-retry-btn" 
-                                 onClick={handleRunAi} 
-                                 disabled={isAiBlocked} 
-                                 style={{ marginTop: '10px', opacity: isAiBlocked ? 0.5 : 1, cursor: isAiBlocked ? 'not-allowed' : 'pointer' }}
-                               >
-                                 Retry
-                               </button>
-                             );
-                           })()}
-                        </div>
-                      ) : (
-                        renderAiAnalysis(aiAnalysis)
-                      )}
-                    </div>
-                  </div>
-                )}
-              </div>
-            </div>
-          </div>
-        </div>
+        <IndexDetailModal
+          index={fullScreenIndex}
+          country={country}
+          onClose={() => setFullScreenIndex(null)}
+          aiSettings={aiSettings}
+        />
       )}
     </>
   );

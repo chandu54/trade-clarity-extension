@@ -69,6 +69,50 @@ Start directly with the report.`,
     text: 'Act as a Lead Institutional Research Analyst specialized in Tactical Basket Trading.\nAnalyze the constituent group of the "{category}" sector.\n\nYour Mission: Filter through this group and provide a high-conviction "Execution Report" that directs a trader toward the most high-probability entry setups.\n\nResearch Structure & Requirements:\n- STRUCTURE: Use clear ### headers and bullet points. DO NOT USE TABLES.\n- TONE: Professional, skeptical, and decision-driven. \n\nRequired Sections:\n1. **Executive Summary**: 2-3 sentences on the group\'s health and collective alpha.\n2. **The Leadership Tier (Highest Conviction)**: Identify 1-2 stocks with the best relative strength. Explain why they are currently leading the basket.\n3. **Execution Decision Matrix**: For each pick in the Leadership Tier, provide:\n   - **Technical Verdict**: A data-driven reason for entry.\n   - **Entry Trigger**: The specific catalyst or level to watch.\n   - **Risk Parameter**: Where the bullish narrative fails for this stock.\n4. **Group Anomalies**: Any stocks decoupling significantly from the group trend.\n\nIdentify: {tickers}. Use their provided performance numbers for the analysis.\nStart directly with the report.',
   },
   {
+    value: "index_pulse",
+    label: "Enterprise Market Regime & Index Pulse Analysis",
+    text: `Conduct an objective, structured market structure, price action, and trend regime analysis for the Index/Sector: {name} ({symbol}).
+Do NOT use introductory filler, conversational salutations, or persona titles. Start directly with section 1.
+
+Executive Quote Context:
+- Current Level: {price} | Day: {dailyChangePct}% | {timeframe} Trend: {periodChangePct}%
+- Distance from 52-Week High: {dist52wH}
+- Institutional Health Score: {healthScore}/100 | Regime Phase: {trendPhase}
+- Momentum RSI(14): {rsi}
+- Moving Average Alignment:
+  * 5 SMA: {sma5} | 10 SMA: {sma10} | 21 SMA: {sma21}
+  * 50 SMA: {sma50} | 200 SMA: {sma200}
+- Moving Average Structure: {maStructure}
+- Recent Price Action (Recent Sessions OHLC & Spread): {recentCandles}
+- Top Institutional Constituents / Drivers: {constituents}
+- Broader Market Breadth Context: {breadthContext}
+
+Output MUST follow this EXACT 5-section markdown structure with institutional analytical rigor:
+
+### 1. MARKET STRUCTURE & PRICE ACTION
+- **Trend Regime**: Classify whether the index is in Stage 1 (Base Building), Stage 2 (Institutional Markup), Stage 3 (Top Distribution), or Stage 4 (Capitulation / Downtrend).
+- **Price Action Geometry**: Analyze recent candlestick dynamics, swing highs/lows, higher-highs vs lower-lows structure, and whether recent sessions signal institutional accumulation or distribution.
+- **Key Inflection Levels**: Specify immediate Support pivots (S1 / S2) and Resistance zones (R1 / R2) with exact price levels.
+
+### 2. MOVING AVERAGE ALIGNMENT & SYSTEMIC HEALTH
+- **Moving Average Stance**: Detail price position relative to 21 EMA (short-term guide), 50 SMA (institutional benchmark), and 200 SMA (secular trend line).
+- **Slope & Convergence**: Are moving averages fanning out bullishly (momentum expansion), pinching (volatility compression), or showing bearish death-cross roll-overs?
+- **Extension / Mean-Reversion Risk**: Is the index dangerously extended from its 21/50 SMA, or offering a constructive pullback to key moving average support?
+
+### 3. CONSTITUENT DRIVERS & BREADTH DYNAMICS
+- **Heavyweight Leadership**: How are the core heavyweight drivers performing? Are institutional leaders participating in the move or is breadth narrowing?
+- **Relative Strength**: How does this index/sector compare to the broader market? Is it a leadership sector attracting institutional capital or a lagging anchor?
+
+### 4. DISTRIBUTION & VOLATILITY WARNINGS
+- **Institutional Supply**: Assessment of institutional distribution days, heavy volume sell-offs, exhaustion wicks, or breakout failures.
+- **Volatility & Liquidity State**: Is volatility expanding on down days (bearish) or contracting inside tight consolidations (constructive VCP/base)?
+
+### 5. INSTITUTIONAL PLAYBOOK & TACTICAL VERDICT
+- **Regime Stance**: [CONFIRMED UPTREND / UNDER PRESSURE / MARKET IN CORRECTION / RALLY ATTEMPT / BEARISH BREAKDOWN]
+- **Tactical Playbook**: Specific allocation advice for swing traders and active investors (e.g. Aggressive Long Exposure 80-100%, Defensive Trimming with Tight Stops, Cash Preservation 50%+, or Selective Breakout Buying only).
+- **Decisive Invalidation**: The exact level where the current thesis is invalidated.`,
+  },
+  {
     value: "deep_view",
     label: "Single Stock Deep Analysis",
     text: "Act as a senior institutional technical analyst. \nConduct a high-conviction deep dive on the stock: {symbol} ({name}).\n\nCurrent Quote Context:\n- Price: {price}\n- Day Change: {dailyChangePct}%\n- Period ({timeframe}) Change: {periodChangePct}%\n- Sector: {sector}\n- Tags: {tags}\n- Notes: {notes}\n\nOutput MUST follow this EXACT structure:\n\n### TREND\n[Primary bias & momentum state]\n\n### KEY LEVELS\n[S1/S2 | R1/R2 with brief context]\n\n### SETUP\n[Specific technical pattern or context]\n\n### TRIGGER\n[The exact 'if this, then that' entry condition]\n\n### VERDICT\n[BUY/WAIT/SELL] - [Brief summary of reasoning]",
@@ -253,6 +297,19 @@ export async function getSingleStockAnalysis(
   prompt = prompt.replace(/\{sector\}/g, stock.sector || "Unknown");
   prompt = prompt.replace(/\{tags\}/g, (stock.tags || []).join(", ") || "None");
   prompt = prompt.replace(/\{notes\}/g, stock.notes || "None");
+  prompt = prompt.replace(/\{dist52wH\}/g, stock.dist52wH != null ? `${stock.dist52wH}%` : "N/A");
+  prompt = prompt.replace(/\{healthScore\}/g, stock.healthScore != null ? String(stock.healthScore) : "N/A");
+  prompt = prompt.replace(/\{trendPhase\}/g, stock.trendPhase || "N/A");
+  prompt = prompt.replace(/\{rsi\}/g, stock.rsi != null ? String(stock.rsi) : "N/A");
+  prompt = prompt.replace(/\{sma5\}/g, stock.sma5 != null ? String(stock.sma5) : "N/A");
+  prompt = prompt.replace(/\{sma10\}/g, stock.sma10 != null ? String(stock.sma10) : "N/A");
+  prompt = prompt.replace(/\{sma21\}/g, stock.sma21 != null ? String(stock.sma21) : "N/A");
+  prompt = prompt.replace(/\{sma50\}/g, stock.sma50 != null ? String(stock.sma50) : "N/A");
+  prompt = prompt.replace(/\{sma200\}/g, stock.sma200 != null ? String(stock.sma200) : "N/A");
+  prompt = prompt.replace(/\{maStructure\}/g, stock.maStructure || "N/A");
+  prompt = prompt.replace(/\{recentCandles\}/g, stock.recentCandles || "N/A");
+  prompt = prompt.replace(/\{constituents\}/g, stock.constituents || "N/A");
+  prompt = prompt.replace(/\{breadthContext\}/g, stock.breadthContext || "N/A");
 
   try {
     let modelToUse = model || CONFIG.DEFAULT_AI_MODEL;

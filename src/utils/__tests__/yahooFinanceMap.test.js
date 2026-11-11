@@ -496,5 +496,70 @@ describe('fetchStockQuotes', () => {
     expect(result.candlesticks.length).toBe(3);
     expect(result.candlesticks[0].close).toBe(140);
   });
+
+  it('should maintain consistent OHLC candlestick colors even when historical adjclose is lower due to dividends/splits', async () => {
+    const mockDataWithAdjClose = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 105 },
+          indicators: {
+            quote: [{
+              open: [100],
+              high: [106],
+              low: [99],
+              close: [105] // Up day: Open 100, Close 105 (Green candle)
+            }],
+            adjclose: [{
+              adjclose: [80] // Lower due to corporate dividend adjustment
+            }]
+          },
+          timestamp: [1600000000]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, mockDataWithAdjClose));
+    const result = await fetchStockData(['TEST_DIV'], 'US');
+
+    expect(result[0].candlesticks[0].open).toBe(100);
+    expect(result[0].candlesticks[0].close).toBe(105); // Must use raw close 105, NOT 80, keeping candle green
+    expect(result[0].candlesticks[0].close).toBeGreaterThan(result[0].candlesticks[0].open);
+  });
+
+  test('supersets in daily cache satisfy shorter daily timeframe requests without network calls', async () => {
+    const timestamps = Array.from({ length: 65 }, (_, i) => 1700000000 + i * 86400);
+    const closes = Array.from({ length: 65 }, (_, i) => 100 + i);
+    const mock3moData = {
+      chart: {
+        result: [{
+          meta: { regularMarketPrice: 164, regularMarketPreviousClose: 163, longName: 'Superset Test Corp' },
+          indicators: {
+            quote: [{
+              open: closes.map(c => c - 1),
+              high: closes.map(c => c + 2),
+              low: closes.map(c => c - 2),
+              close: closes,
+              volume: Array(65).fill(1000)
+            }]
+          },
+          timestamp: timestamps
+        }]
+      }
+    };
+
+    const initialFetchCalls = fetch.mock.calls.length;
+    fetch.mockResolvedValueOnce(mockResponse(true, mock3moData));
+    const res3mo = await fetchStockData(['TEST_SUPERSET'], 'US', '3mo');
+    expect(res3mo[0].candlesticks.length).toBe(65);
+    expect(fetch.mock.calls.length).toBe(initialFetchCalls + 1);
+
+    // Now call fetchStockData for '5d' with '1d' interval
+    // Should be satisfied directly from 3mo superset cache without any additional fetch!
+    const res5d = await fetchStockData(['TEST_SUPERSET'], 'US', '5d', '1d');
+    expect(res5d[0].candlesticks.length).toBe(5);
+    expect(res5d[0].currentPrice).toBe(164);
+    expect(res5d[0].previousClose).toBe(163);
+    expect(fetch.mock.calls.length).toBe(initialFetchCalls + 1);
+  });
 });
 

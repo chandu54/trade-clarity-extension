@@ -1,4 +1,178 @@
+
 import { fetchStockData } from "../utils/yahooFinanceMap.js";
+
+export const PROXY_MAP = {
+  "^CNXSC": { symbol: "HDFCSML250.NS", ratio: 105, isSelfETF: false }, 
+  "NIFTY_MIDCAP_100.NS": { symbol: "MOM100.NS", ratio: 925, isSelfETF: false },
+  "^CRSLDX": { symbol: "MONIFTY500.NS", ratio: 980, isSelfETF: false },
+  "HEALTHIETF.NS": { symbol: "HEALTHIETF.NS", ratio: 1, isSelfETF: true },
+  "OILIETF.NS": { symbol: "OILIETF.NS", ratio: 1, isSelfETF: true },
+  "NIFTY_CHEMICALS.NS": { symbol: "SRF.NS", ratio: 13.5, isSelfETF: false },
+  "NIFTY_EV.NS": { symbol: "M&M.NS", ratio: 0.97, isSelfETF: false }
+};
+
+export const INDEX_NAME_MAP = {
+  "^NSEI": { name: "Nifty 50", badge: "NIFTY 50 • NSE INDIA" },
+  "NIFTY_MIDCAP_100.NS": { name: "Nifty Midcap 100", badge: "NIFTY MIDCAP 100 • NSE INDIA" },
+  "^CNXSC": { name: "Nifty Smallcap 100", badge: "NIFTY SMALLCAP 100 • NSE INDIA" },
+  "^CRSLDX": { name: "Nifty 500", badge: "NIFTY 500 • NSE INDIA" },
+  "^NSEBANK": { name: "Nifty Bank", badge: "NIFTY BANK • NSE INDIA" },
+  "^CNXIT": { name: "Nifty IT", badge: "NIFTY IT • NSE INDIA" },
+  "^CNXMETAL": { name: "Nifty Metal", badge: "NIFTY METAL • NSE INDIA" },
+  "^CNXPHARMA": { name: "Nifty Pharma", badge: "NIFTY PHARMA • NSE INDIA" },
+  "^CNXAUTO": { name: "Nifty Auto", badge: "NIFTY AUTO • NSE INDIA" },
+  "^CNXFMCG": { name: "Nifty FMCG", badge: "NIFTY FMCG • NSE INDIA" },
+  "^CNXREALTY": { name: "Nifty Realty", badge: "NIFTY REALTY • NSE INDIA" },
+  "^CNXENERGY": { name: "Nifty Energy", badge: "NIFTY ENERGY • NSE INDIA" },
+  "^CNXINFRA": { name: "Nifty Infra", badge: "NIFTY INFRA • NSE INDIA" },
+  "^CNXMEDIA": { name: "Nifty Media", badge: "NIFTY MEDIA • NSE INDIA" },
+  "^CNXPSUBANK": { name: "Nifty PSU Bank", badge: "NIFTY PSU BANK • NSE INDIA" },
+  "NIFTY_PVT_BANK.NS": { name: "Nifty Pvt Bank", badge: "NIFTY PVT BANK • NSE INDIA" },
+  "NIFTY_FIN_SERVICE.NS": { name: "Nifty Fin Services", badge: "NIFTY FIN SERVICES • NSE INDIA" },
+  "^CNXCONSUM": { name: "Nifty Consumption", badge: "NIFTY CONSUMPTION • NSE INDIA" },
+  "^CNXPSE": { name: "Nifty PSE", badge: "NIFTY PSE • NSE INDIA" },
+  "^CNXSERVICE": { name: "Nifty Services", badge: "NIFTY SERVICES • NSE INDIA" },
+  "^CNXCMDT": { name: "Nifty Commodities", badge: "NIFTY COMMODITIES • NSE INDIA" },
+  "^CNXMNC": { name: "Nifty MNC", badge: "NIFTY MNC • NSE INDIA" },
+  "HEALTHIETF.NS": { name: "Nifty Healthcare", badge: "NIFTY HEALTHCARE • NSE INDIA" },
+  "OILIETF.NS": { name: "Nifty Oil & Gas", badge: "NIFTY OIL & GAS • NSE INDIA" },
+  "DEFENCE.NS": { name: "Nifty Defence", badge: "NIFTY DEFENCE • NSE INDIA" },
+  "CPSEETF.NS": { name: "Nifty CPSE", badge: "NIFTY CPSE • NSE INDIA" },
+  "NIFTY_CHEMICALS.NS": { name: "Nifty Chemicals", badge: "NIFTY CHEMICALS • NSE INDIA" },
+  "NIFTY_EV.NS": { name: "Nifty EV & Auto", badge: "NIFTY EV & AUTO • NSE INDIA" },
+  "^GSPC": { name: "S&P 500", badge: "S&P 500 • US BENCHMARK" },
+  "^IXIC": { name: "Nasdaq Composite", badge: "NASDAQ • US TECH INDEX" },
+  "^DJI": { name: "Dow Jones 30", badge: "DOW JONES 30 • US BLUECHIP" },
+  "^RUT": { name: "Russell 2000", badge: "RUSSELL 2000 • US SMALLCAP" },
+  "XLK": { name: "Technology ETF", badge: "TECH SECTOR • SPDR XLK" },
+  "XLF": { name: "Financials ETF", badge: "FINANCIALS • SPDR XLF" },
+  "XLV": { name: "Health Care ETF", badge: "HEALTH CARE • SPDR XLV" },
+  "XLE": { name: "Energy ETF", badge: "ENERGY • SPDR XLE" },
+  "XLI": { name: "Industrials ETF", badge: "INDUSTRIALS • SPDR XLI" },
+  "XLB": { name: "Materials ETF", badge: "MATERIALS • SPDR XLB" },
+  "XLU": { name: "Utilities ETF", badge: "UTILITIES • SPDR XLU" },
+  "XLY": { name: "Consumer Discretionary", badge: "DISCRETIONARY • SPDR XLY" },
+  "XLP": { name: "Consumer Staples", badge: "STAPLES • SPDR XLP" }
+};
+
+
+export function filterToLatestActiveSession(candlesticks) {
+  if (!Array.isArray(candlesticks) || candlesticks.length === 0) return candlesticks || [];
+  
+  const dateGroups = new Map();
+  candlesticks.forEach(c => {
+    const dStr = new Date(c.time * 1000).toDateString();
+    if (!dateGroups.has(dStr)) dateGroups.set(dStr, []);
+    dateGroups.get(dStr).push(c);
+  });
+  
+  const dates = Array.from(dateGroups.keys());
+  if (dates.length === 0) return candlesticks;
+
+  const latestDateStr = dates[dates.length - 1];
+  const latestGroup = dateGroups.get(latestDateStr) || [];
+  const latestDate = new Date(latestGroup[0]?.time * 1000);
+  const dayOfWeek = latestDate.getDay(); // 0 = Sun, 6 = Sat
+  const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
+
+  if (isWeekend || latestGroup.length < 5) {
+    for (let i = dates.length - 1; i >= 0; i--) {
+      const group = dateGroups.get(dates[i]);
+      if (group && group.length >= 5) {
+        return group;
+      }
+    }
+  }
+
+  return latestGroup.length > 0 ? latestGroup : candlesticks;
+}
+
+export async function fetchSingleIndexDetails(symbol, country = 'IN', timeframe = '2y', baseIndexData = null, customInterval = null) {
+  if (!symbol) return null;
+
+  const proxyInfo = PROXY_MAP[symbol];
+  const symbolsToFetch = [symbol];
+  if (proxyInfo && proxyInfo.symbol && !symbolsToFetch.includes(proxyInfo.symbol)) {
+    symbolsToFetch.push(proxyInfo.symbol);
+  }
+
+  const [chartResults, maResults] = await Promise.all([
+    fetchStockData(symbolsToFetch, country, timeframe, customInterval),
+    fetchStockData(symbolsToFetch, country, '2y', '1d')
+  ]);
+
+  const rawIndexChart = chartResults.find(r => r.symbol === symbol) || chartResults[0];
+  const rawIndexMa = maResults.find(r => r.symbol === symbol) || maResults[0];
+  const proxyChart = proxyInfo ? chartResults.find(r => r.symbol === proxyInfo.symbol) : null;
+  const proxyMa = proxyInfo ? maResults.find(r => r.symbol === proxyInfo.symbol) : null;
+
+  let finalRes = { ...(baseIndexData || {}), ...(rawIndexChart || {}) };
+  let technicalSource = rawIndexMa || rawIndexChart;
+  let scaleFactor = 1;
+
+  if (proxyInfo) {
+    const isSelfETF = proxyInfo.isSelfETF;
+    const hasValidPrice = finalRes.currentPrice && finalRes.currentPrice > 0;
+    const proxyPrice = proxyMa?.currentPrice || proxyChart?.currentPrice || 0;
+    const indexPrice = isSelfETF 
+      ? finalRes.currentPrice * proxyInfo.ratio 
+      : (hasValidPrice ? finalRes.currentPrice : (proxyPrice ? proxyPrice * proxyInfo.ratio : 0));
+    
+    finalRes.currentPrice = indexPrice || finalRes.currentPrice;
+
+    if (isSelfETF) {
+      scaleFactor = proxyInfo.ratio;
+      if (finalRes.candlesticks) {
+        finalRes.candlesticks = finalRes.candlesticks.map(c => ({
+          ...c, 
+          open: c.open * scaleFactor, 
+          high: c.high * scaleFactor,
+          low: c.low * scaleFactor, 
+          close: c.close * scaleFactor
+        }));
+      }
+    } else {
+      if (proxyChart && proxyChart.candlesticks && proxyChart.candlesticks.length > 0) {
+        technicalSource = proxyMa || proxyChart;
+        scaleFactor = (proxyPrice > 0 && indexPrice > 0) ? (indexPrice / proxyPrice) : proxyInfo.ratio;
+        finalRes.candlesticks = proxyChart.candlesticks.map(c => ({
+          ...c,
+          open: Number((c.open * scaleFactor).toFixed(2)),
+          high: Number((c.high * scaleFactor).toFixed(2)),
+          low: Number((c.low * scaleFactor).toFixed(2)),
+          close: Number((c.close * scaleFactor).toFixed(2))
+        }));
+      }
+    }
+  }
+
+  // Filter 1D intraday candles to the latest active trading session so 1D charts are clean and full
+  if (((timeframe || '').toLowerCase() === '1d' || customInterval === '15m') && Array.isArray(finalRes.candlesticks) && finalRes.candlesticks.length > 0) {
+    finalRes.candlesticks = filterToLatestActiveSession(finalRes.candlesticks);
+  }
+
+  const maCandles = technicalSource?.candlesticks || finalRes.candlesticks || [];
+  let techPrice = technicalSource?.currentPrice;
+  if (!techPrice && maCandles.length > 0) {
+    techPrice = maCandles[maCandles.length - 1].close;
+  }
+  if (finalRes.currentPrice > 0 && techPrice > 0 && Math.abs(finalRes.currentPrice - techPrice) / techPrice > 0.05) {
+    scaleFactor = finalRes.currentPrice / techPrice;
+  }
+
+  finalRes.sma5 = calculateSMA(maCandles, 5) ? Number((calculateSMA(maCandles, 5) * scaleFactor).toFixed(2)) : (baseIndexData?.sma5 || null);
+  finalRes.sma10 = calculateSMA(maCandles, 10) ? Number((calculateSMA(maCandles, 10) * scaleFactor).toFixed(2)) : (baseIndexData?.sma10 || null);
+  finalRes.sma21 = calculateSMA(maCandles, 21) ? Number((calculateSMA(maCandles, 21) * scaleFactor).toFixed(2)) : (baseIndexData?.sma21 || null);
+  finalRes.sma50 = calculateSMA(maCandles, 50) ? Number((calculateSMA(maCandles, 50) * scaleFactor).toFixed(2)) : (baseIndexData?.sma50 || null);
+  finalRes.sma200 = calculateSMA(maCandles, 200) ? Number((calculateSMA(maCandles, 200) * scaleFactor).toFixed(2)) : (baseIndexData?.sma200 || null);
+  finalRes.rsi = calculateRSI(maCandles, 14) || baseIndexData?.rsi || null;
+
+  if (INDEX_NAME_MAP[symbol]) {
+    finalRes.longName = INDEX_NAME_MAP[symbol].name;
+  }
+
+  return finalRes;
+}
 
 /**
  * Calculates Simple Moving Average
@@ -32,7 +206,7 @@ function calculateRSI(data, period = 14) {
 /**
  * Calculates a comprehensive Health Score (0-100) and identifies the Trend Phase
  */
-function getInstitutionalTrend(price, smas = {}) {
+export function getInstitutionalTrend(price, smas = {}) {
   const { sma21, sma50, sma200 } = smas;
   
   if (!price || (!sma21 && !sma50)) {
@@ -295,22 +469,7 @@ export async function fetchMarketPulseData(country = "US", timeframe = "1y") {
 
   const allSymbols = groups.flatMap((g) => g.symbols);
   
-  /**
-   * PROXY_MAP: Deep history proxies for indices that Yahoo often truncates or lacks completely.
-   * HDFCSML250.NS is the robust, split-adjusted proxy for Smallcap history.
-   * MOM100.NS is the clean, split-adjusted proxy for Midcap history.
-   * MONIFTY500.NS is the clean, split-adjusted proxy for Nifty 500 history.
-   * HEALTHIETF.NS and OILIETF.NS serve as highly active direct proxies for sectoral indices.
-   */
-  const PROXY_MAP = {
-    "^CNXSC": { symbol: "HDFCSML250.NS", ratio: 105, isSelfETF: false }, 
-    "NIFTY_MIDCAP_100.NS": { symbol: "MOM100.NS", ratio: 925, isSelfETF: false },
-    "^CRSLDX": { symbol: "MONIFTY500.NS", ratio: 980, isSelfETF: false },
-    "HEALTHIETF.NS": { symbol: "HEALTHIETF.NS", ratio: 1, isSelfETF: true },
-    "OILIETF.NS": { symbol: "OILIETF.NS", ratio: 1, isSelfETF: true },
-    "NIFTY_CHEMICALS.NS": { symbol: "SRF.NS", ratio: 13.5, isSelfETF: false },
-    "NIFTY_EV.NS": { symbol: "M&M.NS", ratio: 0.97, isSelfETF: false }
-  };
+  // Use exported top-level PROXY_MAP
 
   // Unique proxy symbols that are NOT already fetched in allSymbols (prevents duplicate API requests!)
   const proxySymbols = Array.from(new Set(
@@ -422,13 +581,9 @@ export async function fetchMarketPulseData(country = "US", timeframe = "1y") {
       }
     }
 
-    // Filter 1D intraday candles to the latest trading session only so 1D charts are clean & un-squished
+    // Filter 1D intraday candles to the latest active trading session so 1D charts are clean and full
     if ((timeframe || '').toLowerCase() === '1d' && Array.isArray(finalRes.candlesticks) && finalRes.candlesticks.length > 0) {
-      const lastBarDateStr = new Date(finalRes.candlesticks[finalRes.candlesticks.length - 1].time * 1000).toDateString();
-      const latestSessionCandles = finalRes.candlesticks.filter(c => new Date(c.time * 1000).toDateString() === lastBarDateStr);
-      if (latestSessionCandles.length > 0) {
-        finalRes.candlesticks = latestSessionCandles;
-      }
+      finalRes.candlesticks = filterToLatestActiveSession(finalRes.candlesticks);
     }
 
     const maCandles = technicalSource?.candlesticks || finalRes.candlesticks || [];
