@@ -270,6 +270,13 @@ export default function EditStockModal({
   const [drawingStyle, setDrawingStyle] = useState('solid');
   const [drawingCount, setDrawingCount] = useState(0);
   const [clearDrawingsTrigger, setClearDrawingsTrigger] = useState(0);
+  const [magnetEnabled, setMagnetEnabled] = useState(false);
+  const [extendRight, setExtendRight] = useState(false);
+
+  // Always reset clear drawings trigger whenever the stock changes
+  useEffect(() => {
+    setClearDrawingsTrigger(0);
+  }, [stock?.symbol]);
 
   const adrInfo = useMemo(() => getActualParamKeyAndDef(paramDefinitions, 'adr', 'adr', country), [paramDefinitions, country]);
   const liqInfo = useMemo(() => getActualParamKeyAndDef(paramDefinitions, 'liquidity', 'liquidity', country), [paramDefinitions, country]);
@@ -465,7 +472,7 @@ export default function EditStockModal({
         });
       }
     });
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [formData?.symbol, sidebarGrouping, activeGroupKey]);
 
   const handleUpdateMaSetting = useCallback((ma, key, value) => {
@@ -1221,7 +1228,7 @@ export default function EditStockModal({
     } else {
       prevSymbolRef.current = null;
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [stock?.symbol, stock?.params?.rs, stock?.parameters?.rs]);
 
   const sortedSymbolsSerialized = useMemo(() => {
@@ -1354,7 +1361,6 @@ export default function EditStockModal({
   useEffect(() => {
     if (!isOpen || !sortedSymbolsSerialized) return;
     const controller = new AbortController();
-    // eslint-disable-next-line react-hooks/set-state-in-effect
     fetchSidebarQuotes(controller.signal);
     fetchSidebarEarnings(controller.signal);
     return () => {
@@ -3462,6 +3468,10 @@ export default function EditStockModal({
                         onStyleChange={setDrawingStyle}
                         onClearAll={() => setClearDrawingsTrigger(t => t + 1)}
                         drawingCount={drawingCount}
+                        magnetEnabled={magnetEnabled}
+                        onMagnetToggle={setMagnetEnabled}
+                        extendRight={extendRight}
+                        onExtendRightToggle={setExtendRight}
                       />
                     </div>
                   </div>
@@ -3495,6 +3505,10 @@ export default function EditStockModal({
                     drawStyleProp={drawingStyle}
                     onDrawingsCountChange={setDrawingCount}
                     clearDrawingsTrigger={clearDrawingsTrigger}
+                    magnetEnabledProp={magnetEnabled}
+                    onMagnetChangeProp={setMagnetEnabled}
+                    extendRightProp={extendRight}
+                    onExtendRightChangeProp={setExtendRight}
                   />
                 </div>
 

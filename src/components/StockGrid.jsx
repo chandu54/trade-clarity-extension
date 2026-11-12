@@ -13,7 +13,7 @@ import { useToast } from "./ToastContext";
 import { useConfirm } from "./ConfirmContext";
 import { classifySectorsInBulk } from "../services/ai";
 import stockMetadata from "../constants/stockMetadata.json";
-import { searchStockUniverse, syncStockUniverse, searchYahooSymbols } from "../services/stockUniverseService";
+import { searchStockUniverse, searchYahooSymbols } from "../services/stockUniverseService";
 import {
   normalizeMacroTheme,
   extractStockThematicThemes,
@@ -30,6 +30,7 @@ import { parseInstitutionalDate } from "../utils/dateUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
 import { fetchStockQuotes } from "../utils/yahooFinanceMap";
 import { hydrateStockRsValues } from "../utils/benchmarkUtils";
+import { getActiveRunningAutomation } from "../services/automation/automationStateStore";
 
 
 const FLAG_COLOR_MAP = {
@@ -669,6 +670,13 @@ export default function StockGrid({
       return;
     }
 
+    // Suppress redundant grid quote requests if Automation is actively hydrating
+    if (getActiveRunningAutomation()) {
+      console.log("[StockGrid] Automation is running. Suppressing redundant 5d quote polling.");
+      setLoadingQuotes(false);
+      return;
+    }
+
     if (fetchAbortControllerRef.current) {
       fetchAbortControllerRef.current.abort();
     }
@@ -748,7 +756,7 @@ export default function StockGrid({
         fetchAbortControllerRef.current = null;
       }
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [symbolsSerialized, country]);
 
   const hydrateRsForGrid = useCallback(async () => {
@@ -980,6 +988,7 @@ export default function StockGrid({
 
   const [editingStock, setEditingStock] = useState(null);
   const [activeFlagMenuSymbol, setActiveFlagMenuSymbol] = useState(null);
+  const urlParamHandledRef = useRef(false);
 
   const handleToggleTagDropdown = useCallback((symbol) => {
     setActiveTagDropdown((prev) => (prev === symbol ? null : symbol));
@@ -1418,7 +1427,7 @@ export default function StockGrid({
         };
       });
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+     
   }, [weekKey, country, currentWeekSyncDate, autoRefreshMetrics, isReadOnly, triggerFullSync, setData]);
 
   const searchInputRef = useRef(null);
@@ -1909,10 +1918,10 @@ export default function StockGrid({
 
       /* PRICE TREND FILTER */
       if (priceTrendFilter === "up") {
-        const q = quotes[stock.symbol];
+        const q = quotes[stock.symbol] || stock;
         if (!q || q.dailyChangePct === undefined || q.dailyChangePct <= 0) return false;
       } else if (priceTrendFilter === "down") {
-        const q = quotes[stock.symbol];
+        const q = quotes[stock.symbol] || stock;
         if (!q || q.dailyChangePct === undefined || q.dailyChangePct >= 0) return false;
       }
 
@@ -1945,8 +1954,8 @@ export default function StockGrid({
         aVal = getChecksCount(a);
         bVal = getChecksCount(b);
       } else if (sortBy === "__livePrice__") {
-        const aNum = quotes[a.symbol]?.dailyChangePct ?? 0;
-        const bNum = quotes[b.symbol]?.dailyChangePct ?? 0;
+        const aNum = (quotes[a.symbol]?.dailyChangePct ?? a.dailyChangePct) ?? 0;
+        const bNum = (quotes[b.symbol]?.dailyChangePct ?? b.dailyChangePct) ?? 0;
         return sortDir === "asc" ? aNum - bNum : bNum - aNum;
       } else if (sortBy === "__macroTheme__") {
         const aRaw = a.macroTheme || (Array.isArray(a.dependentIndustries) && a.dependentIndustries[0]) || "";
@@ -2009,7 +2018,7 @@ export default function StockGrid({
     let totalWithQuotes = 0;
 
     filteredStocks.forEach((stock) => {
-      const q = quotes[stock.symbol];
+      const q = quotes[stock.symbol] || stock;
       if (q && q.dailyChangePct !== undefined) {
         totalWithQuotes++;
         if (q.dailyChangePct > 0) {
@@ -2031,6 +2040,29 @@ export default function StockGrid({
   const end = start + pageSize;
 
   const stocks = sortedStocks.slice(start, end);
+
+  // Auto-open stock modal if ?symbol=XYZ or ?edit=XYZ is present in URL
+  useEffect(() => {
+    if (urlParamHandledRef.current) return;
+    try {
+      if (typeof window !== 'undefined' && window.location.search) {
+        const params = new URLSearchParams(window.location.search);
+        const urlSymbol = params.get('symbol') || params.get('edit');
+        if (urlSymbol) {
+          urlParamHandledRef.current = true;
+          const clean = urlSymbol.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+          const found = (sortedStocks || []).find(
+            (s) => (s?.symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase() === clean
+          );
+          if (found) {
+            setEditingStock(found);
+          } else {
+            setEditingStock({ symbol: clean });
+          }
+        }
+      }
+    } catch (_e) {}
+  }, [sortedStocks]);
 
   function toggleSort(col) {
     if (sortBy === col) {
@@ -2401,7 +2433,7 @@ export default function StockGrid({
     showToast(`Added ${count} stocks to "${targetName}"`, "success");
   }, [selectedSymbols, data.watchlists, country, weekKey, setData, showToast]);
 
-  const handleBulkMoveToWatchlist = useCallback((targetWlId) => {
+  const _handleBulkMoveToWatchlist = useCallback((targetWlId) => {
     if (selectedSymbols.size === 0 || !targetWlId) return;
     const count = selectedSymbols.size;
     const targetWl = (data.watchlists || []).find((w) => w.id === targetWlId);
@@ -3948,7 +3980,7 @@ export default function StockGrid({
                 stock={stock}
                 rowIndex={rowIndex}
                 totalStocks={stocks.length}
-                quote={quotes[stock.symbol]}
+                quote={quotes[stock.symbol] || (stock.currentPrice !== undefined ? { currentPrice: stock.currentPrice, dailyChangePct: stock.dailyChangePct, isAdvancing: stock.isAdvancing } : undefined)}
                 country={country}
                 isReadOnly={isReadOnly}
                 isSelected={selectedSymbols.has(stock.symbol)}

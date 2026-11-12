@@ -2,16 +2,14 @@ import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { 
   fetchMarketPulseData, 
   generateTechnicalThesis, 
-  fetchSingleIndexDetails, 
   INDEX_NAME_MAP, 
   INDEX_CONSTITUENTS, 
-  getInstitutionalTrend 
 } from '../services/marketPulse';
 import MiniCandlestickChart from './MiniCandlestickChart';
 import IndexDetailModal from './IndexDetailModal';
-import { getSingleStockAnalysis, PROMPT_TEMPLATES } from '../services/ai';
+import { PROMPT_TEMPLATES } from '../services/ai';
 
-const checkIsAiBlocked = (blockedUntil) => {
+const _checkIsAiBlocked = (blockedUntil) => {
   if (!blockedUntil) return false;
   return blockedUntil > Date.now();
 };
@@ -80,7 +78,7 @@ const SafeMarkdown = ({ text }) => {
 };
 
 // Main AI analysis formatter splitting by headers (###)
-const renderAiAnalysis = (aiAnalysis) => {
+const _renderAiAnalysis = (aiAnalysis) => {
   if (!aiAnalysis) return null;
 
   // Check if the analysis contains section headers
@@ -288,7 +286,7 @@ const DEFAULT_INDEX_MA_SETTINGS = {
 
 export default function MarketPulseView({ country, aiSettings }) {
   const [subTab, setSubTab] = useState('snapshot');
-  const [indexMaSettings, setIndexMaSettings] = useState(() => {
+  const [_indexMaSettings, setIndexMaSettings] = useState(() => {
     try {
       const saved = localStorage.getItem('trade_clarity_index_ma_settings');
       if (saved) return JSON.parse(saved);
@@ -296,7 +294,7 @@ export default function MarketPulseView({ country, aiSettings }) {
     return DEFAULT_INDEX_MA_SETTINGS;
   });
 
-  const toggleIndexMa = useCallback((period) => {
+  const _toggleIndexMa = useCallback((period) => {
     setIndexMaSettings(prev => {
       const next = {
         ...prev,

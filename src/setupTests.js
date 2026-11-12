@@ -6,7 +6,12 @@ expect.extend(matchers);
 // Mock chrome API globally
 global.chrome = {
   runtime: {
-    sendMessage: vi.fn(),
+    sendMessage: vi.fn((_msg, cb) => {
+      if (typeof cb === 'function') {
+        cb({ success: true, results: [] });
+      }
+      return Promise.resolve({ success: true, results: [] });
+    }),
     onMessage: {
       addListener: vi.fn(),
       removeListener: vi.fn()

@@ -1,0 +1,590 @@
+import React, { useEffect, useRef, useState, useLayoutEffect } from 'react';
+
+const FLAG_COLOR_MAP = {
+  red: '#ef4444',
+  blue: '#3b82f6',
+  green: '#22c55e',
+  orange: '#f97316',
+  purple: '#a855f7',
+};
+
+export default function ZerodhaContextMenu({
+  isOpen,
+  x,
+  y,
+  stock,
+  watchlists = [],
+  availableTags = [],
+  onClose,
+  onToggleWatchlist,
+  onSelectFlagColor,
+  onToggleTag,
+  onToggleTradable,
+  onCopySymbol,
+  onOpenTradingView,
+  onOpenScreener,
+  onOpenDashboard,
+  onEditStock,
+  onDeleteStock,
+}) {
+  const menuRef = useRef(null);
+  const [activeSubmenu, setActiveSubmenu] = useState(null); // 'watchlist' | 'flag' | 'tags' | null
+  const [pos, setPos] = useState({ top: y, left: x });
+
+  useLayoutEffect(() => {
+    if (!isOpen || !menuRef.current) return;
+    const rect = menuRef.current.getBoundingClientRect();
+    const winWidth = window.innerWidth;
+    const winHeight = window.innerHeight;
+
+    let posX;
+    let posY = y;
+
+    // If right-clicked on the right half of the screen (e.g. inside right-docked watchlist),
+    // open the menu to the LEFT of the cursor so submenus and actions never clip offscreen!
+    if (x + rect.width > winWidth - 20 || x > winWidth / 2) {
+      posX = Math.max(10, x - rect.width - 4);
+    } else {
+      posX = Math.min(x, winWidth - rect.width - 10);
+    }
+
+    if (posY + rect.height > winHeight - 10) {
+      posY = Math.max(10, winHeight - rect.height - 10);
+    }
+
+    setPos({ top: posY, left: posX });
+  }, [isOpen, x, y]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    const handlePointerDown = (e) => {
+      const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
+      if (menuRef.current && !menuRef.current.contains(e.target) && !path.includes(menuRef.current)) {
+        onClose();
+      }
+    };
+
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onClose();
+      } else if (e.key.toLowerCase() === 'f') {
+        e.preventDefault();
+        setActiveSubmenu((prev) => (prev === 'flag' ? null : 'flag'));
+      } else if (e.key.toLowerCase() === 'w') {
+        e.preventDefault();
+        setActiveSubmenu((prev) => (prev === 'watchlist' ? null : 'watchlist'));
+      } else if (e.key.toLowerCase() === 't') {
+        e.preventDefault();
+        if (onToggleTradable) onToggleTradable();
+      } else if (e.key.toLowerCase() === 'c') {
+        e.preventDefault();
+        if (onCopySymbol) onCopySymbol();
+      } else if (e.key === 'Enter') {
+        e.preventDefault();
+        if (onEditStock) onEditStock();
+      }
+    };
+
+    window.addEventListener('pointerdown', handlePointerDown);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('pointerdown', handlePointerDown);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isOpen, onClose, onToggleTradable, onCopySymbol, onEditStock]);
+
+  if (!isOpen || !stock) return null;
+
+  const userTags = (availableTags || []).filter((t) => typeof t === 'string' && !t.toUpperCase().startsWith('AI:'));
+  const stockTags = Array.isArray(stock.tags) ? stock.tags : [];
+  const stockWls = Array.isArray(stock.watchlists) ? stock.watchlists : [];
+  const winHeight = typeof window !== 'undefined' ? window.innerHeight : 800;
+  // If the menu is not at the extreme left edge of the screen, open submenus to the left
+  // so they never clip off the right edge of the monitor or collide with the right-docked panel!
+  const openSubmenuLeft = pos.left > 200;
+  const anchorSubmenuBottom = pos.top + 240 > winHeight;
+
+  return (
+    <div
+      ref={menuRef}
+      className="tc-context-menu-container"
+      style={{
+        position: 'fixed',
+        top: `${pos.top}px`,
+        left: `${pos.left}px`,
+        background: '#182030',
+        border: '1px solid rgba(56, 189, 248, 0.3)',
+        borderRadius: '8px',
+        boxShadow: '0 12px 32px rgba(0, 0, 0, 0.75)',
+        width: '230px',
+        padding: '5px 0',
+        zIndex: 2147483647,
+        fontSize: '12px',
+        userSelect: 'none',
+        pointerEvents: 'auto',
+        fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
+        color: '#cbd5e1',
+      }}
+      onClick={(e) => e.stopPropagation()}
+    >
+      {/* Header */}
+      <div
+        style={{
+          padding: '6px 12px',
+          borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          marginBottom: '4px',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <span style={{ fontWeight: 800, color: '#38bdf8', fontSize: '13px' }}>{stock.symbol}</span>
+          {stock.flagColor && (
+            <div
+              style={{
+                width: '8px',
+                height: '8px',
+                borderRadius: '50%',
+                background: FLAG_COLOR_MAP[stock.flagColor],
+              }}
+            />
+          )}
+        </div>
+        {stock.tradable && (
+          <span
+            style={{
+              fontSize: '9px',
+              fontWeight: 800,
+              background: 'rgba(34, 197, 94, 0.2)',
+              color: '#4ade80',
+              padding: '1px 5px',
+              borderRadius: '3px',
+              letterSpacing: '0.4px',
+            }}
+          >
+            TRADABLE
+          </span>
+        )}
+      </div>
+
+      {/* Menu Item: Edit Setup in TradeClarity */}
+      <div
+        onClick={() => {
+          if (onEditStock) onEditStock();
+          onClose();
+        }}
+        style={{
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+          transition: 'background 0.12s',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>⚡</span>
+          <span style={{ color: '#fff', fontWeight: 600 }}>Edit Setup in TradeClarity</span>
+        </div>
+        <kbd style={{ fontSize: '10px', color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: '3px' }}>
+          Enter
+        </kbd>
+      </div>
+
+      {/* Menu Item: Open in TradeClarity Extension Dashboard */}
+      {onOpenDashboard && (
+        <div
+          onClick={() => {
+            onOpenDashboard();
+            onClose();
+          }}
+          style={{
+            padding: '6px 12px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'space-between',
+            cursor: 'pointer',
+            transition: 'background 0.12s',
+          }}
+          onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+          onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <span style={{ color: '#38bdf8' }}>↗</span>
+            <span style={{ color: '#38bdf8', fontWeight: 600 }}>Open in TradeClarity Tab</span>
+          </div>
+        </div>
+      )}
+
+      {/* Menu Item: Set Flag Color */}
+      <div
+        onMouseEnter={() => setActiveSubmenu('flag')}
+        style={{
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+          position: 'relative',
+        }}
+        onMouseLeave={(e) => {
+          if (!e.relatedTarget?.closest?.('.tc-context-submenu')) {
+            // Keep active if moving into submenu
+          }
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>🚩</span>
+          <span>Set Flag Color</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <kbd style={{ fontSize: '10px', color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: '3px' }}>
+            F
+          </kbd>
+          <span style={{ fontSize: '10px', color: '#64748b' }}>{openSubmenuLeft ? '◂' : '▸'}</span>
+        </div>
+
+        {/* Flag Submenu */}
+        {activeSubmenu === 'flag' && (
+          <div
+            className="tc-context-submenu"
+            style={{
+              position: 'absolute',
+              ...(openSubmenuLeft ? { right: 'calc(100% - 2px)' } : { left: 'calc(100% - 2px)' }),
+              top: '-4px',
+              background: '#182030',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '8px',
+              padding: '6px 8px',
+              display: 'flex',
+              gap: '6px',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.7)',
+              zIndex: 2147483647,
+              pointerEvents: 'auto',
+            }}
+          >
+            {Object.entries(FLAG_COLOR_MAP).map(([colName, colHex]) => (
+              <div
+                key={colName}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onSelectFlagColor) onSelectFlagColor(colName);
+                  onClose();
+                }}
+                style={{
+                  width: '16px',
+                  height: '16px',
+                  borderRadius: '50%',
+                  background: colHex,
+                  cursor: 'pointer',
+                  border: stock.flagColor === colName ? '2px solid #fff' : '1px solid rgba(255,255,255,0.2)',
+                  transform: stock.flagColor === colName ? 'scale(1.15)' : 'none',
+                }}
+                title={`${colName.toUpperCase()} Flag`}
+              />
+            ))}
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onSelectFlagColor) onSelectFlagColor(null);
+                onClose();
+              }}
+              style={{
+                color: '#94a3b8',
+                fontSize: '11px',
+                cursor: 'pointer',
+                padding: '0 4px',
+                fontWeight: 700,
+              }}
+              title="Clear Flag"
+            >
+              ✕
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Menu Item: Toggle Tradable */}
+      <div
+        onClick={() => {
+          if (onToggleTradable) onToggleTradable();
+          onClose();
+        }}
+        style={{
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>🎯</span>
+          <span>{stock.tradable ? 'Mark as Untradable' : 'Mark as Tradable'}</span>
+        </div>
+        <kbd style={{ fontSize: '10px', color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: '3px' }}>
+          T
+        </kbd>
+      </div>
+
+      {/* Menu Item: Watchlists Submenu */}
+      <div
+        onMouseEnter={() => setActiveSubmenu('watchlist')}
+        style={{
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+          position: 'relative',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>📁</span>
+          <span>Watchlists</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <kbd style={{ fontSize: '10px', color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: '3px' }}>
+            W
+          </kbd>
+          <span style={{ fontSize: '10px', color: '#64748b' }}>{openSubmenuLeft ? '◂' : '▸'}</span>
+        </div>
+
+        {activeSubmenu === 'watchlist' && (
+          <div
+            className="tc-context-submenu"
+            style={{
+              position: 'absolute',
+              ...(openSubmenuLeft ? { right: 'calc(100% - 2px)' } : { left: 'calc(100% - 2px)' }),
+              ...(anchorSubmenuBottom ? { bottom: '-4px' } : { top: '-4px' }),
+              background: '#182030',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '8px',
+              width: '180px',
+              padding: '4px 0',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.7)',
+              zIndex: 2147483647,
+              maxHeight: '220px',
+              overflowY: 'auto',
+              pointerEvents: 'auto',
+            }}
+          >
+            <div style={{ padding: '4px 10px', fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+              Assign Watchlist
+            </div>
+            {watchlists.length === 0 ? (
+              <div style={{ padding: '4px 10px', fontSize: '11px', color: '#64748b' }}>No watchlists configured</div>
+            ) : (
+              watchlists.map((wl) => {
+                const wlId = typeof wl === 'string' ? wl : wl.id || wl.name;
+                const wlName = typeof wl === 'string' ? wl : wl.name || wl.id;
+                const isAssigned = stockWls.includes(wlId) || stockWls.includes(wlName);
+                return (
+                  <div
+                    key={wlId}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onToggleWatchlist) onToggleWatchlist(wlId);
+                    }}
+                    style={{
+                      padding: '4px 10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                      background: isAssigned ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = isAssigned ? 'rgba(56, 189, 248, 0.2)' : '#252f44')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = isAssigned ? 'rgba(56, 189, 248, 0.12)' : 'transparent')}
+                  >
+                    <span style={{ color: isAssigned ? '#38bdf8' : '#e2e8f0', fontWeight: isAssigned ? 700 : 400 }}>{wlName}</span>
+                    {isAssigned && <span style={{ color: '#38bdf8', fontSize: '10px' }}>✓</span>}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Menu Item: Tags Submenu */}
+      <div
+        onMouseEnter={() => setActiveSubmenu('tags')}
+        style={{
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+          position: 'relative',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>🏷️</span>
+          <span>Tags</span>
+        </div>
+        <span style={{ fontSize: '10px', color: '#64748b' }}>{openSubmenuLeft ? '◂' : '▸'}</span>
+
+        {activeSubmenu === 'tags' && (
+          <div
+            className="tc-context-submenu"
+            style={{
+              position: 'absolute',
+              ...(openSubmenuLeft ? { right: 'calc(100% - 2px)' } : { left: 'calc(100% - 2px)' }),
+              ...(anchorSubmenuBottom ? { bottom: '-4px' } : { top: '-4px' }),
+              background: '#182030',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '8px',
+              width: '180px',
+              padding: '4px 0',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.7)',
+              zIndex: 2147483647,
+              maxHeight: '220px',
+              overflowY: 'auto',
+              pointerEvents: 'auto',
+            }}
+          >
+            <div style={{ padding: '4px 10px', fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+              Toggle Tag
+            </div>
+            {userTags.length === 0 ? (
+              <div style={{ padding: '4px 10px', fontSize: '11px', color: '#64748b' }}>No custom tags</div>
+            ) : (
+              userTags.map((tg) => {
+                const isTagged = stockTags.includes(tg);
+                return (
+                  <div
+                    key={tg}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (onToggleTag) onToggleTag(tg);
+                    }}
+                    style={{
+                      padding: '4px 10px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'space-between',
+                      cursor: 'pointer',
+                      fontSize: '11px',
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+                  >
+                    <span>{tg}</span>
+                    <span style={{ color: isTagged ? '#38bdf8' : 'transparent', fontWeight: 700 }}>✓</span>
+                  </div>
+                );
+              })
+            )}
+          </div>
+        )}
+      </div>
+
+      <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '4px 0' }} />
+
+      {/* Copy Symbol */}
+      <div
+        onClick={() => {
+          if (onCopySymbol) onCopySymbol();
+          onClose();
+        }}
+        style={{
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>📋</span>
+          <span>Copy Ticker</span>
+        </div>
+        <kbd style={{ fontSize: '10px', color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: '3px' }}>
+          C
+        </kbd>
+      </div>
+
+      {/* Open on TradingView */}
+      <div
+        onClick={() => {
+          if (onOpenTradingView) onOpenTradingView();
+          onClose();
+        }}
+        style={{
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <span>↗</span>
+        <span>Open in TradingView</span>
+      </div>
+
+      {/* Open on Screener.in */}
+      <div
+        onClick={() => {
+          if (onOpenScreener) onOpenScreener();
+          onClose();
+        }}
+        style={{
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          gap: '8px',
+          cursor: 'pointer',
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+        onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+      >
+        <span>📊</span>
+        <span>Open in Screener.in</span>
+      </div>
+
+      {/* Remove Stock */}
+      {onDeleteStock && (
+        <>
+          <div style={{ height: '1px', background: 'rgba(255, 255, 255, 0.08)', margin: '4px 0' }} />
+          <div
+            onClick={() => {
+              onDeleteStock();
+              onClose();
+            }}
+            style={{
+              padding: '6px 12px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              cursor: 'pointer',
+              color: '#f87171',
+            }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)')}
+            onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
+          >
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+              <span>🗑️</span>
+              <span>Remove from Watchlist</span>
+            </div>
+            <kbd style={{ fontSize: '10px', color: '#f87171', background: 'rgba(239, 68, 68, 0.1)', padding: '1px 4px', borderRadius: '3px' }}>
+              Del
+            </kbd>
+          </div>
+        </>
+      )}
+    </div>
+  );
+}

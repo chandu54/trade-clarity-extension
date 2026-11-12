@@ -597,7 +597,9 @@ export default function AutomationModal({
                       )}
                       <span>{runState.statusText}</span>
                     </span>
-                    <span className="font-mono text-xs font-bold text-[var(--text)]">{runState.pct}%</span>
+                    <span className="font-mono text-xs font-bold text-[var(--text)]" title="Overall Automation Progress">
+                      {runState.pct}% overall
+                    </span>
                   </div>
 
                   <div className="w-full bg-slate-200 dark:bg-slate-800 rounded-full h-2 overflow-hidden border border-[var(--border)]">

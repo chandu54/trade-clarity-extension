@@ -60,7 +60,7 @@ export function evaluateIPOTag(
   if (totalTradingDays < 60) {
     ipoTag = IPOTag.YOUNG_IPO;
     tagName = 'Young IPO';
-  } else if (totalTradingDays < 250) {
+  } else if (totalTradingDays < 180) {
     ipoTag = IPOTag.RECENT_LISTING;
     tagName = 'Recent Listing';
   }

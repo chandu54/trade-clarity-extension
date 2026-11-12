@@ -108,6 +108,33 @@ describe('Global Chart Drawings & ChartDrawingToolbar Unit Tests', () => {
       fireEvent.click(screen.getByTitle('Clear all 2 drawings on this symbol'));
       expect(onClearAll).toHaveBeenCalled();
     });
+
+    it('toggles Magnet snapping mode and Extend Right (Ray) option', () => {
+      const onMagnetToggle = vi.fn();
+      const onExtendRightToggle = vi.fn();
+
+      render(
+        <ChartDrawingToolbar
+          activeTool="select"
+          magnetEnabled={true}
+          onMagnetToggle={onMagnetToggle}
+          extendRight={false}
+          onExtendRightToggle={onExtendRightToggle}
+        />
+      );
+
+      // Magnet button exists and toggles
+      const magnetBtn = screen.getByText('Magnet');
+      expect(magnetBtn).toBeInTheDocument();
+      fireEvent.click(magnetBtn);
+      expect(onMagnetToggle).toHaveBeenCalledWith(false);
+
+      // Open style popover to toggle ray
+      fireEvent.click(screen.getByTitle('Line Style & Color Settings'));
+      expect(screen.getByText('Extend Trendline (Ray)')).toBeInTheDocument();
+      fireEvent.click(screen.getByText('Off'));
+      expect(onExtendRightToggle).toHaveBeenCalledWith(true);
+    });
   });
 
   describe('MiniCandlestickChart Drawings Integration', () => {
@@ -218,6 +245,92 @@ describe('Global Chart Drawings & ChartDrawingToolbar Unit Tests', () => {
 
       // Verify drawing toolbar dropdown trigger is present
       expect(screen.getByText('Draw Tool')).toBeInTheDocument();
+    });
+
+    it('displays transform handles and floating micro-toolbar on line selection and supports deletion', async () => {
+      const mockSavedDrawings = [
+        {
+          id: 't1',
+          type: 'trend',
+          p1: { time: 1700000000, price: 640 },
+          p2: { time: 1700086400, price: 660 },
+          color: '#38bdf8',
+          width: 2,
+          style: 'solid',
+          extendRight: true,
+        },
+      ];
+      storage.getDrawingsForSymbol.mockResolvedValue(mockSavedDrawings);
+
+      render(
+        <MiniCandlestickChart
+          data={mockChartData}
+          country="IN"
+          interactive={true}
+        />
+      );
+
+      await waitFor(() => {
+        expect(storage.getDrawingsForSymbol).toHaveBeenCalledWith('AARTIPHARM');
+      });
+
+      // Wait for async drawings state update to render SVG line stroke
+      await waitFor(() => {
+        expect(document.querySelector('svg line[stroke="transparent"]')).toBeInTheDocument();
+      });
+
+      const lineStroke = document.querySelector('svg line[stroke="transparent"]');
+      fireEvent.click(lineStroke);
+
+      // Micro-toolbar appears with quick controls
+      await waitFor(() => {
+        expect(screen.getByTitle('Delete (Del)')).toBeInTheDocument();
+        expect(screen.getByTitle('Toggle Ray (Extend Right)')).toBeInTheDocument();
+        expect(screen.getByTitle('Toggle Solid / Dashed')).toBeInTheDocument();
+      });
+
+      // Pressing Delete key removes drawing
+      fireEvent.keyDown(window, { key: 'Delete' });
+      expect(storage.deleteDrawingForSymbol).toHaveBeenCalledWith('AARTIPHARM', 't1');
+    });
+
+    it('clears drawing selection when Escape key is pressed', async () => {
+      const mockSavedDrawings = [
+        {
+          id: 'h1',
+          type: 'horizontal',
+          price: 650.0,
+          color: '#ef4444',
+          width: 2,
+          style: 'solid',
+        },
+      ];
+      storage.getDrawingsForSymbol.mockResolvedValue(mockSavedDrawings);
+
+      render(
+        <MiniCandlestickChart
+          data={mockChartData}
+          country="IN"
+          interactive={true}
+        />
+      );
+
+      await waitFor(() => {
+        expect(screen.getByText('650.00')).toBeInTheDocument();
+      });
+
+      const lineStroke = document.querySelector('svg line[stroke="transparent"]');
+      fireEvent.click(lineStroke);
+
+      await waitFor(() => {
+        expect(screen.getByTitle('Delete (Del)')).toBeInTheDocument();
+      });
+
+      // Escape key deselects
+      fireEvent.keyDown(window, { key: 'Escape' });
+      await waitFor(() => {
+        expect(screen.queryByTitle('Delete (Del)')).not.toBeInTheDocument();
+      });
     });
   });
 });

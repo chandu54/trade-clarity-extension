@@ -143,7 +143,12 @@ export const chartinkAutomation = {
           const newSymbols = symbols.filter((sym) => !currentWeek.stocks[sym]);
           const unhydratedSymbols = symbols.filter((sym) => {
             const s = currentWeek.stocks[sym];
-            return s && !s.lastSyncTime && !s.params?.movingAverages && !s.isInvalid;
+            if (!s || s.isInvalid) return false;
+            const p = s.params || {};
+            const cLow = (country || "IN").toLowerCase();
+            const hasMa = Boolean(p.movingAverages || p[`${cLow}.movingAverages`] || s.movingAverages);
+            const hasLiq = Boolean(p.liquidity || p[`${cLow}.liquidity`] || s.turnoverCr || s.liquidityVal);
+            return !hasMa || !hasLiq;
           });
           symbolsToHydrate = Array.from(new Set([...newSymbols, ...unhydratedSymbols]));
 
@@ -237,26 +242,22 @@ export const chartinkAutomation = {
     const isStockHydrated = (s) => {
       if (!s) return false;
       if (s.isInvalid) return true;
-      if (s.lastSyncTime) return true;
       const p = s.params || {};
       const cLow = (country || "IN").toLowerCase();
-      return Boolean(
-        p.movingAverages ||
+      const hasMa = Boolean(p.movingAverages || p[`${cLow}.movingAverages`] || s.movingAverages);
+      const hasLiq = Boolean(
         p.liquidity ||
-        p.rs ||
-        p.stage ||
-        p.adr ||
         p[`${cLow}.liquidity`] ||
-        p[`${cLow}.adr`] ||
-        s.movingAverages ||
         s.turnoverCr ||
         s.liquidityVal
       );
+      return hasMa && hasLiq;
     };
 
     const startTime = Date.now();
     const maxWaitMs = 180000; // 3 min
     let hydratedStocks = {};
+    let lastWakeupTime = 0;
 
     while (Date.now() - startTime < maxWaitMs) {
       const storageData = await new Promise((res) => {
@@ -277,12 +278,6 @@ export const chartinkAutomation = {
         }
       }
 
-      const pct = Math.round((hydratedCount / symbols.length) * 100);
-      const stageProgress = 50 + Math.round((pct / 100) * 35); // 50% to 85%
-      onProgress(3, stageProgress, `Stage 4/5: Hydrating candles & indicators: ${hydratedCount}/${symbols.length} (${pct}%)...`);
-
-      if (hydratedCount >= symbols.length) break;
-
       const queueStatus = await new Promise((res) => {
         if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
           chrome.runtime.sendMessage({ action: "GET_METRICS_QUEUE_STATUS" }, (r) => {
@@ -294,16 +289,67 @@ export const chartinkAutomation = {
         }
       });
 
-      // Only break if the background queue was processing and is now completely drained,
-      // and we have confirmed at least some stocks are hydrated
+      // Synchronize displayed count with background queue progress to avoid lag between disk writes and network calls
+      const effectiveCompleted = Math.min(
+        symbols.length,
+        Math.max(hydratedCount, queueStatus?.completedJobs || 0)
+      );
+      const pct = Math.round((effectiveCompleted / symbols.length) * 100);
+      const stageProgress = 50 + Math.round((pct / 100) * 35); // 50% to 85%
+      onProgress(3, stageProgress, `Stage 4/5: Hydrating candles & indicators: ${effectiveCompleted}/${symbols.length} (${pct}%)...`);
+
+      if (hydratedCount >= symbols.length || (queueStatus && queueStatus.completedJobs >= symbols.length && queueStatus.totalJobs > 0)) {
+        break;
+      }
+
+      // Check if all symbols in this scan have been resolved (either hydrated or marked invalid)
+      const allResolved = symbols.every((sym) => {
+        const s = activeStocks[sym];
+        return s && (isStockHydrated(s) || s.isInvalid);
+      });
+      if (allResolved) break;
+
+      // Break if background queue has finished all assigned jobs
       if (
         queueStatus &&
         !queueStatus.isProcessing &&
         queueStatus.queueLength === 0 &&
-        hydratedCount > 0 &&
-        Date.now() - startTime > 10000
+        queueStatus.totalJobs > 0 &&
+        queueStatus.completedJobs >= queueStatus.totalJobs
       ) {
         break;
+      }
+
+      // Self-healing wake-up: if background queue became idle (e.g. MV3 service worker recycled)
+      // but some symbols are still unhydrated, wake it up with the remaining batch
+      const unhydratedLeft = symbols.filter((sym) => {
+        const s = activeStocks[sym];
+        return !s || (!isStockHydrated(s) && !s.isInvalid);
+      });
+
+      if (
+        queueStatus &&
+        !queueStatus.isProcessing &&
+        queueStatus.queueLength === 0 &&
+        unhydratedLeft.length > 0 &&
+        Date.now() - startTime > 8000 &&
+        Date.now() - lastWakeupTime > 6000
+      ) {
+        lastWakeupTime = Date.now();
+        console.log(`[ChartinkAutomation] Self-healing wake-up for ${unhydratedLeft.length} remaining tickers...`);
+        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+          chrome.runtime.sendMessage({
+            action: "FETCH_STOCK_METRICS",
+            payload: {
+              symbols: unhydratedLeft,
+              country,
+              weekKey: targetWeek,
+              paramDefs: data?.paramDefinitions,
+              adrDays: data?.uiConfig?.adrDays || 20,
+              liquidityDays: data?.uiConfig?.liquidityDays || 20,
+            },
+          });
+        }
       }
 
       await new Promise((r) => setTimeout(r, 1200));
@@ -386,9 +432,12 @@ export const chartinkAutomation = {
 
     // Work Item 3: Delete / Prune unassigned stocks from week pool if configured
     let prunedCount = 0;
-    // Safety check: Never prune if hydration was not completed (e.g. 0 stocks hydrated),
-    // to safeguard user data against accidental wipes due to temporary network issues.
-    if (pruneUnassigned && countHydrated > 0) {
+    // Safety check: Require at least 80% hydration completion before allowing pruning,
+    // to safeguard user data against accidental wipes due to temporary network or rate limit issues.
+    const hydrationRatio = symbols.length > 0 ? countHydrated / symbols.length : 0;
+    const minRequiredHydrationRate = 0.8;
+
+    if (pruneUnassigned && hydrationRatio >= minRequiredHydrationRate) {
       onProgress(4, 96, "Stage 5/5: Pruning non-qualifying unassigned stocks from week pool...");
       Object.keys(updatedStocks).forEach((sym) => {
         const wls = updatedStocks[sym]?.watchlists || [];
@@ -398,25 +447,38 @@ export const chartinkAutomation = {
           prunedCount++;
         }
       });
-    } else if (pruneUnassigned && countHydrated === 0) {
-      console.warn("[ChartinkAutomation] Skipped pruning: 0 stocks were hydrated, preserving all tickers for safety.");
+    } else if (pruneUnassigned && hydrationRatio < minRequiredHydrationRate) {
+      console.warn(
+        `[ChartinkAutomation] Skipped pruning: Only ${countHydrated}/${symbols.length} (${Math.round(hydrationRatio * 100)}%) stocks were hydrated. Preserving all tickers for safety.`
+      );
+      if (context.showToast) {
+        context.showToast(`Hydration reached ${Math.round(hydrationRatio * 100)}%. Pruning was safely skipped to prevent losing unhydrated tickers.`, "info");
+      }
     }
 
+    const todayStr = getLocalDateString(new Date());
+    const nowTime = Date.now();
+
     // Persist all updates to React State & chrome.storage.local
-    setData((prev) => ({
-      ...prev,
-      watchlists: updatedWatchlists,
-      weeks: {
-        ...prev.weeks,
-        [country]: {
-          ...(prev.weeks?.[country] || {}),
-          [targetWeek]: {
-            ...(prev.weeks?.[country]?.[targetWeek] || {}),
-            stocks: updatedStocks,
+    setData((prev) => {
+      const prevWeek = prev.weeks?.[country]?.[targetWeek] || {};
+      return {
+        ...prev,
+        watchlists: updatedWatchlists,
+        weeks: {
+          ...prev.weeks,
+          [country]: {
+            ...(prev.weeks?.[country] || {}),
+            [targetWeek]: {
+              ...prevWeek,
+              stocks: updatedStocks,
+              lastSyncDate: todayStr,
+              lastUpdatedTime: nowTime,
+            },
           },
         },
-      },
-    }));
+      };
+    });
 
     if (typeof chrome !== "undefined" && chrome.storage?.local) {
       chrome.storage.local.get(["trading_app_data"], (res) => {
@@ -427,7 +489,9 @@ export const chartinkAutomation = {
           if (!db.weeks[country]) db.weeks[country] = {};
           if (!db.weeks[country][targetWeek]) db.weeks[country][targetWeek] = {};
           db.weeks[country][targetWeek].stocks = updatedStocks;
-          db._lastModified = Date.now();
+          db.weeks[country][targetWeek].lastSyncDate = todayStr;
+          db.weeks[country][targetWeek].lastUpdatedTime = nowTime;
+          db._lastModified = nowTime;
           chrome.storage.local.set({ trading_app_data: db });
         }
       });

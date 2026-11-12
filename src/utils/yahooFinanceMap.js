@@ -270,51 +270,99 @@ class RequestQueue {
   }
 }
 
+// Helper to proxy cross-origin fetch through Chrome Extension background worker in content scripts (e.g. on Zerodha Kite)
+export async function safeFetch(url, options = {}) {
+  const isTest = (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') || (typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test');
+  const isContentScript = !isTest && typeof window !== 'undefined' && window.location.protocol !== 'chrome-extension:';
+  if (isContentScript) {
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      return new Promise((resolve, reject) => {
+        if (options.signal?.aborted) {
+          return reject(new DOMException('Aborted', 'AbortError'));
+        }
+
+        chrome.runtime.sendMessage(
+          {
+            action: 'PROXY_FETCH',
+            payload: {
+              url,
+              method: options.method || 'GET',
+              headers: options.headers || {},
+            },
+          },
+          (res) => {
+            if (chrome.runtime.lastError) {
+              return reject(new Error(chrome.runtime.lastError.message));
+            }
+            if (!res) {
+              return reject(new Error('No response from background proxy'));
+            }
+            resolve({
+              ok: Boolean(res.ok),
+              status: res.status || (res.ok ? 200 : 500),
+              statusText: res.statusText || (res.ok ? 'OK' : 'Error'),
+              text: async () => res.text || '',
+              json: async () => JSON.parse(res.text || '{}'),
+            });
+          }
+        );
+      });
+    }
+    // Prevent direct cross-origin fetch in content scripts which triggers browser CORS violation
+    throw new Error(`Cannot proxy fetch to ${url} from page origin`);
+  }
+  return fetch(url, options);
+}
+
 const globalRateQueue = new RequestQueue(3, 80);
 const inFlightStockRequests = new Map();
 
 export function extractPreviousClose(meta, rawBars, currentPrice = null) {
   const curPx = currentPrice || meta?.regularMarketPrice || (Array.isArray(rawBars) && rawBars.length > 0 ? rawBars[rawBars.length - 1].close : null);
 
-  // 1. Official regularMarketPreviousClose if present, valid, AND distinctly different from currentPrice
-  // (At market close, Yahoo sets regularMarketPreviousClose equal to currentPrice; we reject that to avoid 0.00% change).
-  if (meta && typeof meta.regularMarketPreviousClose === 'number' && meta.regularMarketPreviousClose > 0) {
-    if (!curPx || Math.abs(meta.regularMarketPreviousClose - curPx) > 0.01) {
-      return meta.regularMarketPreviousClose;
-    }
-  }
-
-  // 2. Extract from rawBars (the candle series):
-  // Find the last candle whose calendar date is BEFORE the latest candle's calendar date!
+  // 1. If we have at least 2 candlestick bars, the true previous day's close is literally the bar prior to today's bar!
+  // This is the most accurate source: chartPreviousClose on multi-day ranges (like 5d) returns
+  // the close from 5 days ago, NOT yesterday's close!
   if (Array.isArray(rawBars) && rawBars.length >= 2) {
     const lastBar = rawBars[rawBars.length - 1];
     const lastBarDateStr = new Date(lastBar.time * 1000).toDateString();
 
     for (let i = rawBars.length - 1; i >= 0; i--) {
       const d = new Date(rawBars[i].time * 1000).toDateString();
-      if (d !== lastBarDateStr) {
+      if (d !== lastBarDateStr && typeof rawBars[i].close === 'number' && rawBars[i].close > 0) {
         return rawBars[i].close;
       }
     }
 
-    return rawBars[rawBars.length - 2].close;
+    if (typeof rawBars[rawBars.length - 2].close === 'number' && rawBars[rawBars.length - 2].close > 0) {
+      return rawBars[rawBars.length - 2].close;
+    }
+  }
+
+  // 2. Official regularMarketPreviousClose or previousClose from Yahoo Finance meta
+  if (meta) {
+    if (typeof meta.regularMarketPreviousClose === 'number' && meta.regularMarketPreviousClose > 0) {
+      if (!curPx || Math.abs(meta.regularMarketPreviousClose - curPx) > 0.01) {
+        return meta.regularMarketPreviousClose;
+      }
+    }
+    if (typeof meta.previousClose === 'number' && meta.previousClose > 0) {
+      return meta.previousClose;
+    }
+    // Only trust chartPreviousClose if range is explicitly 1-day or there's only 1 bar
+    if (meta.range === '1d' || !rawBars || rawBars.length <= 1) {
+      if (typeof meta.chartPreviousClose === 'number' && meta.chartPreviousClose > 0) {
+        return meta.chartPreviousClose;
+      }
+    }
   }
 
   if (Array.isArray(rawBars) && rawBars.length === 1) {
     return rawBars[0].close;
   }
 
-  // 3. Fallbacks (only if distinct from currentPrice)
-  if (meta && typeof meta.previousClose === 'number' && meta.previousClose > 0) {
-    if (!curPx || Math.abs(meta.previousClose - curPx) > 0.01) {
-      return meta.previousClose;
-    }
-  }
-
   if (meta && typeof meta.chartPreviousClose === 'number' && meta.chartPreviousClose > 0) {
-    if (!curPx || Math.abs(meta.chartPreviousClose - curPx) > 0.01) {
-      return meta.chartPreviousClose;
-    }
+    return meta.chartPreviousClose;
   }
 
   return null;
@@ -366,7 +414,7 @@ export async function fetchStockData(symbols, country, timeframe = '6mo', custom
             attempts++;
             try {
               const fetchUrl = (attempts % 2 === 1 || isLocalhost) ? url : fallbackUrl;
-              res = await globalRateQueue.enqueue(() => fetch(fetchUrl, { signal }), isSingleStockCall);
+              res = await globalRateQueue.enqueue(() => safeFetch(fetchUrl, { signal }), isSingleStockCall);
               if (res.status === 429 && !isLocalhost) {
                 console.warn(`[RateLimit] Yahoo returned 429 for ${ticker}. Retrying with backoff (attempt ${attempts}/3)...`);
                 await new Promise(r => setTimeout(r, 1200 * attempts));
@@ -385,6 +433,21 @@ export async function fetchStockData(symbols, country, timeframe = '6mo', custom
           response = await fetchPromise;
         } finally {
           inFlightStockRequests.delete(url);
+        }
+      }
+      
+      if (!response.ok) {
+        // Fallback for Indian stocks: If .NS fails (e.g. 404 for BSE-only or SME stocks), try .BO (Bombay Stock Exchange)
+        if (country === 'IN' && ticker.endsWith('.NS')) {
+          const bseTicker = ticker.replace(/\.NS$/, '.BO');
+          const bseUrl = `${baseUrl}/v8/finance/chart/${encodeURIComponent(bseTicker)}?range=${tf.range}&interval=${fetchInterval}`;
+          try {
+            const bseRes = await globalRateQueue.enqueue(() => safeFetch(bseUrl, { signal }), isSingleStockCall);
+            if (bseRes.ok) {
+              response = bseRes;
+              ticker = bseTicker;
+            }
+          } catch (_e) {}
         }
       }
       
@@ -615,6 +678,51 @@ export async function fetchStockData(symbols, country, timeframe = '6mo', custom
 export async function fetchStockQuotes(symbols, country, signal = null, forceRefresh = false, onBatch = null) {
   if (!symbols || !symbols.length) return [];
 
+  // When executed in a Chrome content script (e.g. on kite.zerodha.com), delegate directly to background service worker
+  // to leverage MV3 host permissions and completely avoid page CORS restrictions!
+  const isTest = (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') || (typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test');
+  const isContentScript = !isTest && typeof window !== 'undefined' && window.location.protocol !== 'chrome-extension:';
+  if (isContentScript && typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+    try {
+      const chunkSize = 15;
+      const chunks = [];
+      for (let i = 0; i < symbols.length; i += chunkSize) {
+        chunks.push(symbols.slice(i, i + chunkSize));
+      }
+
+      const allResults = [];
+      for (const chunk of chunks) {
+        const response = await new Promise((resolve, reject) => {
+          chrome.runtime.sendMessage(
+            {
+              action: 'FETCH_STOCK_QUOTES',
+              payload: { symbols: chunk, country, forceRefresh },
+            },
+            (res) => {
+              if (chrome.runtime.lastError) {
+                return reject(new Error(chrome.runtime.lastError.message));
+              }
+              resolve(res);
+            }
+          );
+        });
+
+        if (response && response.success && Array.isArray(response.results)) {
+          allResults.push(...response.results);
+          if (typeof onBatch === 'function' && response.results.length > 0) {
+            onBatch(response.results);
+          }
+        }
+      }
+
+      if (allResults.length > 0) {
+        return allResults;
+      }
+    } catch (_e) {
+      // Fallback to fetchStockData with safeFetch proxy
+    }
+  }
+
   try {
     const results = await fetchStockData(symbols, country, '5d', '1d', signal, forceRefresh, onBatch);
 
@@ -702,7 +810,7 @@ export async function fetchStockDataByRange(symbol, country, period1, period2, c
       attempts++;
       try {
         const fetchUrl = (attempts % 2 === 1 || isLocalhost) ? url : fallbackUrl;
-        response = await globalRateQueue.enqueue(() => fetch(fetchUrl, { signal }), isSingleStockCall);
+        response = await globalRateQueue.enqueue(() => safeFetch(fetchUrl, { signal }), isSingleStockCall);
         if (response.status === 429 && !isLocalhost) {
           await new Promise(r => setTimeout(r, 1200 * attempts));
           continue;

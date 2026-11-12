@@ -21,7 +21,11 @@ export default function ChartDrawingToolbar({
   selectedStyle = 'solid',
   onStyleChange = () => {},
   onClearAll = () => {},
-  drawingCount = 0
+  drawingCount = 0,
+  magnetEnabled = false,
+  onMagnetToggle = () => {},
+  extendRight = false,
+  onExtendRightToggle = () => {},
 }) {
   const [showToolDropdown, setShowToolDropdown] = useState(false);
   const [showStylePopover, setShowStylePopover] = useState(false);
@@ -133,6 +137,29 @@ export default function ChartDrawingToolbar({
         )}
       </div>
 
+      {/* MAGNET SNAPPING TOGGLE */}
+      <button
+        type="button"
+        className={`magnet-toggle-btn flex items-center gap-1 px-2 py-1 rounded-lg border text-xs font-semibold transition-all ${
+          magnetEnabled 
+            ? 'active border-amber-500/70 text-amber-400 bg-amber-500/15 shadow-sm' 
+            : 'border-slate-500/30 text-slate-400 hover:text-slate-200'
+        }`}
+        onClick={() => onMagnetToggle(!magnetEnabled)}
+        title={magnetEnabled ? "Magnet Snapping: ON (Auto-snaps to candle wicks. Click to turn off for freehand drawing)" : "Magnet Snapping: OFF (Freehand drawing. Click to turn on wick snapping)"}
+      >
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+          <path d="M4 10V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v6a4 4 0 0 1-8 0z" />
+          <path d="M14 10V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v6a4 4 0 0 1-8 0z" />
+          <line x1="4" y1="7" x2="10" y2="7" />
+          <line x1="14" y1="7" x2="20" y2="7" />
+        </svg>
+        <span className="hidden sm:inline text-[11px]">Magnet</span>
+        <span className={`text-[9px] px-1 py-0.2 rounded font-bold uppercase ${magnetEnabled ? 'bg-amber-500/30 text-amber-300' : 'bg-slate-700/60 text-slate-400'}`}>
+          {magnetEnabled ? 'ON' : 'OFF'}
+        </span>
+      </button>
+
       <div className="drawing-toolbar-divider h-4 w-px mx-0.5" />
 
       {/* 2. CONSOLIDATED LINE STYLE & COLOR POPOVER BUTTON (Modeled after MA Settings Popover) */}
@@ -177,7 +204,7 @@ export default function ChartDrawingToolbar({
                     className={`color-option-btn w-6 h-6 rounded-full border transition-transform hover:scale-110 flex items-center justify-center ${
                       selectedColor === c.hex ? 'ring-2 ring-sky-400 border-white' : 'border-slate-400/40'
                     }`}
-                    style={{ backgroundColor: c.hex }}
+                    style={{ backgroundColor: c.hex, '--opt-color': c.hex }}
                     onClick={() => onColorChange(c.hex)}
                     title={c.name}
                   >
@@ -229,6 +256,25 @@ export default function ChartDrawingToolbar({
                   onClick={() => onStyleChange('dashed')}
                 >
                   Dashed - -
+                </button>
+              </div>
+            </div>
+
+            {/* Ray / Extend Right Toggle */}
+            <div className="flex flex-col gap-1.5 pt-1 border-t border-slate-700/40">
+              <div className="flex items-center justify-between">
+                <span className="style-section-label text-[10px] font-semibold">Extend Trendline (Ray)</span>
+                <button
+                  type="button"
+                  className={`px-2 py-0.5 text-xs font-semibold rounded-md border transition-colors ${
+                    extendRight
+                      ? 'bg-sky-500 text-white border-sky-400 shadow-sm'
+                      : 'text-slate-400 border-slate-600/50 hover:text-slate-200'
+                  }`}
+                  onClick={() => onExtendRightToggle(!extendRight)}
+                  title="Extend trendlines indefinitely to the right"
+                >
+                  {extendRight ? 'Ray ON' : 'Off'}
                 </button>
               </div>
             </div>

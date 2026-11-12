@@ -32,8 +32,12 @@ export default function MiniCandlestickChart({
   drawStyleProp,
   onDrawingsCountChange,
   clearDrawingsTrigger,
-  onCandlesUpdate,
-  interval = '1d'
+  _onCandlesUpdate,
+  interval = '1d',
+  magnetEnabledProp,
+  onMagnetChangeProp,
+  extendRightProp,
+  onExtendRightChangeProp,
 }) {
   const [isHistoryLoading, setIsHistoryLoading] = useState(false);
   const maSettingsKey = JSON.stringify(maSettings || {});
@@ -65,8 +69,31 @@ export default function MiniCandlestickChart({
     setInternalDrawStyle(style);
   }, []);
 
+  const [internalMagnetEnabled, setInternalMagnetEnabled] = useState(false);
+  const magnetEnabled = magnetEnabledProp !== undefined ? magnetEnabledProp : internalMagnetEnabled;
+  const setMagnetEnabled = useCallback((enabled) => {
+    if (onMagnetChangeProp) onMagnetChangeProp(enabled);
+    else setInternalMagnetEnabled(enabled);
+  }, [onMagnetChangeProp]);
+
+  const [internalExtendRight, setInternalExtendRight] = useState(false);
+  const extendRight = extendRightProp !== undefined ? extendRightProp : internalExtendRight;
+  const setExtendRight = useCallback((ext) => {
+    if (onExtendRightChangeProp) onExtendRightChangeProp(ext);
+    else setInternalExtendRight(ext);
+  }, [onExtendRightChangeProp]);
+
+  const [selectedDrawingId, setSelectedDrawingId] = useState(null);
+  const [snapIndicator, setSnapIndicator] = useState(null);
+  const dragRef = useRef(null);
+  const drawingsRef = useRef(drawings);
+  useEffect(() => {
+    drawingsRef.current = drawings;
+  }, [drawings]);
+
   const [trendPreview, setTrendPreview] = useState(null);
   const [, setTick] = useState(0);
+  const horizontalPriceLinesRef = useRef(new Map());
 
   const chartContainerRef = useRef(null);
   const chartRef = useRef(null);
@@ -138,10 +165,71 @@ export default function MiniCandlestickChart({
 
   const handleClearAllDrawings = useCallback(() => {
     if (data?.symbol) {
+      for (const [, priceLine] of horizontalPriceLinesRef.current.entries()) {
+        try {
+          seriesRef.current?.removePriceLine(priceLine);
+        } catch (_e) {}
+      }
+      horizontalPriceLinesRef.current.clear();
       clearDrawingsForSymbol(data.symbol).then(() => setDrawings([]));
       setTrendPreview(null);
+      setSelectedDrawingId(null);
     }
   }, [data?.symbol]);
+
+  // Synchronize native Lightweight Charts Canvas PriceLines for Horizontal Line drawings
+  useEffect(() => {
+    if (!seriesRef.current || !interactive) return;
+
+    const currentMap = horizontalPriceLinesRef.current;
+    const horizontalDrawings = drawings.filter((d) => d.type === 'horizontal' && d.spanMode === 'full');
+    const drawingIds = new Set(horizontalDrawings.map((d) => d.id));
+
+    // Remove obsolete price lines
+    for (const [id, priceLine] of currentMap.entries()) {
+      if (!drawingIds.has(id)) {
+        try {
+          seriesRef.current?.removePriceLine?.(priceLine);
+        } catch (_e) {}
+        currentMap.delete(id);
+      }
+    }
+
+    // Add or update price lines
+    horizontalDrawings.forEach((d) => {
+      const lineStyle = d.style === 'dashed' ? 2 : 0; // 2: Dashed, 0: Solid
+      const lineWidth = Math.max(1, Math.min(3, d.width || 1));
+      const existing = currentMap.get(d.id);
+
+      if (existing) {
+        try {
+          existing.applyOptions({
+            price: d.price,
+            color: d.color || '#3b82f6',
+            lineWidth,
+            lineStyle,
+            axisLabelVisible: true,
+          });
+        } catch (_e) {}
+      } else {
+        try {
+          if (typeof seriesRef.current?.createPriceLine === 'function') {
+            const priceLine = seriesRef.current.createPriceLine({
+              price: d.price,
+              color: d.color || '#3b82f6',
+              lineWidth,
+              lineStyle,
+              axisLabelVisible: true,
+              title: '',
+            });
+            if (priceLine) {
+              currentMap.set(d.id, priceLine);
+            }
+          }
+        } catch (_e) {}
+      }
+    });
+  }, [drawings, interactive]);
 
   // Load drawings globally for this symbol from root app storage
   useEffect(() => {
@@ -164,11 +252,15 @@ export default function MiniCandlestickChart({
     }
   }, [drawings.length, onDrawingsCountChange]);
 
+  const lastClearTriggerRef = useRef(clearDrawingsTrigger || 0);
   useEffect(() => {
-    if (clearDrawingsTrigger && clearDrawingsTrigger > 0) {
+    if (clearDrawingsTrigger && clearDrawingsTrigger > lastClearTriggerRef.current) {
+      lastClearTriggerRef.current = clearDrawingsTrigger;
       Promise.resolve().then(() => {
         handleClearAllDrawings();
       });
+    } else {
+      lastClearTriggerRef.current = clearDrawingsTrigger || 0;
     }
   }, [clearDrawingsTrigger, handleClearAllDrawings]);
 
@@ -627,6 +719,9 @@ export default function MiniCandlestickChart({
 
     chartRef.current = chart;
     seriesRef.current = series;
+    requestAnimationFrame(() => {
+      setTick((t) => t + 1);
+    });
 
     const fetchMoreHistory = async (currentLogicalRange) => {
       if (isFetchingRef.current || !hasMoreHistoryRef.current || !data?.symbol) return;
@@ -763,6 +858,9 @@ export default function MiniCandlestickChart({
                   lastLogicalRangeRef.current = rangeAfter;
                 }
                 userHasNavigatedRef.current = true;
+                requestAnimationFrame(() => {
+                  setTick((t) => t + 1);
+                });
               } catch (_e) {
                 // Ignore range setting errors if chart unmounted
               }
@@ -789,8 +887,18 @@ export default function MiniCandlestickChart({
 
     if (interactive && data?.symbol) {
       const timeScale = chart.timeScale();
+      let rangeRafId = null;
       const handleRangeChange = (logicalRange) => {
         if (!logicalRange || !chartRef.current) return;
+
+        // Synchronously keep SVG drawings frame-synced during pan/zoom
+        if (!rangeRafId) {
+          rangeRafId = requestAnimationFrame(() => {
+            rangeRafId = null;
+            setTick((t) => t + 1);
+          });
+        }
+
         const totalBars = allCandlesRef.current?.length || 100;
         const span = logicalRange.to - logicalRange.from;
 
@@ -842,6 +950,7 @@ export default function MiniCandlestickChart({
         lastWidth = roundedWidth;
         lastHeight = roundedHeight;
         chartRef.current.applyOptions({ width: roundedWidth, height: roundedHeight });
+        setTick((t) => t + 1);
       }
     });
 
@@ -868,10 +977,48 @@ export default function MiniCandlestickChart({
     });
     themeObserver.observe(document.documentElement, { attributes: true });
 
-    const handleTimeScaleChange = () => {
-      if (drawings.length > 0 || trendPreview) {
+    let syncRafId = null;
+    const startSync = () => {
+      if (syncRafId) return;
+      const step = () => {
         setTick((t) => t + 1);
+        syncRafId = requestAnimationFrame(step);
+      };
+      syncRafId = requestAnimationFrame(step);
+    };
+
+    const stopSync = () => {
+      if (syncRafId) {
+        cancelAnimationFrame(syncRafId);
+        syncRafId = null;
       }
+      setTick((t) => t + 1);
+    };
+
+    const onPointerDown = () => {
+      handlePointerInteraction();
+      startSync();
+      window.addEventListener('pointerup', stopSync, { once: true });
+      window.addEventListener('mouseup', stopSync, { once: true });
+      window.addEventListener('touchend', stopSync, { once: true });
+    };
+
+    const onWheel = (e) => {
+      handleWheel(e);
+      setTick((t) => t + 1);
+      requestAnimationFrame(() => setTick((t) => t + 1));
+    };
+
+    if (containerEl) {
+      containerEl.addEventListener('pointerdown', onPointerDown, { capture: true });
+      containerEl.addEventListener('mousedown', onPointerDown, { capture: true });
+      containerEl.addEventListener('touchstart', onPointerDown, { capture: true });
+      containerEl.addEventListener('wheel', onWheel, { capture: true });
+      containerEl.addEventListener('dblclick', handleDblClick);
+    }
+
+    const handleTimeScaleChange = () => {
+      setTick((t) => t + 1);
     };
     const ts = chart.timeScale();
     if (ts && typeof ts.subscribeVisibleTimeScaleChange === 'function') {
@@ -879,12 +1026,13 @@ export default function MiniCandlestickChart({
     }
 
     return () => {
+      stopSync();
       if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
       if (containerEl) {
-        containerEl.removeEventListener('pointerdown', handlePointerInteraction, { capture: true });
-        containerEl.removeEventListener('mousedown', handlePointerInteraction, { capture: true });
-        containerEl.removeEventListener('touchstart', handlePointerInteraction, { capture: true });
-        containerEl.removeEventListener('wheel', handleWheel, { capture: true });
+        containerEl.removeEventListener('pointerdown', onPointerDown, { capture: true });
+        containerEl.removeEventListener('mousedown', onPointerDown, { capture: true });
+        containerEl.removeEventListener('touchstart', onPointerDown, { capture: true });
+        containerEl.removeEventListener('wheel', onWheel, { capture: true });
         containerEl.removeEventListener('dblclick', handleDblClick);
       }
       if (ts && typeof ts.unsubscribeVisibleTimeScaleChange === 'function') {
@@ -892,6 +1040,12 @@ export default function MiniCandlestickChart({
       }
       resizeObserver.disconnect();
       themeObserver.disconnect();
+      for (const [, priceLine] of horizontalPriceLinesRef.current.entries()) {
+        try {
+          seriesRef.current?.removePriceLine?.(priceLine);
+        } catch (_e) {}
+      }
+      horizontalPriceLinesRef.current.clear();
       rsSeriesRef.current = null;
       benchSeriesRef.current = null;
       chart.remove();
@@ -958,14 +1112,82 @@ export default function MiniCandlestickChart({
       if (!userHasNavigatedRef.current && !isUserInteractingRef.current) {
         applyTimeframeCamera(timeframe);
       }
+
+      // Synchronize SVG drawings overlay with updated coordinates on the next frames
+      requestAnimationFrame(() => {
+        setTick((t) => t + 1);
+        setTimeout(() => setTick((t) => t + 1), 60);
+      });
     }
   }, [data?.candlesticks, interactive, timeframe, applyTimeframeCamera, selectedBenchmark, benchmarkMode, benchmarkCandles?.length, maSettings]);
 
   const getPointPixel = useCallback((time, price) => {
     if (!chartRef.current || !seriesRef.current) return null;
     try {
-      const x = chartRef.current.timeScale().timeToCoordinate(time);
-      const y = seriesRef.current.priceToCoordinate(price);
+      const timeScale = chartRef.current.timeScale();
+      let x = timeScale.timeToCoordinate(time);
+
+      // If timeToCoordinate returns null (e.g. scrolled off-screen or timeframe shifted),
+      // resolve the coordinate using the closest candle and logical index so trendlines never vanish!
+      if ((x === null || x === undefined || isNaN(x)) && allCandlesRef.current?.length > 0) {
+        const candles = allCandlesRef.current;
+        let targetMs = 0;
+        if (typeof time === 'number') {
+          targetMs = time < 1e11 ? time * 1000 : time;
+        } else if (typeof time === 'string') {
+          targetMs = new Date(time).getTime();
+        } else if (time && typeof time === 'object' && time.year) {
+          targetMs = new Date(Date.UTC(time.year, time.month - 1, time.day)).getTime();
+        }
+
+        if (targetMs > 0) {
+          let closestIdx = 0;
+          let minDiff = Infinity;
+          for (let i = 0; i < candles.length; i++) {
+            const cTime = candles[i].time;
+            let cMs = 0;
+            if (typeof cTime === 'number') {
+              cMs = cTime < 1e11 ? cTime * 1000 : cTime;
+            } else if (typeof cTime === 'string') {
+              cMs = new Date(cTime).getTime();
+            } else if (cTime && typeof cTime === 'object' && cTime.year) {
+              cMs = new Date(Date.UTC(cTime.year, cTime.month - 1, cTime.day)).getTime();
+            }
+            const diff = Math.abs(cMs - targetMs);
+            if (diff < minDiff) {
+              minDiff = diff;
+              closestIdx = i;
+            }
+          }
+
+          if (typeof timeScale.logicalToCoordinate === 'function') {
+            const logicalX = timeScale.logicalToCoordinate(closestIdx);
+            if (logicalX !== null && !isNaN(logicalX)) {
+              x = logicalX;
+            } else {
+              // Mathematical projection from visible logical range if index is far off-screen
+              try {
+                const range = timeScale.getVisibleLogicalRange?.();
+                if (range && range.to !== range.from) {
+                  const fromCoord = timeScale.logicalToCoordinate(range.from) ?? 0;
+                  const toCoord = timeScale.logicalToCoordinate(range.to) ?? (chartContainerRef.current?.clientWidth || 600);
+                  const barSpacing = (toCoord - fromCoord) / (range.to - range.from);
+                  if (barSpacing > 0) {
+                    x = fromCoord + (closestIdx - range.from) * barSpacing;
+                  }
+                }
+              } catch (_e) {}
+            }
+          }
+        }
+      }
+
+      let y = seriesRef.current.priceToCoordinate(price);
+      if (y === null || y === undefined || isNaN(y)) {
+        // Fallback: If priceToCoordinate is momentarily uninitialized, calculate relative to container height
+        const h = chartContainerRef.current?.clientHeight || 400;
+        y = h / 2;
+      }
       if (x === null || y === null || isNaN(x) || isNaN(y)) return null;
       return { x, y };
     } catch (_e) {
@@ -973,77 +1195,351 @@ export default function MiniCandlestickChart({
     }
   }, []);
 
+  const getPixelPoint = useCallback((x, y) => {
+    if (!chartRef.current || !seriesRef.current) return null;
+    try {
+      const timeScale = chartRef.current.timeScale();
+      let time = timeScale.coordinateToTime(x);
+      if (time === null && allCandlesRef.current?.length > 0) {
+        const candles = allCandlesRef.current;
+        const logicalIdx = typeof timeScale.coordinateToLogical === 'function' ? timeScale.coordinateToLogical(x) : null;
+        if (logicalIdx !== null) {
+          const clampedIdx = Math.max(0, Math.min(candles.length - 1, Math.round(logicalIdx)));
+          time = candles[clampedIdx].time;
+        } else {
+          time = candles[candles.length - 1].time;
+        }
+      }
+      const price = seriesRef.current.coordinateToPrice(y);
+      if (time === null || price === null || isNaN(price)) return null;
+      return { time, price: Number(price.toFixed(2)) };
+    } catch (_e) {
+      return null;
+    }
+  }, []);
+
+  const calculateRayEndpoint = useCallback((pt1, pt2, canvasWidth) => {
+    if (!pt1 || !pt2) return pt2;
+    const dx = pt2.x - pt1.x;
+    const dy = pt2.y - pt1.y;
+    if (Math.abs(dx) < 0.001) return pt2;
+    const slope = dy / dx;
+    if (pt2.x >= pt1.x) {
+      const targetX = (canvasWidth || 600) + 60;
+      const targetY = pt1.y + slope * (targetX - pt1.x);
+      return { x: targetX, y: targetY };
+    } else {
+      const targetLeftX = -60;
+      const targetY = pt1.y + slope * (targetLeftX - pt1.x);
+      return { x: targetLeftX, y: targetY };
+    }
+  }, []);
+
+  const getMagnetSnappedPoint = useCallback((rawPixel, bypassMagnet = false) => {
+    if (!chartRef.current || !seriesRef.current) {
+      return { snapped: false, point: null, pixel: rawPixel };
+    }
+
+    const rawPoint = getPixelPoint(rawPixel.x, rawPixel.y);
+    if (!rawPoint) return { snapped: false, point: null, pixel: rawPixel };
+
+    if (bypassMagnet || !magnetEnabled) {
+      return { snapped: false, point: rawPoint, pixel: rawPixel };
+    }
+
+    const candles = allCandlesRef.current?.length > 0 ? allCandlesRef.current : (data?.candlesticks || []);
+    if (!candles || candles.length === 0) {
+      return { snapped: false, point: rawPoint, pixel: rawPixel };
+    }
+
+    let closestCandle = null;
+    let minCoordDiff = Infinity;
+
+    for (let i = 0; i < candles.length; i++) {
+      const c = candles[i];
+      const candleX = chartRef.current.timeScale().timeToCoordinate(c.time);
+      if (candleX !== null && !isNaN(candleX)) {
+        const diff = Math.abs(candleX - rawPixel.x);
+        if (diff < minCoordDiff) {
+          minCoordDiff = diff;
+          closestCandle = { ...c, candleX };
+        }
+      }
+    }
+
+    if (!closestCandle || minCoordDiff > 14) {
+      return { snapped: false, point: rawPoint, pixel: rawPixel };
+    }
+
+    const candleX = closestCandle.candleX;
+    const highY = seriesRef.current.priceToCoordinate(closestCandle.high);
+    const lowY = seriesRef.current.priceToCoordinate(closestCandle.low);
+    const openY = seriesRef.current.priceToCoordinate(closestCandle.open);
+    const closeY = seriesRef.current.priceToCoordinate(closestCandle.close);
+
+    const candidates = [
+      { price: closestCandle.high, y: highY, type: 'high' },
+      { price: closestCandle.low, y: lowY, type: 'low' },
+      { price: closestCandle.open, y: openY, type: 'open' },
+      { price: closestCandle.close, y: closeY, type: 'close' },
+    ].filter((cand) => cand.y !== null && !isNaN(cand.y));
+
+    candidates.sort((a, b) => Math.abs(a.y - rawPixel.y) - Math.abs(b.y - rawPixel.y));
+
+    const best = candidates[0];
+    if (best && Math.abs(best.y - rawPixel.y) <= 16) {
+      return {
+        snapped: true,
+        point: { time: closestCandle.time, price: Number(best.price.toFixed(2)) },
+        pixel: { x: candleX, y: best.y },
+        type: best.type,
+      };
+    }
+
+    return { snapped: false, point: rawPoint, pixel: rawPixel };
+  }, [getPixelPoint, magnetEnabled, data?.candlesticks]);
+
+  const handleDeleteDrawing = useCallback((id, e) => {
+    if (e && typeof e.stopPropagation === 'function') {
+      e.stopPropagation();
+    }
+    const nativeLine = horizontalPriceLinesRef.current.get(id);
+    if (nativeLine && seriesRef.current) {
+      try {
+        seriesRef.current?.removePriceLine?.(nativeLine);
+      } catch (_e) {}
+      horizontalPriceLinesRef.current.delete(id);
+    }
+    if (data?.symbol && id) {
+      deleteDrawingForSymbol(data.symbol, id).then((updated) => {
+        setDrawings(updated || []);
+        if (selectedDrawingId === id) {
+          setSelectedDrawingId(null);
+        }
+      });
+    }
+  }, [data?.symbol, selectedDrawingId]);
+
+  const updateSelectedDrawing = useCallback((patch) => {
+    if (!selectedDrawingId || !data?.symbol) return;
+    setDrawings((prev) => {
+      const idx = prev.findIndex((d) => d.id === selectedDrawingId);
+      if (idx === -1) return prev;
+      const updated = { ...prev[idx], ...patch, updatedAt: Date.now() };
+      const next = [...prev];
+      next[idx] = updated;
+      saveDrawingForSymbol(data.symbol, updated);
+      return next;
+    });
+  }, [selectedDrawingId, data?.symbol]);
+
+  const startDrag = useCallback((drawing, handleType, e) => {
+    if (e) {
+      e.stopPropagation();
+      e.preventDefault();
+    }
+    setSelectedDrawingId(drawing.id);
+    dragRef.current = {
+      drawingId: drawing.id,
+      handleType,
+      startMouse: { x: e.clientX, y: e.clientY },
+      initialDrawing: { ...drawing },
+      latestDrawing: { ...drawing },
+      hasMoved: false,
+    };
+
+    let dragRaf = null;
+    const handleMouseMove = (moveEvent) => {
+      if (!dragRef.current || !chartContainerRef.current || !seriesRef.current || !chartRef.current) return;
+      const clientX = moveEvent.clientX;
+      const clientY = moveEvent.clientY;
+      const shiftKey = moveEvent.shiftKey;
+
+      if (dragRaf) cancelAnimationFrame(dragRaf);
+      dragRaf = requestAnimationFrame(() => {
+        if (!dragRef.current || !chartContainerRef.current || !seriesRef.current || !chartRef.current) return;
+        const dx = clientX - dragRef.current.startMouse.x;
+        const dy = clientY - dragRef.current.startMouse.y;
+        if (Math.abs(dx) > 1 || Math.abs(dy) > 1) {
+          dragRef.current.hasMoved = true;
+        }
+
+        const rect = chartContainerRef.current.getBoundingClientRect();
+        const curX = clientX - rect.left;
+        const curY = clientY - rect.top;
+
+        const snap = getMagnetSnappedPoint({ x: curX, y: curY }, shiftKey);
+        if (snap.snapped) {
+          setSnapIndicator({ x: snap.pixel.x, y: snap.pixel.y, type: snap.type });
+        } else {
+          setSnapIndicator(null);
+        }
+
+        const targetPoint = snap.point;
+        if (!targetPoint) return;
+
+        const { handleType: hType, initialDrawing } = dragRef.current;
+        let updated = null;
+
+        if (hType === 'p1') {
+          updated = { ...initialDrawing, p1: targetPoint, updatedAt: Date.now() };
+        } else if (hType === 'p2') {
+          updated = { ...initialDrawing, p2: targetPoint, updatedAt: Date.now() };
+        } else if (hType === 'horizontal') {
+          updated = { ...initialDrawing, price: targetPoint.price, updatedAt: Date.now() };
+          const nativeLine = horizontalPriceLinesRef.current.get(initialDrawing.id);
+          if (nativeLine) {
+            try {
+              nativeLine.applyOptions({ price: targetPoint.price });
+            } catch (_e) {}
+          }
+        } else if (hType === 'h_start') {
+          updated = { ...initialDrawing, startTime: targetPoint.time, updatedAt: Date.now() };
+        } else if (hType === 'h_end') {
+          updated = { ...initialDrawing, endTime: targetPoint.time, updatedAt: Date.now() };
+        } else if (hType === 'body') {
+          const initPt1 = getPointPixel(initialDrawing.p1?.time, initialDrawing.p1?.price);
+          const initPt2 = getPointPixel(initialDrawing.p2?.time, initialDrawing.p2?.price);
+          if (initPt1 && initPt2) {
+            const newP1 = getPixelPoint(initPt1.x + dx, initPt1.y + dy);
+            const newP2 = getPixelPoint(initPt2.x + dx, initPt2.y + dy);
+            if (newP1 && newP2) {
+              updated = { ...initialDrawing, p1: newP1, p2: newP2, updatedAt: Date.now() };
+            }
+          }
+        }
+
+        if (updated) {
+          dragRef.current.latestDrawing = updated;
+          setDrawings((prev) => prev.map((d) => (d.id === updated.id ? updated : d)));
+        }
+      });
+    };
+
+    const handleMouseUp = () => {
+      if (dragRaf) cancelAnimationFrame(dragRaf);
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      setSnapIndicator(null);
+
+      if (dragRef.current?.hasMoved && dragRef.current?.latestDrawing && data?.symbol) {
+        saveDrawingForSymbol(data.symbol, dragRef.current.latestDrawing);
+      }
+      dragRef.current = null;
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+  }, [data?.symbol, getMagnetSnappedPoint, getPixelPoint, getPointPixel]);
+
+  useEffect(() => {
+    if (!interactive) return;
+
+    const handleKeyDown = (e) => {
+      const tag = e.target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) return;
+
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedDrawingId) {
+          e.preventDefault();
+          handleDeleteDrawing(selectedDrawingId);
+        }
+      } else if (e.key === 'Escape') {
+        if (trendPreview) {
+          setTrendPreview(null);
+        } else if (selectedDrawingId) {
+          setSelectedDrawingId(null);
+        } else if (activeTool !== 'select') {
+          setActiveTool('select');
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [interactive, selectedDrawingId, trendPreview, activeTool, handleDeleteDrawing, setActiveTool]);
+
   const handleCanvasClick = (e) => {
-    if (!interactive || activeTool === 'select' || !chartContainerRef.current || !seriesRef.current || !data?.symbol) return;
+    if (!interactive || !chartContainerRef.current || !seriesRef.current || !data?.symbol) return;
+
+    if (activeTool === 'select') {
+      setSelectedDrawingId(null);
+      return;
+    }
 
     const rect = chartContainerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const price = seriesRef.current.coordinateToPrice(y);
-    const time = chartRef.current.timeScale().coordinateToTime(x);
-
-    if (price === null || isNaN(price)) return;
+    const snap = getMagnetSnappedPoint({ x, y }, e.shiftKey);
+    const point = snap.point;
+    if (!point || point.price === null || isNaN(point.price)) return;
 
     if (activeTool === 'horizontal') {
       const newDrawing = {
         id: `h_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
         type: 'horizontal',
-        price: Number(price.toFixed(2)),
+        price: Number(point.price.toFixed(2)),
+        startTime: point.time || null,
+        spanMode: 'ray', // Defaults to Ray starting from clicked candle to right
         color: drawColor,
         width: drawWidth,
         style: drawStyle,
         createdAt: Date.now()
       };
       saveDrawingForSymbol(data.symbol, newDrawing).then((updated) => setDrawings(updated));
+      setSelectedDrawingId(null);
       setActiveTool('select');
+      setSnapIndicator(null);
     } else if (activeTool === 'trend') {
-      if (!time) return;
+      if (!point.time) return;
       if (!trendPreview) {
         setTrendPreview({
-          p1: { time, price: Number(price.toFixed(2)) },
-          p2: { time, price: Number(price.toFixed(2)) }
+          p1: point,
+          p2: point,
+          extendRight: extendRight
         });
       } else {
         const newDrawing = {
           id: `t_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
           type: 'trend',
           p1: trendPreview.p1,
-          p2: { time, price: Number(price.toFixed(2)) },
+          p2: point,
           color: drawColor,
           width: drawWidth,
           style: drawStyle,
+          extendRight: trendPreview.extendRight || extendRight,
           createdAt: Date.now()
         };
         saveDrawingForSymbol(data.symbol, newDrawing).then((updated) => setDrawings(updated));
+        setSelectedDrawingId(null);
         setTrendPreview(null);
         setActiveTool('select');
+        setSnapIndicator(null);
       }
     }
   };
 
-  const handleCanvasMouseMove = (e) => {
-    if (!interactive || activeTool !== 'trend' || !trendPreview || !chartContainerRef.current || !seriesRef.current) return;
+  const handleContainerMouseMove = (e) => {
+    if (!interactive || !chartContainerRef.current || !seriesRef.current) return;
     const rect = chartContainerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left;
     const y = e.clientY - rect.top;
 
-    const price = seriesRef.current.coordinateToPrice(y);
-    const time = chartRef.current.timeScale().coordinateToTime(x);
-    if (price !== null && time !== null) {
-      setTrendPreview((prev) => (prev ? { ...prev, p2: { time, price: Number(price.toFixed(2)) } } : null));
-    }
-  };
+    if (activeTool === 'trend' || activeTool === 'horizontal') {
+      const snap = getMagnetSnappedPoint({ x, y }, e.shiftKey);
+      if (snap.snapped) {
+        setSnapIndicator({ x: snap.pixel.x, y: snap.pixel.y, type: snap.type });
+      } else {
+        setSnapIndicator(null);
+      }
 
-  const handleContainerMouseMove = (e) => {
-    if (activeTool === 'trend' && trendPreview && chartContainerRef.current && seriesRef.current) {
-      handleCanvasMouseMove(e);
+      if (activeTool === 'trend' && trendPreview && snap.point) {
+        setTrendPreview((prev) => (prev ? { ...prev, p2: snap.point } : null));
+      }
       return;
     }
-    if (!interactive || activeTool !== 'select' || !chartContainerRef.current) return;
-    const rect = chartContainerRef.current.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
+
     const isOverPriceScale = x >= rect.width - 65;
     const isOverTimeScale = y >= rect.height - 40;
 
@@ -1056,11 +1552,8 @@ export default function MiniCandlestickChart({
     }
   };
 
-  const handleDeleteDrawing = (id, e) => {
-    e.stopPropagation();
-    if (data?.symbol && id) {
-      deleteDrawingForSymbol(data.symbol, id).then((updated) => setDrawings(updated));
-    }
+  const handleContainerMouseLeave = () => {
+    setSnapIndicator(null);
   };
 
   if (!data) return null;
@@ -1212,6 +1705,10 @@ export default function MiniCandlestickChart({
             onStyleChange={setDrawStyle}
             onClearAll={handleClearAllDrawings}
             drawingCount={drawings.length}
+            magnetEnabled={magnetEnabled}
+            onMagnetToggle={setMagnetEnabled}
+            extendRight={extendRight}
+            onExtendRightToggle={setExtendRight}
           />
         </div>
       )}
@@ -1280,6 +1777,7 @@ export default function MiniCandlestickChart({
         }}
         onMouseMove={handleContainerMouseMove}
         onMouseLeave={() => {
+          handleContainerMouseLeave();
           if (chartContainerRef.current && activeTool === 'select') {
             chartContainerRef.current.style.cursor = interactive ? 'default' : 'pointer';
           }
@@ -1292,40 +1790,143 @@ export default function MiniCandlestickChart({
           </div>
         )}
 
+
+
         {/* SVG Drawing Layer Overlay */}
-        {interactive && (drawings.length > 0 || trendPreview) && (
+        {interactive && (drawings.length > 0 || trendPreview || snapIndicator || activeTool !== 'select') && (
           <svg className="absolute inset-0 w-full h-full pointer-events-none z-10 overflow-hidden">
-            {/* eslint-disable-next-line react-hooks/refs */}
+            {/* Drawings */}
             {drawings.map((d) => {
+              const isSelected = selectedDrawingId === d.id;
+              const chartW = chartContainerRef.current?.clientWidth || 600;
+
               if (d.type === 'horizontal') {
                 const y = seriesRef.current?.priceToCoordinate(d.price);
                 if (y === null || y === undefined || isNaN(y)) return null;
+                const dockX = Math.max(10, chartW - 62);
+                const isRay = d.spanMode === 'ray' || (!d.spanMode && d.startTime);
+                const isSegment = d.spanMode === 'segment';
+
+                // Calculate horizontal start and end pixel coordinates
+                let startX = 0;
+                if ((isRay || isSegment) && d.startTime) {
+                  const pStart = getPointPixel(d.startTime, d.price);
+                  if (pStart && !isNaN(pStart.x)) {
+                    startX = Math.max(0, pStart.x);
+                  }
+                }
+
+                let endX = chartW;
+                if (isSegment && d.endTime) {
+                  const pEnd = getPointPixel(d.endTime, d.price);
+                  if (pEnd && !isNaN(pEnd.x)) {
+                    endX = Math.min(chartW, pEnd.x);
+                  }
+                }
+
                 return (
-                  <g key={d.id} className="group pointer-events-auto cursor-pointer">
+                  <g key={d.id} className="pointer-events-auto">
+                    {/* Invisible hit-test area for clicking and dragging */}
                     <line
-                      x1="0"
+                      x1={startX}
                       y1={y}
-                      x2="100%"
+                      x2={endX}
+                      y2={y}
+                      stroke="transparent"
+                      strokeWidth="18"
+                      pointerEvents="all"
+                      className="cursor-ns-resize"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedDrawingId(d.id);
+                      }}
+                      onMouseDown={(e) => startDrag(d, 'horizontal', e)}
+                    />
+                    {/* Visible line */}
+                    <line
+                      x1={startX}
+                      y1={y}
+                      x2={endX}
                       y2={y}
                       stroke={d.color}
                       strokeWidth={d.width}
                       strokeDasharray={d.style === 'dashed' ? '6,4' : 'none'}
+                      className="pointer-events-none"
                     />
-                    {/* Price tag badge */}
-                    <g transform={`translate(10, ${Math.max(4, y - 10)})`}>
-                      <rect x="0" y="0" width="56" height="15" rx="3" fill={d.color} opacity="0.95" />
-                      <text x="28" y="11" fill="#ffffff" fontSize="9" fontWeight="bold" textAnchor="middle">
+                    {/* Selection halo highlight */}
+                    {isSelected && (
+                      <line
+                        x1={startX}
+                        y1={y}
+                        x2={endX}
+                        y2={y}
+                        stroke="#38bdf8"
+                        strokeWidth={Number(d.width) + 4}
+                        opacity="0.35"
+                        className="pointer-events-none"
+                      />
+                    )}
+                    {/* Handles when selected */}
+                    {isSelected && (
+                      <>
+                        {/* Start Anchor Handle: drag horizontally to change start bar */}
+                        <circle
+                          cx={startX}
+                          cy={y}
+                          r="16"
+                          fill="rgba(0,0,0,0.001)"
+                          pointerEvents="all"
+                          className="cursor-ew-resize"
+                          onMouseDown={(e) => startDrag(d, 'h_start', e)}
+                          title="Drag to change start point"
+                        />
+                        <circle
+                          cx={startX}
+                          cy={y}
+                          r="5.5"
+                          fill="#38bdf8"
+                          stroke="#ffffff"
+                          strokeWidth="2"
+                          className="pointer-events-none drop-shadow"
+                        />
+                        {/* Midpoint / End Handle */}
+                        <circle
+                          cx={isSegment ? endX : (startX + endX) / 2}
+                          cy={y}
+                          r="16"
+                          fill="rgba(0,0,0,0.001)"
+                          pointerEvents="all"
+                          className={isSegment ? "cursor-ew-resize" : "cursor-ns-resize"}
+                          onMouseDown={(e) => startDrag(d, isSegment ? 'h_end' : 'horizontal', e)}
+                          title={isSegment ? "Drag to change end point" : "Drag to move price"}
+                        />
+                        <circle
+                          cx={isSegment ? endX : (startX + endX) / 2}
+                          cy={y}
+                          r={isSegment ? "5.5" : "4.5"}
+                          fill={isSegment ? "#38bdf8" : "#ffffff"}
+                          stroke="#38bdf8"
+                          strokeWidth="2"
+                          className="pointer-events-none drop-shadow"
+                        />
+                      </>
+                    )}
+                    {/* Right Price Scale Docked Tag */}
+                    <g transform={`translate(${dockX}, ${Math.max(4, y - 9)})`} className="pointer-events-none">
+                      <rect x="0" y="0" width="56" height="18" rx="3" fill={d.color} opacity="0.95" />
+                      <text x="28" y="13" fill="#ffffff" fontSize="10" fontWeight="bold" textAnchor="middle">
                         {d.price.toFixed(2)}
                       </text>
                     </g>
-                    {/* Delete handle on line */}
+                    {/* Delete handle near price tag (only visible when selected) */}
                     <g 
-                      transform={`translate(72, ${Math.max(4, y - 10)})`} 
-                      className="cursor-pointer"
+                      transform={`translate(${dockX - 22}, ${Math.max(4, y - 8)})`} 
+                      className={`cursor-pointer ${isSelected ? '' : 'pointer-events-none'}`}
                       onClick={(e) => handleDeleteDrawing(d.id, e)}
+                      title="Delete line"
                     >
-                      <rect x="0" y="0" width="15" height="15" rx="3" fill="#ef4444" opacity="0.9" />
-                      <text x="7.5" y="11" fill="#ffffff" fontSize="10" fontWeight="bold" textAnchor="middle">
+                      <rect x="0" y="0" width="16" height="16" rx="3" fill="#ef4444" opacity={isSelected ? "0.9" : "0"} />
+                      <text x="8" y="12" fill="#ffffff" fontSize="11" fontWeight="bold" textAnchor="middle" opacity={isSelected ? "1" : "0"}>
                         ×
                       </text>
                     </g>
@@ -1335,29 +1936,139 @@ export default function MiniCandlestickChart({
                 const pt1 = getPointPixel(d.p1?.time, d.p1?.price);
                 const pt2 = getPointPixel(d.p2?.time, d.p2?.price);
                 if (!pt1 || !pt2) return null;
+                const isSelected = selectedDrawingId === d.id;
                 const midX = (pt1.x + pt2.x) / 2;
                 const midY = (pt1.y + pt2.y) / 2;
+                const endPt = d.extendRight ? calculateRayEndpoint(pt1, pt2, chartW) : pt2;
+
                 return (
-                  <g key={d.id} className="group pointer-events-auto cursor-pointer">
+                  <g key={d.id} className="pointer-events-auto">
+                    {/* Invisible hit-test area: clicking and dragging immediately moves entire trendline */}
                     <line
                       x1={pt1.x}
                       y1={pt1.y}
-                      x2={pt2.x}
-                      y2={pt2.y}
+                      x2={endPt.x}
+                      y2={endPt.y}
+                      stroke="transparent"
+                      strokeWidth="18"
+                      pointerEvents="all"
+                      className="cursor-move"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setSelectedDrawingId(d.id);
+                      }}
+                      onMouseDown={(e) => {
+                        setSelectedDrawingId(d.id);
+                        startDrag(d, 'body', e);
+                      }}
+                    />
+                    {/* Visible line */}
+                    <line
+                      x1={pt1.x}
+                      y1={pt1.y}
+                      x2={endPt.x}
+                      y2={endPt.y}
                       stroke={d.color}
                       strokeWidth={d.width}
                       strokeDasharray={d.style === 'dashed' ? '6,4' : 'none'}
+                      className="pointer-events-none"
                     />
-                    <circle cx={pt1.x} cy={pt1.y} r={d.width + 1} fill={d.color} />
-                    <circle cx={pt2.x} cy={pt2.y} r={d.width + 1} fill={d.color} />
-                    {/* Delete handle near midpoint */}
+                    {/* Selection halo highlight */}
+                    {isSelected && (
+                      <line
+                        x1={pt1.x}
+                        y1={pt1.y}
+                        x2={endPt.x}
+                        y2={endPt.y}
+                        stroke="#38bdf8"
+                        strokeWidth={Number(d.width) + 4}
+                        opacity="0.35"
+                        className="pointer-events-none"
+                      />
+                    )}
+                    {/* Anchor dots when not selected */}
+                    {!isSelected && (
+                      <>
+                        <circle cx={pt1.x} cy={pt1.y} r={Number(d.width) + 1} fill={d.color} className="pointer-events-none" />
+                        <circle cx={pt2.x} cy={pt2.y} r={Number(d.width) + 1} fill={d.color} className="pointer-events-none" />
+                      </>
+                    )}
+                    {/* Selected handles */}
+                    {isSelected && (
+                      <>
+                        {/* P1 Handle */}
+                        <circle
+                          cx={pt1.x}
+                          cy={pt1.y}
+                          r="16"
+                          fill="rgba(0,0,0,0.001)"
+                          pointerEvents="all"
+                          className="cursor-crosshair"
+                          onMouseDown={(e) => startDrag(d, 'p1', e)}
+                          title="Drag to adjust Start Point"
+                        />
+                        <circle
+                          cx={pt1.x}
+                          cy={pt1.y}
+                          r="5.5"
+                          fill="#38bdf8"
+                          stroke="#ffffff"
+                          strokeWidth="2"
+                          className="pointer-events-none drop-shadow"
+                        />
+
+                        {/* P2 Handle */}
+                        <circle
+                          cx={pt2.x}
+                          cy={pt2.y}
+                          r="16"
+                          fill="rgba(0,0,0,0.001)"
+                          pointerEvents="all"
+                          className="cursor-crosshair"
+                          onMouseDown={(e) => startDrag(d, 'p2', e)}
+                          title="Drag to adjust End Point"
+                        />
+                        <circle
+                          cx={pt2.x}
+                          cy={pt2.y}
+                          r="5.5"
+                          fill="#38bdf8"
+                          stroke="#ffffff"
+                          strokeWidth="2"
+                          className="pointer-events-none drop-shadow"
+                        />
+
+                        {/* Midpoint Handle */}
+                        <circle
+                          cx={midX}
+                          cy={midY}
+                          r="16"
+                          fill="rgba(0,0,0,0.001)"
+                          pointerEvents="all"
+                          className="cursor-move"
+                          onMouseDown={(e) => startDrag(d, 'body', e)}
+                          title="Drag to move entire trendline"
+                        />
+                        <circle
+                          cx={midX}
+                          cy={midY}
+                          r="4.5"
+                          fill="#ffffff"
+                          stroke="#38bdf8"
+                          strokeWidth="2"
+                          className="pointer-events-none drop-shadow"
+                        />
+                      </>
+                    )}
+                    {/* Delete handle near midpoint (only visible when selected) */}
                     <g 
-                      transform={`translate(${midX - 7}, ${midY - 7})`}
-                      className="cursor-pointer"
+                      transform={`translate(${midX - 8}, ${midY - 8})`} 
+                      className={`cursor-pointer ${isSelected ? '' : 'pointer-events-none'}`}
                       onClick={(e) => handleDeleteDrawing(d.id, e)}
+                      title="Delete trendline"
                     >
-                      <circle cx="7" cy="7" r="7" fill="#ef4444" opacity="0.9" />
-                      <text x="7" y="10.5" fill="#ffffff" fontSize="10" fontWeight="bold" textAnchor="middle">
+                      <circle cx="8" cy="8" r="8" fill="#ef4444" opacity={isSelected ? "0.9" : "0"} />
+                      <text x="8" y="12" fill="#ffffff" fontSize="11" fontWeight="bold" textAnchor="middle" opacity={isSelected ? "1" : "0"}>
                         ×
                       </text>
                     </g>
@@ -1367,31 +2078,198 @@ export default function MiniCandlestickChart({
               return null;
             })}
 
-            {/* Trendline Preview while actively drawing */}
-            {/* eslint-disable-next-line react-hooks/refs */}
+            {/* Active Trendline Preview */}
             {trendPreview && (() => {
               const pt1 = getPointPixel(trendPreview.p1?.time, trendPreview.p1?.price);
               const pt2 = getPointPixel(trendPreview.p2?.time, trendPreview.p2?.price);
               if (!pt1 || !pt2) return null;
+              const chartW = chartContainerRef.current?.clientWidth || 600;
+              const previewEnd = (trendPreview.extendRight || extendRight) ? calculateRayEndpoint(pt1, pt2, chartW) : pt2;
               return (
                 <g className="pointer-events-none">
                   <line
                     x1={pt1.x}
                     y1={pt1.y}
-                    x2={pt2.x}
-                    y2={pt2.y}
+                    x2={previewEnd.x}
+                    y2={previewEnd.y}
                     stroke={drawColor}
                     strokeWidth={drawWidth}
                     strokeDasharray={drawStyle === 'dashed' ? '6,4' : 'none'}
-                    opacity="0.75"
+                    opacity="0.8"
                   />
-                  <circle cx={pt1.x} cy={pt1.y} r="4" fill={drawColor} />
-                  <circle cx={pt2.x} cy={pt2.y} r="4" fill={drawColor} />
+                  <circle cx={pt1.x} cy={pt1.y} r="5" fill={drawColor} />
+                  <circle cx={pt2.x} cy={pt2.y} r="5" fill={drawColor} />
                 </g>
               );
             })()}
+
+            {/* Amber Magnet Snapping Target Indicator */}
+            {snapIndicator && (
+              <g className="pointer-events-none">
+                <circle
+                  cx={snapIndicator.x}
+                  cy={snapIndicator.y}
+                  r="7"
+                  fill="none"
+                  stroke="#f59e0b"
+                  strokeWidth="2"
+                  strokeDasharray="3,2"
+                  className="animate-pulse"
+                />
+                <circle
+                  cx={snapIndicator.x}
+                  cy={snapIndicator.y}
+                  r="2.5"
+                  fill="#f59e0b"
+                />
+              </g>
+            )}
           </svg>
         )}
+
+        {/* Floating Micro-Toolbar on Selection */}
+        {interactive && selectedDrawingId && (() => {
+          const selectedDrawing = drawings.find((d) => d.id === selectedDrawingId);
+          if (!selectedDrawing) return null;
+
+          const chartW = chartContainerRef.current?.clientWidth || 600;
+          let tX = chartW / 2;
+          let tY = 40;
+
+          if (selectedDrawing.type === 'horizontal') {
+            const y = seriesRef.current?.priceToCoordinate(selectedDrawing.price);
+            if (y !== null && y !== undefined && !isNaN(y)) {
+              tY = y < 70 ? y + 36 : y - 16;
+              tX = Math.max(140, Math.min(chartW - 140, chartW / 2));
+            }
+          } else if (selectedDrawing.type === 'trend') {
+            const pt1 = getPointPixel(selectedDrawing.p1?.time, selectedDrawing.p1?.price);
+            const pt2 = getPointPixel(selectedDrawing.p2?.time, selectedDrawing.p2?.price);
+            if (pt1 && pt2) {
+              const midY = (pt1.y + pt2.y) / 2;
+              tX = Math.max(140, Math.min(chartW - 140, (pt1.x + pt2.x) / 2));
+              tY = midY < 70 ? midY + 36 : midY - 16;
+            }
+          }
+
+          return (
+            <div
+              className="drawing-micro-toolbar absolute z-30 select-none"
+              style={{
+                left: `${tX}px`,
+                top: `${tY}px`,
+                transform: 'translate(-50%, -100%)',
+              }}
+              onClick={(e) => e.stopPropagation()}
+            >
+              {/* 7 Curated Colors */}
+              <div className="flex items-center gap-1">
+                {['#38bdf8', '#10b981', '#f59e0b', '#f97316', '#ef4444', '#a855f7', '#f8fafc'].map((hex) => {
+                  const colorClassMap = {
+                    '#38bdf8': 'dot-sky',
+                    '#10b981': 'dot-emerald',
+                    '#f59e0b': 'dot-amber',
+                    '#f97316': 'dot-orange',
+                    '#ef4444': 'dot-red',
+                    '#a855f7': 'dot-purple',
+                    '#f8fafc': 'dot-white',
+                  };
+                  const colorClass = colorClassMap[hex] || 'dot-sky';
+                  return (
+                    <button
+                      key={hex}
+                      type="button"
+                      className={`color-dot-btn ${colorClass} ${selectedDrawing.color === hex ? 'active' : ''}`}
+                      style={{ backgroundColor: hex }}
+                      onClick={() => updateSelectedDrawing({ color: hex })}
+                      title={`Color: ${hex}`}
+                    />
+                  );
+                })}
+              </div>
+
+              <div className="w-px h-3.5 bg-slate-700 mx-1" />
+
+              {/* Thickness */}
+              <div className="flex items-center gap-0.5">
+                {[1, 2, 3].map((w) => (
+                  <button
+                    key={w}
+                    type="button"
+                    className={`thickness-btn ${selectedDrawing.width === w ? 'active' : ''}`}
+                    onClick={() => updateSelectedDrawing({ width: w })}
+                    title={`${w}px Width`}
+                  >
+                    {w}px
+                  </button>
+                ))}
+              </div>
+
+              <div className="w-px h-3.5 bg-slate-700 mx-0.5" />
+
+              {/* Style Toggle */}
+              <button
+                type="button"
+                className="px-1.5 py-0.5 text-[11px] font-mono rounded hover:bg-slate-800 text-slate-300 transition-colors"
+                onClick={() => updateSelectedDrawing({ style: selectedDrawing.style === 'dashed' ? 'solid' : 'dashed' })}
+                title="Toggle Solid / Dashed"
+              >
+                {selectedDrawing.style === 'dashed' ? '--' : '—'}
+              </button>
+
+              {/* Horizontal Ray vs Full-Width Toggle */}
+              {selectedDrawing.type === 'horizontal' && (
+                <button
+                  type="button"
+                  className={`px-1.5 py-0.5 text-[10px] font-semibold rounded transition-colors ${
+                    (selectedDrawing.spanMode === 'ray' || (!selectedDrawing.spanMode && selectedDrawing.startTime))
+                      ? 'bg-amber-500/30 text-amber-300 border border-amber-400/40'
+                      : 'hover:bg-slate-800 text-slate-300'
+                  }`}
+                  onClick={() => {
+                    const currentIsRay = selectedDrawing.spanMode === 'ray' || (!selectedDrawing.spanMode && selectedDrawing.startTime);
+                    updateSelectedDrawing({ spanMode: currentIsRay ? 'full' : 'ray' });
+                  }}
+                  title={
+                    (selectedDrawing.spanMode === 'ray' || (!selectedDrawing.spanMode && selectedDrawing.startTime))
+                      ? "Horizontal Ray (starts from clicked candle to right). Click to extend Full Width across chart"
+                      : "Full Width (entire screen). Click to make Ray from start candle"
+                  }
+                >
+                  {(selectedDrawing.spanMode === 'ray' || (!selectedDrawing.spanMode && selectedDrawing.startTime)) ? 'Ray →' : 'Full ↔'}
+                </button>
+              )}
+
+              {/* Ray Toggle (for trendlines) */}
+              {selectedDrawing.type === 'trend' && (
+                <button
+                  type="button"
+                  className={`px-1.5 py-0.5 text-[10px] font-semibold rounded transition-colors ${
+                    selectedDrawing.extendRight ? 'bg-sky-500/30 text-sky-300 border border-sky-400/40' : 'hover:bg-slate-800 text-slate-300'
+                  }`}
+                  onClick={() => updateSelectedDrawing({ extendRight: !selectedDrawing.extendRight })}
+                  title="Toggle Ray (Extend Right)"
+                >
+                  Ray
+                </button>
+              )}
+
+              <div className="w-px h-3.5 bg-slate-700 mx-0.5" />
+
+              {/* Trash button */}
+              <button
+                type="button"
+                className="p-1 text-red-400 hover:text-red-300 hover:bg-red-500/20 rounded transition-colors"
+                onClick={(e) => handleDeleteDrawing(selectedDrawing.id, e)}
+                title="Delete (Del)"
+              >
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
+                  <path d="M3 6h18M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                </svg>
+              </button>
+            </div>
+          );
+        })()}
       </div>
       
       {!hideHeaders && hasPosition ? (

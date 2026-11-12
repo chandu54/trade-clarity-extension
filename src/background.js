@@ -6,7 +6,7 @@ import { evaluateVCPTightnessFromCandles } from "./utils/calculateVcpTightness.t
 import { evaluateIPOTag } from "./utils/detectYoungIPO";
 import { evaluateIPOBase } from "./utils/detectIPOBase";
 import { getBulkStockVerdicts } from "./services/ai.js";
-import { fetchStockData } from "./utils/yahooFinanceMap.js";
+import { fetchStockData, fetchStockQuotes } from "./utils/yahooFinanceMap.js";
 import { CONFIG } from "./constants/config.js";
 import stockMetadata from "./constants/stockMetadata.json";
 import { executeChartinkFetch } from "./services/chartinkService.js";
@@ -23,6 +23,22 @@ let totalJobs = 0;
 let completedJobs = 0;
 
 let isAiProcessing = false;
+
+// Helper functions for persistent MV3 Stock Metrics queue state
+async function saveActiveMetricsQueue(queue, total, completed) {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) return;
+  if (!queue || queue.length === 0) {
+    await new Promise(r => chrome.storage.local.remove(["active_metrics_queue"], r));
+  } else {
+    await new Promise(r => chrome.storage.local.set({ active_metrics_queue: { queue, total, completed } }, r));
+  }
+}
+
+async function getActiveMetricsQueue() {
+  if (typeof chrome === "undefined" || !chrome.storage?.local) return null;
+  const res = await new Promise(r => chrome.storage.local.get(["active_metrics_queue"], r));
+  return res?.active_metrics_queue || null;
+}
 
 // Helper functions for persistent MV3 Bulk AI queue state
 async function saveActiveBulkAiTask(taskData) {
@@ -52,10 +68,51 @@ function calculateEstimatedEndTime(completed, total) {
 
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   if (message.action === "OPEN_DASHBOARD") {
+    const targetUrl = message.symbol
+      ? chrome.runtime.getURL(`dashboard.html?symbol=${encodeURIComponent(message.symbol)}`)
+      : (message.url || chrome.runtime.getURL("dashboard.html"));
     chrome.tabs.create({
-      url: chrome.runtime.getURL("dashboard.html"),
+      url: targetUrl,
     });
     sendResponse({ success: true });
+    return true;
+  }
+
+  // Cross-origin fetch proxy to bypass page CORS restrictions in MV3 content scripts (e.g. Zerodha Kite TVC)
+  if (message.action === "PROXY_FETCH") {
+    const { url, method = "GET", headers = {} } = message.payload || {};
+    fetch(url, { method, headers })
+      .then(async (res) => {
+        const text = await res.text();
+        sendResponse({
+          ok: res.ok,
+          status: res.status,
+          statusText: res.statusText,
+          text,
+        });
+      })
+      .catch((err) => {
+        sendResponse({
+          ok: false,
+          status: 0,
+          statusText: err.message,
+          error: err.message,
+          text: "",
+        });
+      });
+    return true;
+  }
+
+  // Direct batch stock quotes fetch executed in background with full host permissions
+  if (message.action === "FETCH_STOCK_QUOTES") {
+    const { symbols, country, forceRefresh } = message.payload || {};
+    fetchStockQuotes(symbols, country, null, forceRefresh)
+      .then((results) => {
+        sendResponse({ success: true, results });
+      })
+      .catch((err) => {
+        sendResponse({ success: false, error: err.message, results: [] });
+      });
     return true;
   }
 
@@ -112,6 +169,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
 
     if (addedCount > 0) {
       totalJobs += addedCount;
+      saveActiveMetricsQueue(processingQueue, totalJobs, completedJobs);
 
       if (!isProcessing) {
         processQueue();
@@ -190,6 +248,18 @@ if (typeof chrome !== "undefined") {
       console.log("[BG] Restoring active Bulk AI task on startup:", task);
       if (!isAiProcessing) {
         processAiQueue();
+      }
+    }
+  }).catch(() => {});
+
+  getActiveMetricsQueue().then(task => {
+    if (task && Array.isArray(task.queue) && task.queue.length > 0) {
+      console.log(`[BG] Restoring active Stock Metrics queue on startup (${task.queue.length} items remaining)...`);
+      processingQueue = task.queue;
+      totalJobs = task.total || task.queue.length;
+      completedJobs = task.completed || 0;
+      if (!isProcessing) {
+        processQueue();
       }
     }
   }).catch(() => {});
@@ -518,6 +588,8 @@ async function processQueue() {
   }
 
   completedJobs += batch.length;
+  saveActiveMetricsQueue(processingQueue, totalJobs, completedJobs);
+
   // Fire-and-forget message, catch error if no tab is listening
   chrome.runtime.sendMessage({
     action: "FETCH_PROGRESS",
@@ -528,6 +600,7 @@ async function processQueue() {
     setTimeout(processQueue, CONFIG.BATCH_DELAY_MS);
   } else {
     isProcessing = false;
+    saveActiveMetricsQueue(null);
     chrome.runtime.sendMessage({
       action: "FETCH_METRICS_COMPLETE",
       payload: { total: totalJobs, completed: completedJobs }
@@ -538,7 +611,7 @@ async function processQueue() {
   }
 }
 
-async function fetchWithRetryAndTimeout(symbol, country, paramDefs, adrDays, liquidityDays, uiConfig = {}, retries = 1) {
+async function fetchWithRetryAndTimeout(symbol, country, paramDefs, adrDays, liquidityDays, uiConfig = {}, retries = 2) {
   for (let i = 0; i <= retries; i++) {
     try {
       return await fetchAndCalculateMetrics(symbol, country, paramDefs, adrDays, liquidityDays, uiConfig);
@@ -547,7 +620,7 @@ async function fetchWithRetryAndTimeout(symbol, country, paramDefs, adrDays, liq
       const errMsg = err.message || "";
       const isRateLimit = errMsg.includes("429") || errMsg.includes("rate") || errMsg.includes("quota");
       
-      const waitTime = isRateLimit ? 1000 * (i + 1) : 500 * (i + 1);
+      const waitTime = isRateLimit ? 1200 * (i + 1) : 600 * (i + 1);
       console.warn(`[Sync] Fetch failed for ${symbol} (attempt ${i + 1}/${retries + 1}). Retrying in ${waitTime}ms... error:`, err);
       await new Promise(r => setTimeout(r, waitTime));
     }
@@ -711,6 +784,19 @@ async function fetchAndCalculateMetrics(
     const liquidityValue = liqPeriod.length > 0 ? totalTurnover / liqPeriod.length : 0;
     const lastClosePrice = validDays[validDays.length - 1].close;
 
+    // Synthesize quote metrics from the latest bars to avoid redundant ?range=5d network calls
+    const lastBar = validDays[validDays.length - 1];
+    const prevBar = validDays.length >= 2 ? validDays[validDays.length - 2] : null;
+    const currentPrice = lastBar ? Number(lastBar.close.toFixed(2)) : undefined;
+    const previousClose = prevBar ? Number(prevBar.close.toFixed(2)) : currentPrice;
+    let dailyChangePct = 0;
+    let isAdvancing = true;
+    if (currentPrice !== undefined && previousClose && previousClose > 0) {
+      const diff = currentPrice - previousClose;
+      dailyChangePct = Number(((diff / previousClose) * 100).toFixed(2));
+      isAdvancing = diff >= 0;
+    }
+
     const adrMatch = getActualParamKeyAndDef(paramDefs, "adr", "adr", country);
     const liqMatch = getActualParamKeyAndDef(
       paramDefs,
@@ -773,7 +859,7 @@ async function fetchAndCalculateMetrics(
     // --- IPO TAG MAPPING ---
     const ipoResult = evaluateIPOTag(symbol, validDays);
     const isYoungIPO = ipoResult.isYoungIPO;
-    const isRecentListing = ipoResult.isRecentListing;
+    const isRecentListing = validDays.length >= 180 ? false : ipoResult.isRecentListing;
 
     // --- IPO BASE PATTERN MAPPING ---
     const ipoBaseResult = evaluateIPOBase(symbol, validDays);
@@ -782,6 +868,10 @@ async function fetchAndCalculateMetrics(
     console.log(`[Sync] Computed for ${symbol}: ADR=${formattedAdr}, Liquidity=${formattedLiquidity}, MAs=${maBucket}, RS=${rsCategory}, Stage=${stageCategory}, VCP=${vcpDisplayText}, YoungIPO=${isYoungIPO}, RecentListing=${isRecentListing}, IPOBase=${isIPOBase}`);
 
     return {
+      currentPrice,
+      previousClose,
+      dailyChangePct,
+      isAdvancing,
       adr: formattedAdr,
       liquidity: formattedLiquidity,
       movingAverages: maBucket,
@@ -857,6 +947,10 @@ async function updateStorageWithMetrics(updates) {
         stock.params = stock.params || {};
         if (metrics.turnoverCr !== undefined) stock.turnoverCr = metrics.turnoverCr;
         if (metrics.liquidityValue !== undefined) stock.liquidityVal = metrics.liquidityValue;
+        if (metrics.currentPrice !== undefined) stock.currentPrice = metrics.currentPrice;
+        if (metrics.previousClose !== undefined) stock.previousClose = metrics.previousClose;
+        if (metrics.dailyChangePct !== undefined) stock.dailyChangePct = metrics.dailyChangePct;
+        if (metrics.isAdvancing !== undefined) stock.isAdvancing = metrics.isAdvancing;
 
         const adrKey = metrics.adrKey || "adr";
         const liqKey = metrics.liquidityKey || "liquidity";
@@ -875,6 +969,13 @@ async function updateStorageWithMetrics(updates) {
             const currentTags = stock.tags || [];
             if (!currentTags.includes("Recent Listing")) {
               stock.tags = [...currentTags.filter(t => t !== "Young IPO"), "Recent Listing"];
+              dataChanged = true;
+            }
+          } else {
+            // Clean up any legacy Recent Listing tag on established stocks
+            const currentTags = stock.tags || [];
+            if (currentTags.includes("Recent Listing") || currentTags.includes("Young IPO")) {
+              stock.tags = currentTags.filter(t => t !== "Recent Listing" && t !== "Young IPO");
               dataChanged = true;
             }
           }

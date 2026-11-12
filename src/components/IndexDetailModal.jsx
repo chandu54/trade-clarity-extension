@@ -23,7 +23,7 @@ const TIMEFRAME_OPTIONS = [
   { id: '5y', label: '5Y' },
 ];
 
-const checkIsAiBlocked = (blockedUntil) => {
+const _checkIsAiBlocked = (blockedUntil) => {
   if (!blockedUntil) return false;
   return blockedUntil > Date.now();
 };

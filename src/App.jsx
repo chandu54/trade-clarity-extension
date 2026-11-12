@@ -35,6 +35,7 @@ import MarketPulseView from "./components/MarketPulseView";
 import JournalView from "./components/JournalView";
 import ScreenerView from "./components/ScreenerView";
 import AiLimitBanner from "./components/AiLimitBanner";
+import { getActiveRunningAutomation } from "./services/automation/automationStateStore";
 
 function AppContent() {
   /* =========================
@@ -110,6 +111,10 @@ function AppContent() {
     syncStockUniverse(data);
     if (isSyncingFromStorageRef.current) {
       isSyncingFromStorageRef.current = false;
+      return;
+    }
+    // Prevent debounced save from overwriting chrome.storage while automation is hydrating
+    if (getActiveRunningAutomation()) {
       return;
     }
     const timer = setTimeout(() => {

@@ -126,6 +126,42 @@ export function resetNseCalendarCache() {
   nseCalendarInFlight = null;
 }
 
+// Proxies third-party HTTP requests through background service worker to prevent CORS failures in content scripts
+async function safeFetch(url, options = {}) {
+  const isTest = (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') || (typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test');
+  const isContentScript = !isTest && typeof window !== 'undefined' && window.location.protocol !== 'chrome-extension:';
+  if (isContentScript) {
+    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
+      return new Promise((resolve, reject) => {
+        if (options.signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+        chrome.runtime.sendMessage(
+          {
+            action: 'PROXY_FETCH',
+            payload: {
+              url,
+              method: options.method || 'GET',
+              headers: options.headers || {},
+            },
+          },
+          (res) => {
+            if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+            if (!res) return reject(new Error('No response from background proxy'));
+            resolve({
+              ok: Boolean(res.ok),
+              status: res.status || (res.ok ? 200 : 500),
+              statusText: res.statusText || (res.ok ? 'OK' : 'Error'),
+              text: async () => res.text || '',
+              json: async () => JSON.parse(res.text || '{}'),
+            });
+          }
+        );
+      });
+    }
+    throw new Error(`Cannot proxy fetch to ${url} from content script`);
+  }
+  return fetch(url, options);
+}
+
 async function ensureNseCalendar() {
   const now = Date.now();
   if (nseCalendarCache && (now - nseCalendarFetchedAt < NSE_CALENDAR_TTL)) {
@@ -154,7 +190,7 @@ async function ensureNseCalendar() {
       const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const id = controller ? setTimeout(() => controller.abort(), timeoutMs) : null;
       try {
-        const res = await fetch(url, { ...options, signal: controller?.signal });
+        const res = await safeFetch(url, { ...options, signal: controller?.signal });
         if (id) clearTimeout(id);
         return res;
       } catch (_err) {
@@ -308,7 +344,7 @@ export async function fetchNseQuarterlyResults(nseSymbol, country = 'IN') {
 
   try {
     const url = `https://www.nseindia.com/api/results-comparision?symbol=${encodeURIComponent(symbol)}`;
-    const res = await fetch(url, {
+    const res = await safeFetch(url, {
       headers: NSE_HEADERS,
       credentials: 'include',
       cache: 'no-cache',
@@ -400,6 +436,12 @@ let sessionCookie = null;
 let crumbFetchedAt = 0;
 
 async function getYahooCrumbAndCookie() {
+  const isTest = (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') || (typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test');
+  const isContentScript = !isTest && typeof window !== 'undefined' && window.location.protocol !== 'chrome-extension:';
+  if (isContentScript) {
+    return { crumb: null, cookie: null };
+  }
+
   const now = Date.now();
   if (sessionCrumb && (now - crumbFetchedAt < 12 * 60 * 60 * 1000)) {
     return { crumb: sessionCrumb, cookie: sessionCookie };
@@ -602,7 +644,7 @@ export async function fetchStockNews(symbol, country = 'US') {
       const rssUrl = `${googleBaseUrl}/rss/search?q=${encodeURIComponent(queryStr)}&hl=${hl}&gl=${gl}&ceid=${ceid}`;
 
       try {
-        const res = await fetch(rssUrl, { signal: gController.signal });
+        const res = await safeFetch(rssUrl, { signal: gController.signal });
         if (!res.ok) continue;
         const xmlText = await res.text();
         const itemsXml = xmlText.split('<item>').slice(1);
@@ -663,7 +705,7 @@ export async function fetchStockNews(symbol, country = 'US') {
   try {
     const searchTicker = effectiveCountry === 'IN' ? cleanSymbol : symbol;
     const newsUrl = `${yahooBaseUrl}/v1/finance/search?q=${encodeURIComponent(searchTicker)}&newsCount=15`;
-    const res = await fetch(newsUrl, { credentials: 'include', signal: controller.signal });
+    const res = await safeFetch(newsUrl, { credentials: 'include', signal: controller.signal });
     if (res.ok) {
       const json = await res.json();
       const rawNews = json.news || [];
@@ -758,7 +800,7 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
       headers['Cookie'] = cookie;
     }
 
-    const summaryRes = await fetch(summaryUrl, { headers, credentials: 'include' });
+    const summaryRes = await safeFetch(summaryUrl, { headers, credentials: 'include' });
     if (summaryRes.ok) {
       const summaryJson = await summaryRes.json();
       rawSummary = summaryJson.quoteSummary?.result?.[0] || null;
@@ -772,7 +814,7 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
         nsSummaryUrl += `&crumb=${encodeURIComponent(crumb)}`;
       }
       try {
-        const nsRes = await fetch(nsSummaryUrl, { headers, credentials: 'include' });
+        const nsRes = await safeFetch(nsSummaryUrl, { headers, credentials: 'include' });
         if (nsRes.ok) {
           const nsJson = await nsRes.json();
           const nsSummary = nsJson.quoteSummary?.result?.[0] || null;
@@ -803,7 +845,7 @@ export async function fetchStockSummary(symbol, country = 'US', forceRefresh = f
   // 3. Fetch Chart Events (Dividends & Splits)
   try {
     const chartUrl = `${baseUrl}/v8/finance/chart/${encodeURIComponent(ticker)}?range=1y&interval=1d&events=div%7Csplit`;
-    const chartRes = await fetch(chartUrl, { credentials: 'include' });
+    const chartRes = await safeFetch(chartUrl, { credentials: 'include' });
     if (chartRes.ok) {
       const chartJson = await chartRes.json();
       rawEvents = chartJson.chart?.result?.[0]?.events || {};

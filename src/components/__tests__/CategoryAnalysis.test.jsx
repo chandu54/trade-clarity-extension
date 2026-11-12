@@ -90,7 +90,7 @@ describe('Category Intelligence Suite', () => {
     it('Scenario: Data Persistence - accurately merges local weekData with fetched stockData', () => {
       const mockWeekData = {
         stocks: {
-          ABB: { symbol: 'ABB', sector: 'Power', notes: 'Local conviction high', params: { rs: 99 } }
+          ABB: { symbol: 'ABB', sector: 'Power', notes: 'Local conviction high', params: { score: 99 } }
         }
       };
 
@@ -102,7 +102,7 @@ describe('Category Intelligence Suite', () => {
           symbols={['ABB']}
           initialStockData={mockStockData}
           weekData={mockWeekData}
-          paramDefinitions={{ rs: { label: 'RS', type: 'number' } }}
+          paramDefinitions={{ score: { label: 'Score', type: 'number' } }}
           sectors={['Power']}
         />
       );

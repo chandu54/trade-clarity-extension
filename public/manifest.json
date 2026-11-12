@@ -48,23 +48,38 @@
     {
       "matches": [
         "*://*.tradingview.com/chart/*",
-        "*://*.screener.in/*"
+        "*://*.screener.in/*",
+        "*://*.zerodha.com/*",
+        "*://kite.zerodha.com/*"
       ],
       "js": [
         "content.js"
       ],
       "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "*://kite.zerodha.com/*"
+      ],
+      "js": [
+        "zerodhaBridge.js"
+      ],
+      "world": "MAIN",
+      "run_at": "document_start"
     }
   ],
   "web_accessible_resources": [
     {
       "resources": [
         "content.css",
-        "dashboard.html"
+        "dashboard.html",
+        "zerodhaBridge.js"
       ],
       "matches": [
         "*://*.tradingview.com/*",
-        "*://*.screener.in/*"
+        "*://*.screener.in/*",
+        "*://*.zerodha.com/*",
+        "*://kite.zerodha.com/*"
       ]
     }
   ]

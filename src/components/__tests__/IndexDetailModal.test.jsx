@@ -1,5 +1,5 @@
 import React from 'react';
-import { describe, it, vi, expect, beforeEach } from 'vitest';
+import { describe, it, vi, expect } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import IndexDetailModal from '../IndexDetailModal';
 
@@ -197,13 +197,6 @@ describe('IndexDetailModal Component', () => {
   });
 
   it('renders structured AI analysis with sections when analysis text is provided', async () => {
-    const mockAiText = `### 1. MARKET STRUCTURE & PRICE ACTION
-- **Trend Regime**: Stage 2 Markup
-- **Geometry**: Higher highs and higher lows
-
-### 2. MOVING AVERAGE ALIGNMENT
-- Price comfortably above 21 EMA and 50 SMA`;
-
     render(<IndexDetailModal index={mockIndex} country="IN" onClose={vi.fn()} />);
 
     // Switch to AI tab
