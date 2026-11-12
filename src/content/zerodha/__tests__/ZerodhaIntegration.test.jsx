@@ -84,6 +84,42 @@ describe('ZerodhaHeaderDock', () => {
     expect(screen.getByText('RS')).toBeDefined();
   });
 
+  it('renders earnings pill properly from liveQuote when stockData lacks earningsDate', () => {
+    const { container } = render(
+      <ZerodhaHeaderDock
+        symbol="TECHNOCRAF"
+        stockData={{ symbol: 'TECHNOCRAF' }}
+        liveQuote={{ symbol: 'TECHNOCRAF', currentPrice: 490.35, dailyChangePct: -2.23, earningsDaysAway: 2 }}
+        currentPrice={490.35}
+        dailyChangePct={-2.23}
+      />
+    );
+
+    const dock = container.querySelector('.tc-zerodha-header-dock');
+    expect(dock).toBeDefined();
+    // Should display lightning bolt for imminent earnings <= 7d and 2d
+    expect(screen.getByText('⚡')).toBeDefined();
+    expect(screen.getByText('2d')).toBeDefined();
+  });
+
+  it('renders earnings pill properly with formatted date and countdown', () => {
+    const { container } = render(
+      <ZerodhaHeaderDock
+        symbol="TECHNOCRAF"
+        stockData={{ symbol: 'TECHNOCRAF' }}
+        liveQuote={{ symbol: 'TECHNOCRAF', currentPrice: 490.35, dailyChangePct: -2.23, earningsDate: '2026-11-14', earningsDaysAway: 2 }}
+        currentPrice={490.35}
+        dailyChangePct={-2.23}
+      />
+    );
+
+    const dock = container.querySelector('.tc-zerodha-header-dock');
+    expect(dock).toBeDefined();
+    expect(screen.getByText('⚡')).toBeDefined();
+    expect(screen.getByText('Nov 14')).toBeDefined();
+    expect(screen.getByText('(2d)')).toBeDefined();
+  });
+
   it('minimizes to glowing circular icon and expands back on click', () => {
     localStorage.clear();
     const { container } = render(

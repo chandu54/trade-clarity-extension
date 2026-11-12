@@ -680,7 +680,7 @@ export default function ZerodhaIntegration() {
   }
 
   const cleanActiveSym = (activeSymbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
-  const activeQuote = liveQuotes[cleanActiveSym] || liveQuotes[activeSymbol] || null;
+  const activeQuote = liveQuotes[cleanActiveSym] || liveQuotes[activeSymbol] || liveQuotes[`${cleanActiveSym}.NS`] || null;
 
   return (
     <>
@@ -690,8 +690,10 @@ export default function ZerodhaIntegration() {
           <ZerodhaHeaderDock
             symbol={activeSymbol}
             stockData={activeStockData}
+            liveQuote={activeQuote}
             currentPrice={activeQuote?.currentPrice}
             dailyChangePct={activeQuote?.dailyChangePct}
+            region={region}
             onOpenEditModal={() => handleOpenEditModal(activeStockData)}
           />,
           headerPortalNode

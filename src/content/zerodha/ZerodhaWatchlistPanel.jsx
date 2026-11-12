@@ -1126,10 +1126,19 @@ export default function ZerodhaWatchlistPanel({
                       let earningsDays = null;
                       if (rawEarningsDate) {
                         earningsDays = calculateDaysAway(rawEarningsDate);
-                      } else if (typeof s.earningsDaysAway === 'number') {
-                        earningsDays = s.earningsDaysAway;
-                      } else if (typeof cachedFund?.data?.catalysts?.earningsDaysAway === 'number') {
-                        earningsDays = cachedFund.data.catalysts.earningsDaysAway;
+                      }
+                      if (earningsDays === null) {
+                        if (typeof s.earningsDaysAway === 'number') {
+                          earningsDays = s.earningsDaysAway;
+                        } else if (typeof s.params?.earningsDaysAway === 'number') {
+                          earningsDays = s.params.earningsDaysAway;
+                        } else if (typeof s.parameters?.earningsDaysAway === 'number') {
+                          earningsDays = s.parameters.earningsDaysAway;
+                        } else if (typeof liveQuote?.earningsDaysAway === 'number') {
+                          earningsDays = liveQuote.earningsDaysAway;
+                        } else if (typeof cachedFund?.data?.catalysts?.earningsDaysAway === 'number') {
+                          earningsDays = cachedFund.data.catalysts.earningsDaysAway;
+                        }
                       }
 
                       // Smart & clean earnings badge (avoids cluttering rows when > 45d away or > 14d past)

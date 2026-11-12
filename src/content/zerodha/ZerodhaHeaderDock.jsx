@@ -1,13 +1,16 @@
 import React, { useMemo, useState, useRef, useCallback, useEffect } from 'react';
 import MovingAverageRibbon from '../../components/MovingAverageRibbon';
-import { calculateDaysAway, globalFundamentalsCache, fetchNseEarningsDate, fetchStockSummary } from '../../utils/stockAnalysisApi';
+import { calculateDaysAway, globalFundamentalsCache } from '../../utils/stockAnalysisApi';
+import { fetchStockQuotes } from '../../utils/yahooFinanceMap';
 
 export default function ZerodhaHeaderDock({
   symbol,
   stockData,
+  liveQuote,
   currentPrice,
   dailyChangePct,
-  _onOpenEditModal,
+  region = 'IN',
+  onOpenEditModal,
 }) {
   const priceVal = currentPrice ?? stockData?.currentPrice ?? 0;
   const changeVal = dailyChangePct ?? stockData?.dailyChangePct ?? 0;
@@ -131,90 +134,105 @@ export default function ZerodhaHeaderDock({
     return '📈';
   }, [rsVal]);
 
-  // Earnings info & countdown - comprehensive resolution matching EditStockModal
+  // Earnings info & countdown - comprehensive resolution matching ZerodhaWatchlistPanel & EditStockModal
   const cleanSym = (symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
-  const cachedFundamentals = globalFundamentalsCache.get(`${cleanSym}_IN`) ||
+  const cachedFundamentals = globalFundamentalsCache.get(`${cleanSym}_${region}`) ||
+                             globalFundamentalsCache.get(`${cleanSym}.NS_${region}`) ||
+                             globalFundamentalsCache.get(`${cleanSym}_IN`) ||
                              globalFundamentalsCache.get(`${cleanSym}.NS_IN`) ||
                              globalFundamentalsCache.get(`${cleanSym}_US`) ||
                              globalFundamentalsCache.get(`${cleanSym}.NS_US`);
 
-  // Dynamically fetch earnings date if not present on stock object or in cache
+  // Dynamically fetch earnings date if not present on stock object, liveQuote, or in cache
   const [fetchedEarnings, setFetchedEarnings] = useState(null);
+
+  const rawEarningsDate = stockData?.earningsDate ||
+                          stockData?.params?.earningsDate ||
+                          stockData?.parameters?.earningsDate ||
+                          liveQuote?.earningsDate ||
+                          cachedFundamentals?.data?.catalysts?.earningsDate ||
+                          fetchedEarnings?.earningsDate ||
+                          null;
+
+  const rawDaysAway = typeof stockData?.earningsDaysAway === 'number'
+    ? stockData.earningsDaysAway
+    : typeof stockData?.params?.earningsDaysAway === 'number'
+      ? stockData.params.earningsDaysAway
+      : typeof stockData?.parameters?.earningsDaysAway === 'number'
+        ? stockData.parameters.earningsDaysAway
+        : typeof liveQuote?.earningsDaysAway === 'number'
+          ? liveQuote.earningsDaysAway
+          : typeof cachedFundamentals?.data?.catalysts?.earningsDaysAway === 'number'
+            ? cachedFundamentals.data.catalysts.earningsDaysAway
+            : typeof fetchedEarnings?.earningsDaysAway === 'number'
+              ? fetchedEarnings.earningsDaysAway
+              : null;
 
   useEffect(() => {
     setFetchedEarnings(null);
     if (!cleanSym) return;
 
-    const existingDate = stockData?.earningsDate ||
-                         stockData?.params?.earningsDate ||
-                         stockData?.parameters?.earningsDate;
-    if (existingDate || typeof stockData?.earningsDaysAway === 'number') {
-      return;
-    }
-
-    const cached = globalFundamentalsCache.get(`${cleanSym}_IN`) ||
-                   globalFundamentalsCache.get(`${cleanSym}.NS_IN`) ||
-                   globalFundamentalsCache.get(`${cleanSym}_US`) ||
-                   globalFundamentalsCache.get(`${cleanSym}.NS_US`);
-    if (cached?.data?.catalysts?.earningsDate || typeof cached?.data?.catalysts?.earningsDaysAway === 'number') {
+    if (rawEarningsDate || typeof rawDaysAway === 'number') {
       return;
     }
 
     let isMounted = true;
-    // 1. Try official NSE calendar
-    fetchNseEarningsDate(cleanSym).then((nseRes) => {
+    const countrySuffix = region === 'IN' ? '.NS' : '';
+    const symWithSuffix = cleanSym.includes('.') ? cleanSym : `${cleanSym}${countrySuffix}`;
+
+    // Safely delegates to background service worker via Chrome runtime messaging to bypass CORS in content script
+    fetchStockQuotes([symWithSuffix], region, null, false).then((quotesList) => {
       if (!isMounted) return;
-      if (nseRes?.dateStr) {
+      const q = Array.isArray(quotesList) && quotesList[0];
+      if (q && (q.earningsDate || typeof q.earningsDaysAway === 'number')) {
         setFetchedEarnings({
-          earningsDate: nseRes.dateStr,
-          earningsDaysAway: nseRes.daysAway,
+          earningsDate: q.earningsDate || null,
+          earningsDaysAway: typeof q.earningsDaysAway === 'number'
+            ? q.earningsDaysAway
+            : (q.earningsDate ? calculateDaysAway(q.earningsDate) : null),
         });
-        return;
       }
-      // 2. Fallback to Yahoo Finance fundamentals/catalysts
-      fetchStockSummary(cleanSym, 'IN').then((sum) => {
-        if (!isMounted) return;
-        if (sum?.catalysts?.earningsDate) {
-          setFetchedEarnings({
-            earningsDate: sum.catalysts.earningsDate,
-            earningsDaysAway: sum.catalysts.earningsDaysAway,
-          });
-        }
-      }).catch(() => {});
     }).catch(() => {});
 
     return () => {
       isMounted = false;
     };
-  }, [cleanSym, stockData?.earningsDate, stockData?.params?.earningsDate, stockData?.earningsDaysAway]);
-
-  const earningsDate = stockData?.earningsDate ||
-                       stockData?.params?.earningsDate ||
-                       stockData?.parameters?.earningsDate ||
-                       cachedFundamentals?.data?.catalysts?.earningsDate ||
-                       fetchedEarnings?.earningsDate ||
-                       null;
+  }, [cleanSym, rawEarningsDate, rawDaysAway, region]);
 
   const earningsInfo = useMemo(() => {
-    const rawDays = typeof stockData?.earningsDaysAway === 'number'
-      ? stockData.earningsDaysAway
-      : typeof cachedFundamentals?.data?.catalysts?.earningsDaysAway === 'number'
-        ? cachedFundamentals.data.catalysts.earningsDaysAway
-        : typeof fetchedEarnings?.earningsDaysAway === 'number'
-          ? fetchedEarnings.earningsDaysAway
-          : null;
+    let daysAway = null;
+    if (rawEarningsDate) {
+      daysAway = calculateDaysAway(rawEarningsDate);
+    }
+    if (daysAway === null && typeof rawDaysAway === 'number') {
+      daysAway = rawDaysAway;
+    }
 
-    if (!earningsDate && rawDays === null) return null;
+    if (!rawEarningsDate && daysAway === null) return null;
 
-    const daysAway = earningsDate ? calculateDaysAway(earningsDate) : rawDays;
+    let displayDate = '';
+    if (rawEarningsDate) {
+      try {
+        const d = new Date(rawEarningsDate);
+        if (!isNaN(d.getTime())) {
+          displayDate = d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+        } else {
+          displayDate = String(rawEarningsDate).replace(/,\s*\d{4}$/, '');
+        }
+      } catch (_e) {
+        displayDate = String(rawEarningsDate).replace(/,\s*\d{4}$/, '');
+      }
+    }
+
     const isImminent = typeof daysAway === 'number' && daysAway >= 0 && daysAway <= 7;
-    const displayDate = earningsDate ? String(earningsDate).replace(/,\s*\d{4}$/, '') : (rawDays !== null ? `${rawDays}d` : '');
+
     return {
+      rawDate: rawEarningsDate,
       displayDate,
       daysAway,
       isImminent,
     };
-  }, [earningsDate, stockData?.earningsDaysAway, cachedFundamentals, fetchedEarnings]);
+  }, [rawEarningsDate, rawDaysAway]);
 
   // 1. MINIMIZED VIEW: TradingView-style small glowing circular icon / pill
   if (isMinimized) {
@@ -442,12 +460,12 @@ export default function ZerodhaHeaderDock({
             alignItems: 'center',
             gap: '4px',
             background: earningsInfo.isImminent
-              ? 'rgba(249, 115, 22, 0.18)'
+              ? 'rgba(249, 115, 22, 0.2)'
               : earningsInfo.daysAway < 0
                 ? 'rgba(15, 23, 42, 0.6)'
                 : 'rgba(15, 23, 42, 0.7)',
             border: earningsInfo.isImminent
-              ? '1px solid rgba(249, 115, 22, 0.5)'
+              ? '1px solid rgba(249, 115, 22, 0.55)'
               : earningsInfo.daysAway < 0
                 ? '1px solid rgba(148, 163, 184, 0.25)'
                 : '1px solid rgba(56, 189, 248, 0.25)',
@@ -460,22 +478,42 @@ export default function ZerodhaHeaderDock({
             borderRadius: '4px',
             fontWeight: 600,
           }}
-          title={`Earnings: ${earningsDate}${typeof earningsInfo.daysAway === 'number' ? ` (${earningsInfo.daysAway >= 0 ? `in ${earningsInfo.daysAway}d` : `${Math.abs(earningsInfo.daysAway)}d ago`})` : ''}`}
+          title={`Earnings: ${earningsInfo.rawDate || ''}${
+            typeof earningsInfo.daysAway === 'number'
+              ? ` (${earningsInfo.daysAway === 0 ? 'Today' : earningsInfo.daysAway > 0 ? `in ${earningsInfo.daysAway}d` : `${Math.abs(earningsInfo.daysAway)}d ago`})`
+              : ''
+          }`}
         >
-          <span>{earningsInfo.daysAway < 0 ? '✓' : '📅'}</span>
-          <span style={{ color: '#f8fafc' }}>
-            {earningsInfo.daysAway < 0 ? `Reported ${earningsInfo.displayDate}` : earningsInfo.displayDate}
+          <span>
+            {earningsInfo.daysAway < 0 ? '✓' : (earningsInfo.isImminent ? '⚡' : '📅')}
           </span>
-          {typeof earningsInfo.daysAway === 'number' && earningsInfo.daysAway >= 0 && (
-            <span
-              style={{
-                color: earningsInfo.isImminent ? '#fb923c' : '#38bdf8',
-                fontSize: '9px',
-                fontWeight: 700,
-              }}
-            >
-              ({earningsInfo.daysAway}d)
+          {earningsInfo.daysAway < 0 ? (
+            <span style={{ color: '#94a3b8' }}>
+              Reported {earningsInfo.displayDate || `${Math.abs(earningsInfo.daysAway)}d ago`}
             </span>
+          ) : earningsInfo.daysAway === 0 ? (
+            <span style={{ color: '#fb923c', fontWeight: 800 }}>
+              TODAY
+            </span>
+          ) : (
+            <>
+              {earningsInfo.displayDate && (
+                <span style={{ color: '#f8fafc' }}>
+                  {earningsInfo.displayDate}
+                </span>
+              )}
+              {typeof earningsInfo.daysAway === 'number' && (
+                <span
+                  style={{
+                    color: earningsInfo.isImminent ? '#fb923c' : '#38bdf8',
+                    fontSize: earningsInfo.displayDate ? '9px' : '11px',
+                    fontWeight: 700,
+                  }}
+                >
+                  {earningsInfo.displayDate ? `(${earningsInfo.daysAway}d)` : `${earningsInfo.daysAway}d`}
+                </span>
+              )}
+            </>
           )}
         </div>
       )}
