@@ -133,21 +133,30 @@ export default function ZerodhaIntegration() {
     }
   }, [loadData]);
 
-  // Track Kite Active Symbol from URL & Title
+  // Track Kite Active Symbol from URL, Title, and Search navigation (0ms two-way sync)
   useEffect(() => {
     const checkSymbol = () => {
-      // If user navigated within the last 4 seconds, ignore URL poll if it hasn't caught up
-      if (Date.now() - lastUserNavigatedTimeRef.current < 4000) {
-        return;
-      }
       const sym = extractKiteSymbol();
-      if (sym && sym !== activeSymbol) {
+      if (!sym) return;
+
+      // If user recently clicked a stock inside TradeClarity, wait only until the URL catches up to that clicked symbol
+      if (Date.now() - lastUserNavigatedTimeRef.current < 3500) {
+        if (lastUserNavigatedSymbolRef.current) {
+          const cleanLast = lastUserNavigatedSymbolRef.current.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+          if (sym !== cleanLast) {
+            // URL has not yet caught up to what the user clicked in TradeClarity
+            return;
+          }
+        }
+      }
+
+      if (sym !== activeSymbol) {
         setActiveSymbol(sym);
       }
     };
 
     checkSymbol();
-    const interval = setInterval(checkSymbol, 1000);
+    const interval = setInterval(checkSymbol, 800);
 
     const titleEl = document.querySelector('title');
     let observer = null;
@@ -156,11 +165,29 @@ export default function ZerodhaIntegration() {
       observer.observe(titleEl, { childList: true });
     }
 
+    // Intercept pushState & replaceState to detect Zerodha's search bar symbol navigation with 0ms latency
+    const origPushState = history.pushState;
+    const origReplaceState = history.replaceState;
+    history.pushState = function (...args) {
+      const res = origPushState.apply(this, args);
+      window.dispatchEvent(new Event('tc:urlchange'));
+      return res;
+    };
+    history.replaceState = function (...args) {
+      const res = origReplaceState.apply(this, args);
+      window.dispatchEvent(new Event('tc:urlchange'));
+      return res;
+    };
+
+    window.addEventListener('tc:urlchange', checkSymbol);
     window.addEventListener('popstate', checkSymbol);
 
     return () => {
       clearInterval(interval);
       if (observer) observer.disconnect();
+      history.pushState = origPushState;
+      history.replaceState = origReplaceState;
+      window.removeEventListener('tc:urlchange', checkSymbol);
       window.removeEventListener('popstate', checkSymbol);
     };
   }, [activeSymbol]);
@@ -693,11 +720,16 @@ export default function ZerodhaIntegration() {
     setIsEditModalOpen(false);
   };
 
-  // Quick Add Stock to Watchlist
-  const handleAddStock = () => {
-    const symInput = prompt('Enter symbol to add to Weekly Watchlist (e.g. TATAMOTORS):');
-    if (!symInput || !symInput.trim()) return;
-    const cleanSym = symInput.trim().toUpperCase();
+  // Quick Add Stock to Watchlist (supports optional direct symbol without prompt)
+  const handleAddStock = (customSymbol = null) => {
+    let cleanSym = '';
+    if (typeof customSymbol === 'string' && customSymbol.trim()) {
+      cleanSym = customSymbol.trim().toUpperCase();
+    } else {
+      const symInput = prompt('Enter symbol to add to Weekly Watchlist (e.g. TATAMOTORS):');
+      if (!symInput || !symInput.trim()) return;
+      cleanSym = symInput.trim().toUpperCase();
+    }
 
     const updated = structuredClone(appData || { weeks: {} });
     let targetWeeks = updated.weeks;

@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent } from '@testing-library/react';
+import { render, screen, fireEvent, act } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ZerodhaHeaderDock from '../ZerodhaHeaderDock';
 import ZerodhaWatchlistPanel from '../ZerodhaWatchlistPanel';
@@ -643,6 +643,58 @@ describe('ZerodhaContextMenu component', () => {
     expect(screen.getByText('Assign Watchlist')).toBeDefined();
   });
 
+  it('triggers onDeleteStock when Delete or Backspace key is pressed inside menu', () => {
+    const handleDeleteStock = vi.fn();
+    render(
+      <ZerodhaContextMenu
+        isOpen={true}
+        x={100}
+        y={100}
+        stock={mockStock}
+        onDeleteStock={handleDeleteStock}
+        onClose={vi.fn()}
+      />
+    );
+
+    fireEvent.keyDown(window, { key: 'Delete' });
+    expect(handleDeleteStock).toHaveBeenCalledTimes(1);
+
+    fireEvent.keyDown(window, { key: 'Backspace' });
+    expect(handleDeleteStock).toHaveBeenCalledTimes(2);
+  });
+
+  it('supports click-to-lock on Watchlists row and prevents accidental closing during diagonal hover', () => {
+    vi.useFakeTimers();
+    render(
+      <ZerodhaContextMenu
+        isOpen={true}
+        x={100}
+        y={100}
+        stock={mockStock}
+        watchlists={mockWatchlists}
+        onClose={vi.fn()}
+      />
+    );
+
+    const wlRow = screen.getByText('Watchlists').closest('.tc-context-menu-container > div');
+    // Click locks the watchlist submenu open
+    fireEvent.click(wlRow);
+    expect(screen.getByText('Assign Watchlist')).toBeDefined();
+
+    // Hover over adjacent row (e.g. Copy Ticker) - submenu stays alive within the 160ms grace window
+    const copyRow = screen.getByText('Copy Ticker').closest('.tc-context-menu-container > div');
+    fireEvent.mouseEnter(copyRow);
+    expect(screen.getByText('Assign Watchlist')).toBeDefined();
+
+    // Fast forward past the grace period
+    act(() => {
+      vi.advanceTimersByTime(200);
+    });
+    expect(screen.queryByText('Assign Watchlist')).toBeNull();
+
+    vi.useRealTimers();
+  });
+
   it('implements TradingView flag behavior: applies recent flag immediately and opens palette', () => {
     localStorage.setItem('tc_recent_flag_color', 'blue');
     const handleUpdateStockFlag = vi.fn();
@@ -696,5 +748,53 @@ describe('ZerodhaContextMenu component', () => {
 
     expect(handleUpdateStockFlag).toHaveBeenCalledWith('TRENT', 'green');
     expect(localStorage.getItem('tc_recent_flag_color')).toBe('green');
+  });
+
+  it('allows two-way sync: detects stock searched in Zerodha URL even after prior TradeClarity navigation', () => {
+    // 1. User navigates via TradeClarity
+    switchKiteSymbol('PAYTM');
+    expect(extractKiteSymbol()).toBe('PAYTM');
+
+    // 2. User searches in Zerodha Kite, which updates the browser location URL to BHEL
+    delete window.location;
+    window.location = new URL('https://kite.zerodha.com/markets/ext/chart/web/tvc/NSE/BHEL/112129');
+
+    // 3. extractKiteSymbol detects Zerodha's live URL without being locked onto PAYTM
+    expect(extractKiteSymbol()).toBe('BHEL');
+  });
+
+  it('renders an external active stock banner with 1-click + Add button when searched stock is not in watchlist', () => {
+    const handleAdd = vi.fn();
+    const mockData = {
+      weeks: {
+        IN: {
+          '2026-11-08': {
+            stocks: {
+              TRENT: { symbol: 'TRENT', sector: 'Retail', currentPrice: 3180.0, dailyChangePct: 0.15 },
+            },
+          },
+        },
+      },
+      watchlists: [],
+    };
+
+    render(
+      <ZerodhaWatchlistPanel
+        appData={mockData}
+        region="IN"
+        activeSymbol="RELIANCE"
+        onSelectStock={vi.fn()}
+        onAddStock={handleAdd}
+      />
+    );
+
+    // Shows external banner indicating RELIANCE is active in Kite
+    expect(screen.getByText('RELIANCE')).toBeDefined();
+    expect(screen.getByText(/Active in Kite/i)).toBeDefined();
+
+    // Clicking + Add calls onAddStock with RELIANCE
+    const addBtn = screen.getByRole('button', { name: /\+ Add/i });
+    fireEvent.click(addBtn);
+    expect(handleAdd).toHaveBeenCalledWith('RELIANCE');
   });
 });

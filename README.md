@@ -5,7 +5,6 @@
 TradeClarity.market is a powerful React-based application designed for swing traders to manage weekly watchlists, analyze stock setups, and maintain trading discipline. It functions both as a standalone web application and a browser extension, allowing you to keep your trading data organized and accessible.
 <img width="958" height="456" alt="image" src="https://github.com/user-attachments/assets/9700b7d1-7573-4a5e-b1be-4edde64faa2b" />
 
-
 ## 🚀 Features
 
 - **Weekly Watchlists**: Organize your stock ideas by week. Navigate through history to review past setups.
@@ -27,9 +26,9 @@ TradeClarity.market is a powerful React-based application designed for swing tra
   - **Infinity Candlestick Charting**: Dynamic historical price backfilling by scrolling left on the chart, loaded on demand with custom SMA/EMA overlays.
   - **Modular Right Rail Dock**: Persistent dock providing instant, non-blocking overlays for your **Position Ledger**, **AI Micro-Analysis** (with Radium motion pulse feedback), and **News & Catalysts Radar**.
   - **📰 News & Catalysts Radar**: Real-time breaking news feed combining Google News RSS and Yahoo Finance:
-    - **Reverse Chronological Ranking**: Every article is strictly sorted descending by publication timestamp (*2h ago, 12h ago, Yesterday*), guaranteeing breaking news is always at the top.
+    - **Reverse Chronological Ranking**: Every article is strictly sorted descending by publication timestamp (_2h ago, 12h ago, Yesterday_), guaranteeing breaking news is always at the top.
     - **Cascading Freshness Filters**: Uses dynamic 14-day recency filters (`when:14d` → `when:30d`) to eliminate months-old archives and focus on live catalysts.
-    - **Multi-Market Coverage**: Covers top Indian financial media (*LiveMint, Economic Times, Moneycontrol, BusinessLine, CNBC-TV18, Univest*) and major US publishers (*Reuters, Bloomberg, Benzinga, Yahoo Finance*).
+    - **Multi-Market Coverage**: Covers top Indian financial media (_LiveMint, Economic Times, Moneycontrol, BusinessLine, CNBC-TV18, Univest_) and major US publishers (_Reuters, Bloomberg, Benzinga, Yahoo Finance_).
     - **Word-Boundary Symbol Isolation**: Regex word boundary (`\bSYMBOL\b`) prevents false ticker matches (e.g. `ABB` will never match AbbVie or Abbott).
     - **Auto-Fetch on Open**: Background engine fetches news immediately with an animated shimmer bone skeleton without requiring manual refresh.
 - **Customizable Parameters**: Define your own technical criteria (e.g., "Relative Strength", "Stage 2", "VCP Pattern") using Text, Dropdown, or Checkbox inputs.
@@ -37,7 +36,7 @@ TradeClarity.market is a powerful React-based application designed for swing tra
 - **AI-Powered Analysis**: Integrated with **Google Gemini** and **OpenAI** to generate professional market summaries, identify top sectors, and highlight actionable setups based on your watchlist data.
 - **Category Analysis**: A premium modal-based drill-down view for any sector:
   - **Snapshot**: A high-performance "Bird's Eye" grid of mini-candlestick charts (1M, 3M, 1Y) for all stocks in the category.
-  -   <img width="811" height="415" alt="image" src="https://github.com/user-attachments/assets/ed52cae0-d43b-421e-939a-009ff6d1d33a" />
+  - <img width="811" height="415" alt="image" src="https://github.com/user-attachments/assets/ed52cae0-d43b-421e-939a-009ff6d1d33a" />
   - **Phenomena**: Deep AI-driven institutional research that identifies group themes, relative strength leaders, and specific entry triggers.
   - **Breadth Headers**: Instant visibility into category health with Advancer/Decliner counts and performance leaders.
 - <img width="368" height="377" alt="image" src="https://github.com/user-attachments/assets/b0c3af44-51ad-4fee-9b04-f23fbd0e3844" />
@@ -47,8 +46,6 @@ TradeClarity.market is a powerful React-based application designed for swing tra
   - **Customizable Layout**: Reorder widgets via drag-and-drop and toggle visibility to focus on what matters.
   - <img width="316" height="350" alt="image" src="https://github.com/user-attachments/assets/2e56e688-5ebf-4a11-a8f7-10bd1d5c0180" />
   - <img width="783" height="437" alt="image" src="https://github.com/user-attachments/assets/fb6a58e8-e9bc-4232-85ef-276942dd18b5" />
-
-
 
 **Stock Management**:
 
@@ -70,19 +67,17 @@ TradeClarity.market is a powerful React-based application designed for swing tra
 
 ## ⌨️ Keyboard Shortcuts
 
-| Shortcut | Action |
-| :--- | :--- |
-| **Alt + N** | Add New Stock |
-| **Ctrl + K** | Focus Search Bar |
-| **Alt + S** | Open Global Settings |
-| **Alt + A** | Open Analytics Dashboard |
-| **Alt + I** | Generate AI Insights |
-| **Alt + T** | Toggle Light/Dark Theme |
-| **Esc** | Close Active Modal |
-| **↑ / ↓** (on Zerodha) | Navigate Watchlist & Switch Kite Chart |
-| **Click Symbol** (on Zerodha) | 1-Click Instant Kite Chart Switch |
-| **W** (on Zerodha) | Open / Toggle Watchlist Submenu |
-| **S** (on Zerodha) | Open / Change Sector Submenu |
+| Shortcut                      | Action                                 |
+| :---------------------------- | :------------------------------------- |
+| **Alt + N**                   | Add New Stock                          |
+| **Ctrl + K**                  | Focus Search Bar                       |
+| **Alt + S**                   | Open Global Settings                   |
+| **Alt + A**                   | Open Analytics Dashboard               |
+| **Alt + I**                   | Generate AI Insights                   |
+| **Alt + T**                   | Toggle Light/Dark Theme                |
+| **Esc**                       | Close Active Modal                     |
+| **↑ / ↓** (on Zerodha)        | Navigate Watchlist & Switch Kite Chart |
+| **Click Symbol** (on Zerodha) | 1-Click Instant Kite Chart Switch      |
 
 ** Weekly Summary Info**:
 <img width="485" height="705" alt="image" src="https://github.com/user-attachments/assets/281214c2-63bf-48a9-aa14-95bf9d82dd7e" />

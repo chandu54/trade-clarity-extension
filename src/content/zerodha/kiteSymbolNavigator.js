@@ -9,9 +9,13 @@ import zerodhaInstrumentsMap from '../../constants/zerodhaInstrumentsMap.json';
 // In-memory cache for Zerodha instrument tokens
 const instrumentTokenCache = new Map();
 let currentNavigatedSymbol = null;
+let lastSeenUrlPath = '';
+let navigatedAt = 0;
 
 export function resetNavigatedSymbol() {
   currentNavigatedSymbol = null;
+  lastSeenUrlPath = '';
+  navigatedAt = 0;
 }
 
 /**
@@ -129,44 +133,64 @@ export async function getKiteInstrumentTokenFromIndexedDB(symbol, exchange = 'NS
 }
 
 export function extractKiteSymbol() {
-  if (currentNavigatedSymbol) {
-    return currentNavigatedSymbol;
-  }
   try {
-    // 1. Check URL path patterns
-    // e.g. /markets/ext/chart/web/tvc/NSE/SONACOMS/1199105 or /chart/ext/tvc/NSE/SONACOMS/1199105
-    const path = window.location.pathname;
+    const path = typeof window !== 'undefined' ? window.location.pathname : '';
     const tvcMatch = path.match(/\/tvc\/(?:NSE|BSE|NFO|MCX)\/([A-Z0-9_\-&]+)/i);
-    if (tvcMatch && tvcMatch[1]) {
-      return tvcMatch[1].toUpperCase();
+    const urlSym = tvcMatch && tvcMatch[1] ? tvcMatch[1].toUpperCase() : null;
+
+    // 1. If the URL path has changed since we last navigated, the live URL is the authoritative source!
+    if (path && path !== lastSeenUrlPath && urlSym) {
+      lastSeenUrlPath = path;
+      currentNavigatedSymbol = null;
+      return urlSym;
     }
 
-    // 2. Generic path segment match
+    // 2. If URL has not changed yet and we recently dispatched a symbol switch (< 2500ms), prefer in-flight symbol
+    if (currentNavigatedSymbol && (Date.now() - navigatedAt < 2500)) {
+      return currentNavigatedSymbol;
+    }
+
+    if (urlSym) return urlSym;
+
+    // 3. Generic path segment match
     const pathSegments = path.split('/').filter(Boolean);
     const tvcIdx = pathSegments.indexOf('tvc');
     if (tvcIdx !== -1 && pathSegments.length > tvcIdx + 2) {
-      return pathSegments[tvcIdx + 2].toUpperCase();
+      const segSym = pathSegments[tvcIdx + 2].toUpperCase();
+      if (path !== lastSeenUrlPath) {
+        lastSeenUrlPath = path;
+        currentNavigatedSymbol = null;
+      }
+      return segSym;
     }
 
-    // 3. Fallback: Parse document title (e.g. "SONACOMS ₹929.00 - Kite")
-    const titleMatch = document.title.match(/^([A-Z0-9_\-&]+)/);
-    if (titleMatch && titleMatch[1] && titleMatch[1] !== 'KITE' && titleMatch[1] !== 'ZERODHA') {
-      return titleMatch[1].toUpperCase();
+    // 4. Fallback: Parse document title (e.g. "SONACOMS ₹929.00 - Kite" or "BHEL ₹431.20 - Kite")
+    if (typeof document !== 'undefined') {
+      const titleMatch = document.title.match(/^([A-Z0-9_\-&]+)/);
+      if (titleMatch && titleMatch[1] && titleMatch[1] !== 'KITE' && titleMatch[1] !== 'ZERODHA') {
+        return titleMatch[1].toUpperCase();
+      }
+
+      // 5. Fallback: Search for TradingView or Kite symbol DOM nodes
+      const symbolElement = document.querySelector(
+        '.tv-symbol-input-box, .chart-symbol, [data-name="legend-source-title"], .symbol-search'
+      );
+      if (symbolElement && symbolElement.textContent) {
+        const match = symbolElement.textContent.trim().match(/^([A-Z0-9_\-&]+)/);
+        if (match && match[1] && match[1] !== 'KITE' && match[1] !== 'ZERODHA') {
+          return match[1].toUpperCase();
+        }
+      }
     }
 
-    // 4. Fallback: Search for TradingView or Kite symbol DOM nodes
-    const symbolElement = document.querySelector(
-      '.tv-symbol-input-box, .chart-symbol, [data-name="legend-source-title"], .symbol-search'
-    );
-    if (symbolElement && symbolElement.textContent) {
-      const match = symbolElement.textContent.trim().match(/^([A-Z0-9_\-&]+)/);
-      if (match && match[1]) return match[1].toUpperCase();
+    if (currentNavigatedSymbol) {
+      return currentNavigatedSymbol;
     }
   } catch (err) {
     console.warn('[TradeClarity] Could not extract Kite symbol:', err);
   }
 
-  return null;
+  return currentNavigatedSymbol || null;
 }
 
 /**
@@ -249,6 +273,8 @@ export function switchKiteSymbol(symbol, exchange = 'NSE') {
   if (!symbol) return false;
   const cleanSymbol = symbol.trim().replace(/^(NSE|BSE|NFO|MCX):/i, '').toUpperCase();
   currentNavigatedSymbol = cleanSymbol;
+  lastSeenUrlPath = typeof window !== 'undefined' ? window.location.pathname : '';
+  navigatedAt = Date.now();
   document.title = `${cleanSymbol} - Kite`;
 
   ensureBridgeInjected();

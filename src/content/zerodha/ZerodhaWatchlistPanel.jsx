@@ -452,12 +452,45 @@ export default function ZerodhaWatchlistPanel({
     window.addEventListener('blur', onMouseUp);
   };
 
+  const prevActiveSymbolRef = useRef(activeSymbol);
+
+  // Auto-expand group containing activeSymbol only when activeSymbol transitions to a new stock
+  useEffect(() => {
+    if (!activeSymbol || !groupedStocks || groupedStocks.length === 0) return;
+    const cleanActive = (activeSymbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+    const cleanPrev = (prevActiveSymbolRef.current || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+
+    if (cleanActive !== cleanPrev) {
+      prevActiveSymbolRef.current = activeSymbol;
+
+      for (const group of groupedStocks) {
+        const hasStock = group.stocks.some((s) => {
+          const clean = (s.symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+          return clean === cleanActive;
+        });
+        if (hasStock && collapsedGroups[group.key]) {
+          setCollapsedGroups((prev) => {
+            const updated = { ...prev, [group.key]: false };
+            try {
+              localStorage.setItem('tc_zerodha_collapsed_groups', JSON.stringify(updated));
+            } catch (_e) {}
+            return updated;
+          });
+          break;
+        }
+      }
+    }
+  }, [activeSymbol, groupedStocks, collapsedGroups]);
+
   // Auto-scroll active stock row into view
   useEffect(() => {
-    if (typeof activeRowRef.current?.scrollIntoView === 'function') {
-      activeRowRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-    }
-  }, [activeSymbol]);
+    const timer = setTimeout(() => {
+      if (typeof activeRowRef.current?.scrollIntoView === 'function') {
+        activeRowRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+      }
+    }, 60);
+    return () => clearTimeout(timer);
+  }, [activeSymbol, collapsedGroups]);
 
   // Close menus when clicking outside
   useEffect(() => {
@@ -1225,7 +1258,6 @@ export default function ZerodhaWatchlistPanel({
                   boxSizing: 'border-box',
                 }}
               >
-                <span style={{ fontSize: '11px', color: '#64748b' }}>🔍</span>
                 <input
                   type="text"
                   placeholder="Filter ticker or sector..."
@@ -1431,6 +1463,53 @@ export default function ZerodhaWatchlistPanel({
               padding: '2px 0',
             }}
           >
+            {/* Active External Symbol Banner (when stock was searched from Zerodha and not in watchlist) */}
+            {(() => {
+              const cleanActive = (activeSymbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+              const isStockInWatchlist = stockList.some((s) => (s.symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase() === cleanActive);
+              if (!cleanActive || isStockInWatchlist || stockList.length === 0) return null;
+
+              return (
+                <div
+                  style={{
+                    margin: '4px 8px 6px 8px',
+                    padding: '5px 8px',
+                    borderRadius: '5px',
+                    background: 'rgba(56, 189, 248, 0.08)',
+                    border: '1px solid rgba(56, 189, 248, 0.25)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    fontSize: '11px',
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '5px', minWidth: 0, overflow: 'hidden' }}>
+                    <span style={{ color: '#38bdf8', fontWeight: 700, fontSize: '11.5px' }}>{cleanActive}</span>
+                    <span style={{ color: '#94a3b8', fontSize: '10px', whiteSpace: 'nowrap' }}>• Active in Kite</span>
+                  </div>
+                  {onAddStock && (
+                    <button
+                      onClick={() => onAddStock(cleanActive)}
+                      style={{
+                        background: '#38bdf8',
+                        color: '#0f172a',
+                        border: 'none',
+                        borderRadius: '4px',
+                        padding: '2px 7px',
+                        fontSize: '10px',
+                        fontWeight: 700,
+                        cursor: 'pointer',
+                        flexShrink: 0,
+                        transition: 'background 0.12s',
+                      }}
+                      title={`Add ${cleanActive} to current TradeClarity watchlist`}
+                    >
+                      + Add
+                    </button>
+                  )}
+                </div>
+              );
+            })()}
             {groupedStocks.map((group, groupIdx) => {
               const isGroupCollapsed = collapsedGroups[group.key] || false;
               const showGroupHeader = group.title !== '';

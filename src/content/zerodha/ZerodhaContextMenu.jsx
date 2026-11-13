@@ -31,14 +31,48 @@ export default function ZerodhaContextMenu({
   onDeleteStock,
 }) {
   const menuRef = useRef(null);
+  const hoverTimeoutRef = useRef(null);
   const [activeSubmenu, setActiveSubmenu] = useState(initialSubmenu); // 'watchlist' | 'sector' | 'flag' | 'tags' | null
   const [customSectorInput, setCustomSectorInput] = useState('');
   const [pos, setPos] = useState({ top: y, left: x });
+
+  const clearHoverTimeout = () => {
+    if (hoverTimeoutRef.current) {
+      clearTimeout(hoverTimeoutRef.current);
+      hoverTimeoutRef.current = null;
+    }
+  };
+
+  useEffect(() => {
+    return () => clearHoverTimeout();
+  }, []);
+
+  const handleRowHover = (targetSubmenu) => {
+    clearHoverTimeout();
+    if (targetSubmenu === activeSubmenu) return;
+
+    if (activeSubmenu) {
+      // Grace window: if a submenu is already open, give 160ms before switching or closing
+      // to allow diagonal cursor travel without the submenu abruptly vanishing!
+      hoverTimeoutRef.current = setTimeout(() => {
+        setActiveSubmenu(targetSubmenu || null);
+      }, 160);
+    } else {
+      // Immediate open if no submenu is open yet
+      setActiveSubmenu(targetSubmenu || null);
+    }
+  };
+
+  const handleRowClick = (targetSubmenu) => {
+    clearHoverTimeout();
+    setActiveSubmenu((prev) => (prev === targetSubmenu ? null : targetSubmenu));
+  };
 
   useEffect(() => {
     if (isOpen) {
       setActiveSubmenu(initialSubmenu || null);
     } else {
+      clearHoverTimeout();
       setActiveSubmenu(null);
       setCustomSectorInput('');
     }
@@ -68,8 +102,14 @@ export default function ZerodhaContextMenu({
     setPos({ top: posY, left: posX });
   }, [isOpen, x, y]);
 
+  // Global keydown with capture phase to intercept shortcuts before Kite or TradingView consume them
   useEffect(() => {
     if (!isOpen) return;
+
+    // Focus menu container on open so keyboard events immediately register
+    if (menuRef.current && typeof menuRef.current.focus === 'function') {
+      menuRef.current.focus();
+    }
 
     const handlePointerDown = (e) => {
       const path = typeof e.composedPath === 'function' ? e.composedPath() : [];
@@ -79,37 +119,54 @@ export default function ZerodhaContextMenu({
     };
 
     const handleKeyDown = (e) => {
+      // Don't intercept shortcuts when typing in the inline custom sector input
+      if (e.target && e.target.tagName === 'INPUT') return;
+
       if (e.key === 'Escape') {
         e.preventDefault();
+        e.stopPropagation();
         onClose();
       } else if (e.key.toLowerCase() === 'f') {
         e.preventDefault();
+        e.stopPropagation();
+        clearHoverTimeout();
         setActiveSubmenu((prev) => (prev === 'flag' ? null : 'flag'));
       } else if (e.key.toLowerCase() === 'w') {
         e.preventDefault();
+        e.stopPropagation();
+        clearHoverTimeout();
         setActiveSubmenu((prev) => (prev === 'watchlist' ? null : 'watchlist'));
       } else if (e.key.toLowerCase() === 's') {
         e.preventDefault();
+        e.stopPropagation();
+        clearHoverTimeout();
         setActiveSubmenu((prev) => (prev === 'sector' ? null : 'sector'));
       } else if (e.key.toLowerCase() === 't') {
         e.preventDefault();
+        e.stopPropagation();
         if (onToggleTradable) onToggleTradable();
       } else if (e.key.toLowerCase() === 'c') {
         e.preventDefault();
+        e.stopPropagation();
         if (onCopySymbol) onCopySymbol();
       } else if (e.key === 'Enter') {
         e.preventDefault();
+        e.stopPropagation();
         if (onEditStock) onEditStock();
+      } else if (e.key === 'Delete' || e.key === 'Backspace') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (onDeleteStock) onDeleteStock();
       }
     };
 
     window.addEventListener('pointerdown', handlePointerDown);
-    window.addEventListener('keydown', handleKeyDown);
+    window.addEventListener('keydown', handleKeyDown, true);
     return () => {
       window.removeEventListener('pointerdown', handlePointerDown);
-      window.removeEventListener('keydown', handleKeyDown);
+      window.removeEventListener('keydown', handleKeyDown, true);
     };
-  }, [isOpen, onClose, onToggleTradable, onCopySymbol, onEditStock]);
+  }, [isOpen, onClose, onToggleTradable, onCopySymbol, onEditStock, onDeleteStock]);
 
   if (!isOpen || !stock) return null;
 
@@ -125,6 +182,7 @@ export default function ZerodhaContextMenu({
   return (
     <div
       ref={menuRef}
+      tabIndex={-1}
       className="tc-context-menu-container"
       style={{
         position: 'fixed',
@@ -140,10 +198,17 @@ export default function ZerodhaContextMenu({
         fontSize: '12px',
         userSelect: 'none',
         pointerEvents: 'auto',
+        outline: 'none',
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
         color: '#cbd5e1',
       }}
       onClick={(e) => e.stopPropagation()}
+      onMouseLeave={() => {
+        clearHoverTimeout();
+        hoverTimeoutRef.current = setTimeout(() => {
+          setActiveSubmenu(null);
+        }, 180);
+      }}
     >
       {/* Header */}
       <div
@@ -200,11 +265,16 @@ export default function ZerodhaContextMenu({
           cursor: 'pointer',
           transition: 'background 0.12s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = '#252f44';
+          handleRowHover(null);
+        }}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>⚡</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2" />
+          </svg>
           <span style={{ color: '#fff', fontWeight: 600 }}>Edit Setup in TradeClarity</span>
         </div>
         <kbd style={{ fontSize: '10px', color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: '3px' }}>
@@ -227,11 +297,17 @@ export default function ZerodhaContextMenu({
             cursor: 'pointer',
             transition: 'background 0.12s',
           }}
-          onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+          onMouseEnter={(e) => {
+            e.currentTarget.style.background = '#252f44';
+            handleRowHover(null);
+          }}
           onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
         >
           <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <span style={{ color: '#38bdf8' }}>↗</span>
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+              <line x1="7" y1="17" x2="17" y2="7" />
+              <polyline points="7 7 17 7 17 17" />
+            </svg>
             <span style={{ color: '#38bdf8', fontWeight: 600 }}>Open in TradeClarity Tab</span>
           </div>
         </div>
@@ -239,7 +315,8 @@ export default function ZerodhaContextMenu({
 
       {/* Menu Item: Set Flag Color */}
       <div
-        onMouseEnter={() => setActiveSubmenu('flag')}
+        onMouseEnter={() => handleRowHover('flag')}
+        onClick={() => handleRowClick('flag')}
         style={{
           padding: '6px 12px',
           display: 'flex',
@@ -247,15 +324,15 @@ export default function ZerodhaContextMenu({
           justifyContent: 'space-between',
           cursor: 'pointer',
           position: 'relative',
-        }}
-        onMouseLeave={(e) => {
-          if (!e.relatedTarget?.closest?.('.tc-context-submenu')) {
-            // Keep active if moving into submenu
-          }
+          background: activeSubmenu === 'flag' ? '#252f44' : 'transparent',
+          transition: 'background 0.12s',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>🚩</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
+            <line x1="4" y1="22" x2="4" y2="15" />
+          </svg>
           <span>Set Flag Color</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -269,6 +346,7 @@ export default function ZerodhaContextMenu({
         {activeSubmenu === 'flag' && (
           <div
             className="tc-context-submenu"
+            onMouseEnter={clearHoverTimeout}
             style={{
               position: 'absolute',
               ...(openSubmenuLeft ? { right: 'calc(100% - 2px)' } : { left: 'calc(100% - 2px)' }),
@@ -284,6 +362,16 @@ export default function ZerodhaContextMenu({
               pointerEvents: 'auto',
             }}
           >
+            {/* Invisible Hitbox Bridge to Parent Menu */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                ...(openSubmenuLeft ? { right: '-12px', width: '16px' } : { left: '-12px', width: '16px' }),
+                pointerEvents: 'auto',
+              }}
+            />
             {Object.entries(FLAG_COLOR_MAP).map(([colName, colHex]) => (
               <div
                 key={colName}
@@ -340,12 +428,22 @@ export default function ZerodhaContextMenu({
           alignItems: 'center',
           justifyContent: 'space-between',
           cursor: 'pointer',
+          transition: 'background 0.12s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = '#252f44';
+          handleRowHover(null);
+        }}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>🎯</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <circle cx="12" cy="12" r="10" />
+            <line x1="22" y1="12" x2="18" y2="12" />
+            <line x1="6" y1="12" x2="2" y2="12" />
+            <line x1="12" y1="6" x2="12" y2="2" />
+            <line x1="12" y1="22" x2="12" y2="18" />
+          </svg>
           <span>{stock.tradable ? 'Mark as Untradable' : 'Mark as Tradable'}</span>
         </div>
         <kbd style={{ fontSize: '10px', color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: '3px' }}>
@@ -355,7 +453,8 @@ export default function ZerodhaContextMenu({
 
       {/* Menu Item: Watchlists Submenu */}
       <div
-        onMouseEnter={() => setActiveSubmenu('watchlist')}
+        onMouseEnter={() => handleRowHover('watchlist')}
+        onClick={() => handleRowClick('watchlist')}
         style={{
           padding: '6px 12px',
           display: 'flex',
@@ -363,10 +462,14 @@ export default function ZerodhaContextMenu({
           justifyContent: 'space-between',
           cursor: 'pointer',
           position: 'relative',
+          background: activeSubmenu === 'watchlist' ? '#252f44' : 'transparent',
+          transition: 'background 0.12s',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>📁</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z" />
+          </svg>
           <span>Watchlists</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -379,6 +482,7 @@ export default function ZerodhaContextMenu({
         {activeSubmenu === 'watchlist' && (
           <div
             className="tc-context-submenu"
+            onMouseEnter={clearHoverTimeout}
             style={{
               position: 'absolute',
               ...(openSubmenuLeft ? { right: 'calc(100% - 2px)' } : { left: 'calc(100% - 2px)' }),
@@ -395,6 +499,16 @@ export default function ZerodhaContextMenu({
               pointerEvents: 'auto',
             }}
           >
+            {/* Invisible Hitbox Bridge to Parent Menu */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                ...(openSubmenuLeft ? { right: '-12px', width: '16px' } : { left: '-12px', width: '16px' }),
+                pointerEvents: 'auto',
+              }}
+            />
             <div style={{ padding: '4px 10px', fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
               Assign Watchlist
             </div>
@@ -436,7 +550,8 @@ export default function ZerodhaContextMenu({
 
       {/* Menu Item: Sector Submenu */}
       <div
-        onMouseEnter={() => setActiveSubmenu('sector')}
+        onMouseEnter={() => handleRowHover('sector')}
+        onClick={() => handleRowClick('sector')}
         style={{
           padding: '6px 12px',
           display: 'flex',
@@ -444,10 +559,16 @@ export default function ZerodhaContextMenu({
           justifyContent: 'space-between',
           cursor: 'pointer',
           position: 'relative',
+          background: activeSubmenu === 'sector' ? '#252f44' : 'transparent',
+          transition: 'background 0.12s',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>🏢</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <polygon points="12 2 2 7 12 12 22 7 12 2" />
+            <polyline points="2 17 12 22 22 17" />
+            <polyline points="2 12 12 17 22 12" />
+          </svg>
           <span>Sector</span>
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
@@ -460,6 +581,7 @@ export default function ZerodhaContextMenu({
         {activeSubmenu === 'sector' && (
           <div
             className="tc-context-submenu"
+            onMouseEnter={clearHoverTimeout}
             style={{
               position: 'absolute',
               ...(openSubmenuLeft ? { right: 'calc(100% - 2px)' } : { left: 'calc(100% - 2px)' }),
@@ -476,6 +598,16 @@ export default function ZerodhaContextMenu({
               pointerEvents: 'auto',
             }}
           >
+            {/* Invisible Hitbox Bridge to Parent Menu */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                ...(openSubmenuLeft ? { right: '-12px', width: '16px' } : { left: '-12px', width: '16px' }),
+                pointerEvents: 'auto',
+              }}
+            />
             <div style={{ padding: '4px 10px', fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
               Assign Sector
             </div>
@@ -576,7 +708,8 @@ export default function ZerodhaContextMenu({
 
       {/* Menu Item: Tags Submenu */}
       <div
-        onMouseEnter={() => setActiveSubmenu('tags')}
+        onMouseEnter={() => handleRowHover('tags')}
+        onClick={() => handleRowClick('tags')}
         style={{
           padding: '6px 12px',
           display: 'flex',
@@ -584,10 +717,15 @@ export default function ZerodhaContextMenu({
           justifyContent: 'space-between',
           cursor: 'pointer',
           position: 'relative',
+          background: activeSubmenu === 'tags' ? '#252f44' : 'transparent',
+          transition: 'background 0.12s',
         }}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>🏷️</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+            <line x1="7" y1="7" x2="7.01" y2="7" />
+          </svg>
           <span>Tags</span>
         </div>
         <span style={{ fontSize: '10px', color: '#64748b' }}>{openSubmenuLeft ? '◂' : '▸'}</span>
@@ -595,6 +733,7 @@ export default function ZerodhaContextMenu({
         {activeSubmenu === 'tags' && (
           <div
             className="tc-context-submenu"
+            onMouseEnter={clearHoverTimeout}
             style={{
               position: 'absolute',
               ...(openSubmenuLeft ? { right: 'calc(100% - 2px)' } : { left: 'calc(100% - 2px)' }),
@@ -611,6 +750,16 @@ export default function ZerodhaContextMenu({
               pointerEvents: 'auto',
             }}
           >
+            {/* Invisible Hitbox Bridge to Parent Menu */}
+            <div
+              style={{
+                position: 'absolute',
+                top: 0,
+                bottom: 0,
+                ...(openSubmenuLeft ? { right: '-12px', width: '16px' } : { left: '-12px', width: '16px' }),
+                pointerEvents: 'auto',
+              }}
+            />
             <div style={{ padding: '4px 10px', fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
               Toggle Tag
             </div>
@@ -661,12 +810,19 @@ export default function ZerodhaContextMenu({
           alignItems: 'center',
           justifyContent: 'space-between',
           cursor: 'pointer',
+          transition: 'background 0.12s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = '#252f44';
+          handleRowHover(null);
+        }}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span>📋</span>
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+            <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+          </svg>
           <span>Copy Ticker</span>
         </div>
         <kbd style={{ fontSize: '10px', color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: '3px' }}>
@@ -686,11 +842,17 @@ export default function ZerodhaContextMenu({
           alignItems: 'center',
           gap: '8px',
           cursor: 'pointer',
+          transition: 'background 0.12s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = '#252f44';
+          handleRowHover(null);
+        }}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
-        <span>↗</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+        </svg>
         <span>Open in TradingView</span>
       </div>
 
@@ -706,11 +868,19 @@ export default function ZerodhaContextMenu({
           alignItems: 'center',
           gap: '8px',
           cursor: 'pointer',
+          transition: 'background 0.12s',
         }}
-        onMouseEnter={(e) => (e.currentTarget.style.background = '#252f44')}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = '#252f44';
+          handleRowHover(null);
+        }}
         onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
       >
-        <span>📊</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+          <line x1="18" y1="20" x2="18" y2="10" />
+          <line x1="12" y1="20" x2="12" y2="4" />
+          <line x1="6" y1="20" x2="6" y2="14" />
+        </svg>
         <span>Open in Screener.in</span>
       </div>
 
@@ -730,12 +900,19 @@ export default function ZerodhaContextMenu({
               justifyContent: 'space-between',
               cursor: 'pointer',
               color: '#f87171',
+              transition: 'background 0.12s',
             }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)')}
+            onMouseEnter={(e) => {
+              e.currentTarget.style.background = 'rgba(239, 68, 68, 0.15)';
+              handleRowHover(null);
+            }}
             onMouseLeave={(e) => (e.currentTarget.style.background = 'transparent')}
           >
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <span>🗑️</span>
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#f87171" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                <polyline points="3 6 5 6 21 6" />
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+              </svg>
               <span>Remove from Watchlist</span>
             </div>
             <kbd style={{ fontSize: '10px', color: '#f87171', background: 'rgba(239, 68, 68, 0.1)', padding: '1px 4px', borderRadius: '3px' }}>
