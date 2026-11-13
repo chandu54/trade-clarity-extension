@@ -4,7 +4,7 @@ import MiniCandlestickChart from "./MiniCandlestickChart";
 import { fetchStockData, fetchStockQuotes } from "../utils/yahooFinanceMap";
 import { getBenchmarkOptions, fetchBenchmarkCandles, calculateStockRsForCandles } from "../utils/benchmarkUtils";
 import { getSingleStockAnalysis, PROMPT_TEMPLATES, enrichStockMetadataAI } from "../services/ai";
-import { isParamRelevantForCountry, getActualParamKeyAndDef } from "../utils/paramUtils";
+import { isParamRelevantForCountry, getActualParamKeyAndDef, formatSectionTitle } from "../utils/paramUtils";
 import MovingAverageRibbon from "./MovingAverageRibbon";
 import { fetchStockSummary, fetchStockNews, globalFundamentalsCache, fetchNseEarningsDate, calculateDaysAway } from "../utils/stockAnalysisApi";
 
@@ -430,7 +430,8 @@ export default function EditStockModal({
     const groups = {};
     if (sidebarGrouping === 'sector') {
       sortedStocks.forEach(s => {
-        const sec = s.sector || 'Unassigned';
+        const rawSec = s.sector || 'Unassigned';
+        const sec = formatSectionTitle(rawSec);
         if (!groups[sec]) groups[sec] = { key: sec, title: sec, stocks: [] };
         groups[sec].stocks.push(s);
       });
@@ -438,14 +439,16 @@ export default function EditStockModal({
       sortedStocks.forEach(s => {
         const tags = s.tags && s.tags.length > 0 ? s.tags : ['No Tags'];
         tags.forEach(t => {
-          if (!groups[t]) groups[t] = { key: t, title: t, stocks: [] };
-          groups[t].stocks.push(s);
+          const formattedT = t === 'No Tags' ? 'No Tags' : formatSectionTitle(t);
+          if (!groups[formattedT]) groups[formattedT] = { key: formattedT, title: formattedT, stocks: [] };
+          groups[formattedT].stocks.push(s);
         });
       });
     } else if (sidebarGrouping === 'flag') {
       sortedStocks.forEach(s => {
         const flagKey = s.flagColor || 'none';
-        const flagTitle = s.flagColor ? `${s.flagColor.toUpperCase()} FLAG` : 'No Flag';
+        const colorName = s.flagColor ? s.flagColor.charAt(0).toUpperCase() + s.flagColor.slice(1).toLowerCase() : '';
+        const flagTitle = s.flagColor ? `${colorName} Flag` : 'No Flag';
         if (!groups[flagKey]) groups[flagKey] = { key: flagKey, title: flagTitle, flagColor: s.flagColor || null, stocks: [] };
         groups[flagKey].stocks.push(s);
       });

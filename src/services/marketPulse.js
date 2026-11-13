@@ -56,7 +56,7 @@ export const INDEX_NAME_MAP = {
 };
 
 
-export function filterToLatestActiveSession(candlesticks) {
+export function filterToLatestActiveSession(candlesticks, referenceDate = null) {
   if (!Array.isArray(candlesticks) || candlesticks.length === 0) return candlesticks || [];
   
   const dateGroups = new Map();
@@ -75,7 +75,12 @@ export function filterToLatestActiveSession(candlesticks) {
   const dayOfWeek = latestDate.getDay(); // 0 = Sun, 6 = Sat
   const isWeekend = dayOfWeek === 0 || dayOfWeek === 6;
 
-  if (isWeekend || latestGroup.length < 5) {
+  const refDateStr = referenceDate ? new Date(referenceDate).toDateString() : new Date().toDateString();
+  const isToday = latestDateStr === refDateStr;
+
+  // Discard weekend dummy ticks, or past holiday dummy bars with < 5 candles.
+  // Never discard today's active weekday session even if only 1-4 candles have formed so far.
+  if (isWeekend || (!isToday && latestGroup.length < 5)) {
     for (let i = dates.length - 1; i >= 0; i--) {
       const group = dateGroups.get(dates[i]);
       if (group && group.length >= 5) {

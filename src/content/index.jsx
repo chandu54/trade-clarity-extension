@@ -84,6 +84,7 @@ function injectWidget() {
 
       /* Disable transitions during live dragging for 60fps responsiveness */
       html.tc-resizing body,
+      html.tc-resizing .tc-zerodha-watchlist-panel,
       html.tc-resizing #app,
       html.tc-resizing .container,
       html.tc-resizing .page-content,
@@ -94,6 +95,10 @@ function injectWidget() {
       html.tc-resizing #tv_chart_container,
       html.tc-resizing iframe {
         transition: none !important;
+        user-select: none !important;
+      }
+      html.tc-resizing iframe {
+        pointer-events: none !important;
       }
 
       html.tc-dock-collapsed body {

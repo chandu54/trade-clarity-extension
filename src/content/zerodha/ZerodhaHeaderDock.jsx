@@ -10,7 +10,7 @@ export default function ZerodhaHeaderDock({
   currentPrice,
   dailyChangePct,
   region = 'IN',
-  onOpenEditModal,
+  _onOpenEditModal,
 }) {
   const priceVal = currentPrice ?? stockData?.currentPrice ?? 0;
   const changeVal = dailyChangePct ?? stockData?.dailyChangePct ?? 0;

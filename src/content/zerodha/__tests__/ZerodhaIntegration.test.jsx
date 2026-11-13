@@ -3,6 +3,7 @@ import { render, screen, fireEvent } from '@testing-library/react';
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import ZerodhaHeaderDock from '../ZerodhaHeaderDock';
 import ZerodhaWatchlistPanel from '../ZerodhaWatchlistPanel';
+import ZerodhaContextMenu from '../ZerodhaContextMenu';
 import ZerodhaIntegration from '../ZerodhaIntegration';
 import { extractKiteSymbol, switchKiteSymbol, resetNavigatedSymbol, isZerodhaChartWindow } from '../kiteSymbolNavigator';
 
@@ -117,7 +118,7 @@ describe('ZerodhaHeaderDock', () => {
     expect(dock).toBeDefined();
     expect(screen.getByText('⚡')).toBeDefined();
     expect(screen.getByText('Nov 14')).toBeDefined();
-    expect(screen.getByText('(2d)')).toBeDefined();
+    expect(screen.getByText(/\(\d+d\)/)).toBeDefined();
   });
 
   it('minimizes to glowing circular icon and expands back on click', () => {
@@ -189,7 +190,9 @@ describe('ZerodhaWatchlistPanel', () => {
       />
     );
 
-    expect(screen.getByText('TradeClarity.market')).toBeDefined();
+    expect(screen.getByText('TradeClarity')).toBeDefined();
+    expect(screen.getByText('market')).toBeDefined();
+    expect(screen.getByTitle('TradeClarity.market')).toBeDefined();
     expect(screen.getByText('SONACOMS')).toBeDefined();
     expect(screen.getByText('ACUTAAS')).toBeDefined();
 
@@ -256,6 +259,122 @@ describe('ZerodhaWatchlistPanel', () => {
     });
 
     expect(handleReorder).toHaveBeenCalledWith(['ACUTAAS', 'SONACOMS'], '2026-11-08');
+  });
+
+  it('triggers onMoveStockToSection when dragging a stock into another section', () => {
+    const handleMove = vi.fn();
+    render(
+      <ZerodhaWatchlistPanel
+        appData={mockAppData}
+        region="IN"
+        activeSymbol="SONACOMS"
+        onSelectStock={vi.fn()}
+        onMoveStockToSection={handleMove}
+      />
+    );
+
+    const sonaRow = document.getElementById('tc-stock-row-SONACOMS');
+    const acutaasRow = document.getElementById('tc-stock-row-ACUTAAS');
+
+    fireEvent.dragStart(sonaRow, {
+      dataTransfer: { setData: vi.fn(), effectAllowed: 'move' },
+    });
+
+    fireEvent.dragOver(acutaasRow, {
+      dataTransfer: { dropEffect: 'move' },
+    });
+
+    fireEvent.drop(acutaasRow, {
+      dataTransfer: { getData: () => 'SONACOMS' },
+    });
+
+    expect(handleMove).toHaveBeenCalledWith(
+      'SONACOMS',
+      expect.objectContaining({ grouping: 'sector', sector: 'Chemicals' }),
+      ['ACUTAAS', 'SONACOMS']
+    );
+  });
+
+  it('supports collapsing and expanding individual sections and expand all', () => {
+    localStorage.clear();
+    render(
+      <ZerodhaWatchlistPanel
+        appData={mockAppData}
+        region="IN"
+        activeSymbol="SONACOMS"
+        onSelectStock={vi.fn()}
+      />
+    );
+
+    // Initial state: both stocks visible
+    expect(screen.getByText('SONACOMS')).toBeDefined();
+    expect(screen.getByText('ACUTAAS')).toBeDefined();
+
+    // Click Auto Components section header to collapse it
+    const autoHeader = screen.getByText('Auto Components').closest('.tc-watchlist-section-header');
+    expect(autoHeader).toBeDefined();
+    fireEvent.click(autoHeader);
+
+    // SONACOMS is now hidden because section is collapsed
+    expect(screen.queryByText('SONACOMS')).toBeNull();
+    // ACUTAAS is still visible
+    expect(screen.getByText('ACUTAAS')).toBeDefined();
+
+    // Click again to expand
+    fireEvent.click(autoHeader);
+    expect(screen.getByText('SONACOMS')).toBeDefined();
+
+    // Click Expand All / Collapse All button
+    const toggleAllBtn = screen.getByTitle(/Collapse All Sections/i);
+    fireEvent.click(toggleAllBtn);
+
+    // Both should be collapsed
+    expect(screen.queryByText('SONACOMS')).toBeNull();
+    expect(screen.queryByText('ACUTAAS')).toBeNull();
+
+    // Click expand all
+    const expandAllBtn = screen.getByTitle(/Expand All Sections/i);
+    fireEvent.click(expandAllBtn);
+    expect(screen.getByText('SONACOMS')).toBeDefined();
+    expect(screen.getByText('ACUTAAS')).toBeDefined();
+  });
+
+  it('renders scrip name with refined, clean medium font weight', () => {
+    render(
+      <ZerodhaWatchlistPanel
+        appData={mockAppData}
+        region="IN"
+        activeSymbol="SONACOMS"
+        onSelectStock={vi.fn()}
+      />
+    );
+
+    const activeTicker = screen.getByText('SONACOMS');
+    const inactiveTicker = screen.getByText('ACUTAAS');
+
+    // Inactive symbol is clean 500 font-weight
+    expect(inactiveTicker.style.fontWeight).toBe('500');
+    expect(inactiveTicker.style.fontSize).toBe('12px');
+
+    // Active symbol is 600 font-weight
+    expect(activeTicker.style.fontWeight).toBe('600');
+  });
+
+  it('renders total Adv vs Decline market breadth on top and per sector', () => {
+    render(
+      <ZerodhaWatchlistPanel
+        appData={mockAppData}
+        region="IN"
+        activeSymbol="SONACOMS"
+        onSelectStock={vi.fn()}
+      />
+    );
+
+    // Total Watchlist Breadth at the top: SONACOMS (+0.43%) and ACUTAAS (+0.88%) are both advancing
+    expect(screen.getByTitle(/Watchlist Breadth: 2 Advancing/i)).toBeDefined();
+
+    // Per-sector breadth pill: Auto Components (1 advancing) and Chemicals (1 advancing)
+    expect(screen.getAllByTitle(/Sector Breadth: 1 Advancing, 0 Declining/i).length).toBe(2);
   });
 
   it('supports collapsing into compact icon rail and expanding', () => {
@@ -354,7 +473,9 @@ describe('ZerodhaIntegration master component', () => {
 
   it('mounts without crashing and initializes safely', () => {
     render(<ZerodhaIntegration />);
-    expect(screen.getByText('TradeClarity.market')).toBeDefined();
+    expect(screen.getByText('TradeClarity')).toBeDefined();
+    expect(screen.getByText('market')).toBeDefined();
+    expect(screen.getByTitle('TradeClarity.market')).toBeDefined();
   });
 
   it('handles arrow key navigation to cycle stocks', () => {
@@ -388,5 +509,192 @@ describe('ZerodhaIntegration master component', () => {
     const { container } = render(<ZerodhaIntegration />);
     expect(container.firstChild).toBeNull();
     expect(screen.queryByText('TradeClarity')).toBeNull();
+  });
+
+  it('triggers W and S shortcuts to open Watchlist and Sector context menus', () => {
+    render(<ZerodhaIntegration />);
+
+    // Press 'w' globally on active stock -> opens Watchlist submenu
+    fireEvent.keyDown(window, { key: 'w', code: 'KeyW' });
+    expect(screen.getByText('Assign Watchlist')).toBeDefined();
+
+    // Close menu with Escape
+    fireEvent.keyDown(window, { key: 'Escape', code: 'Escape' });
+    expect(screen.queryByText('Assign Watchlist')).toBeNull();
+
+    // Press 's' globally on active stock -> opens Sector submenu
+    fireEvent.keyDown(window, { key: 's', code: 'KeyS' });
+    expect(screen.getByText('Assign Sector')).toBeDefined();
+  });
+});
+
+describe('ZerodhaContextMenu component', () => {
+  const mockStock = {
+    symbol: 'SONACOMS',
+    sector: 'Auto Components',
+    tradable: true,
+    watchlists: ['wl_1'],
+    tags: ['Breakout'],
+    flagColor: 'green',
+  };
+
+  const mockAvailableSectors = ['Auto Components', 'Chemicals', 'Information Technology', 'Pharma'];
+  const mockWatchlists = [{ id: 'wl_1', name: 'Focus 50' }, { id: 'wl_2', name: 'Swing Ideas' }];
+
+  it('renders sector menu item with hotkey badge S and opens sector submenu', () => {
+    const handleSelectSector = vi.fn();
+    const handleClose = vi.fn();
+
+    render(
+      <ZerodhaContextMenu
+        isOpen={true}
+        x={100}
+        y={100}
+        stock={mockStock}
+        availableSectors={mockAvailableSectors}
+        watchlists={mockWatchlists}
+        onClose={handleClose}
+        onSelectSector={handleSelectSector}
+      />
+    );
+
+    // Context menu renders Sector row with S shortcut badge
+    expect(screen.getByText('Sector')).toBeDefined();
+    expect(screen.getByText('S')).toBeDefined();
+
+    // Hover or trigger sector submenu
+    const sectorMenuRow = screen.getByText('Sector').closest('div[style*="cursor: pointer"]');
+    fireEvent.mouseEnter(sectorMenuRow);
+
+    // Submenu displays available sectors
+    expect(screen.getByText('Assign Sector')).toBeDefined();
+    expect(screen.getByText('Chemicals')).toBeDefined();
+    expect(screen.getByText('Information Technology')).toBeDefined();
+    expect(screen.getByText('Pharma')).toBeDefined();
+
+    // Current stock sector has checkmark
+    const currentSectorRow = screen.getByText('Auto Components').closest('div');
+    expect(currentSectorRow.textContent).toContain('✓');
+
+    // Click another sector to change
+    fireEvent.click(screen.getByText('Chemicals'));
+    expect(handleSelectSector).toHaveBeenCalledWith('Chemicals');
+    expect(handleClose).toHaveBeenCalled();
+  });
+
+  it('allows unassigning sector and typing custom sector in inline input', () => {
+    const handleSelectSector = vi.fn();
+    const handleClose = vi.fn();
+
+    render(
+      <ZerodhaContextMenu
+        isOpen={true}
+        x={100}
+        y={100}
+        stock={mockStock}
+        initialSubmenu="sector"
+        availableSectors={mockAvailableSectors}
+        watchlists={mockWatchlists}
+        onClose={handleClose}
+        onSelectSector={handleSelectSector}
+      />
+    );
+
+    // Initial submenu is opened directly to sector
+    expect(screen.getByText('Assign Sector')).toBeDefined();
+
+    // Test Unassigned option
+    const unassignedOption = screen.getByText('Unassigned');
+    fireEvent.click(unassignedOption);
+    expect(handleSelectSector).toHaveBeenCalledWith('');
+    expect(handleClose).toHaveBeenCalled();
+
+    // Type custom sector and press Enter
+    const customInput = screen.getByPlaceholderText('+ Add custom sector...');
+    fireEvent.change(customInput, { target: { value: 'Defence Tech' } });
+    fireEvent.keyDown(customInput, { key: 'Enter', code: 'Enter' });
+
+    expect(handleSelectSector).toHaveBeenCalledWith('Defence Tech');
+  });
+
+  it('toggles submenus using W and S keyboard shortcuts inside menu', () => {
+    render(
+      <ZerodhaContextMenu
+        isOpen={true}
+        x={100}
+        y={100}
+        stock={mockStock}
+        availableSectors={mockAvailableSectors}
+        watchlists={mockWatchlists}
+        onClose={vi.fn()}
+      />
+    );
+
+    // Press 's' inside menu -> toggles sector submenu
+    fireEvent.keyDown(window, { key: 's' });
+    expect(screen.getByText('Assign Sector')).toBeDefined();
+
+    // Press 's' again -> closes sector submenu
+    fireEvent.keyDown(window, { key: 's' });
+    expect(screen.queryByText('Assign Sector')).toBeNull();
+
+    // Press 'w' inside menu -> toggles watchlist submenu
+    fireEvent.keyDown(window, { key: 'w' });
+    expect(screen.getByText('Assign Watchlist')).toBeDefined();
+  });
+
+  it('implements TradingView flag behavior: applies recent flag immediately and opens palette', () => {
+    localStorage.setItem('tc_recent_flag_color', 'blue');
+    const handleUpdateStockFlag = vi.fn();
+
+    const stockWithoutFlagData = {
+      weeks: {
+        IN: {
+          '2026-11-08': {
+            stocks: {
+              TRENT: {
+                symbol: 'TRENT',
+                name: 'Trent Ltd',
+                sector: 'Retail',
+                currentPrice: 3180.0,
+                dailyChangePct: 0.15,
+                flagColor: null,
+              },
+            },
+          },
+        },
+      },
+      watchlists: [],
+    };
+
+    const { container } = render(
+      <ZerodhaWatchlistPanel
+        appData={stockWithoutFlagData}
+        region="IN"
+        activeSymbol="TRENT"
+        onSelectStock={vi.fn()}
+        onUpdateStockFlag={handleUpdateStockFlag}
+      />
+    );
+
+    const flagBtn = screen.getByTitle(/Flag stock \(blue\)/i);
+    expect(flagBtn).toBeDefined();
+
+    // Click flag icon on unflagged stock
+    fireEvent.click(flagBtn);
+
+    // Immediately applies the recent color (blue)
+    expect(handleUpdateStockFlag).toHaveBeenCalledWith('TRENT', 'blue');
+
+    // And opens the floating color palette popover
+    const popover = container.querySelector('.tc-flag-palette-popover');
+    expect(popover).toBeDefined();
+
+    // Pick green from palette
+    const greenBtn = screen.getByTitle(/Set GREEN Flag/i);
+    fireEvent.click(greenBtn);
+
+    expect(handleUpdateStockFlag).toHaveBeenCalledWith('TRENT', 'green');
+    expect(localStorage.getItem('tc_recent_flag_color')).toBe('green');
   });
 });

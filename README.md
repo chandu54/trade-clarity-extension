@@ -10,6 +10,13 @@ TradeClarity.market is a powerful React-based application designed for swing tra
 
 - **Weekly Watchlists**: Organize your stock ideas by week. Navigate through history to review past setups.
 - **Multi-Region Support**: Switch seamlessly between **US** 🇺🇸 and **India** 🇮🇳 markets with isolated data contexts.
+- **⚡ Zerodha Kite Seamless Watchlist Integration**: A powerful, zero-friction in-chart sidecar and metrics dock embedded directly into Zerodha Kite charts (`kite.zerodha.com`):
+  - **Side-by-Side Docking & Smart Canvas Compression**: Automatically mounts on any Kite chart window and dynamically compresses the chart canvas by the exact width of the sidecar—keeping candles, indicators, and order controls 100% visible side-by-side without overlapping.
+  - **Draggable Top Header Metrics Dock**: Floats directly on the Kite navbar displaying live Price, Daily Change %, **Average Daily Range (ADR %)**, **50-Day Turnover / Liquidity (💧)**, **Relative Strength vs Nifty (RS 🔥)**, and **Moving Average Ribbon** (10, 21, 50, 200 SMA). Minimizes into a glowing circular FAB.
+  - **Smart Earnings Countdown Pill**: Displays upcoming earnings countdown badges with instant visual priority (`⚡ TODAY`, `⚡ 2d` imminent earnings in orange, `📅 14d` upcoming in cyan, and `✓ Reported` for past results).
+  - **Rapid Keyboard & 1-Click Symbol Switching**: Flip through charts effortlessly using **`↑` / `↓` Arrow Keys** or click any ticker in the sidebar for instant chart switching via Kite token resolution without page reloads.
+  - **Flexible Grouping & Search**: Segment watchlists by **Sector**, **Flag Color**, **Tag**, or **Flat list** with real-time text search.
+  - **Interactive Management**: Quick-cycle color flags, toggle Tradable status, open Edit Stock Modal from the right-click context menu, drag-and-drop reorder setups, and add stocks inline with autocomplete.
 - **IPO Master Radar (US & India)**: A dedicated institutional discovery terminal tracking all newly listed companies over their 1-year horizon across US (NASDAQ, NYSE, AMEX) and India (NSE Mainboard & SME):
   - **1-Year Master Record**: Rolling 365-day archive tracking initial post-listing accumulation.
   - **Live Candle Hydration**: Computes Day 1 listing gains, gain since listing close, ADR % volatility, and daily turnover liquidity.
@@ -72,6 +79,10 @@ TradeClarity.market is a powerful React-based application designed for swing tra
 | **Alt + I** | Generate AI Insights |
 | **Alt + T** | Toggle Light/Dark Theme |
 | **Esc** | Close Active Modal |
+| **↑ / ↓** (on Zerodha) | Navigate Watchlist & Switch Kite Chart |
+| **Click Symbol** (on Zerodha) | 1-Click Instant Kite Chart Switch |
+| **W** (on Zerodha) | Open / Toggle Watchlist Submenu |
+| **S** (on Zerodha) | Open / Change Sector Submenu |
 
 ** Weekly Summary Info**:
 <img width="485" height="705" alt="image" src="https://github.com/user-attachments/assets/281214c2-63bf-48a9-aa14-95bf9d82dd7e" />

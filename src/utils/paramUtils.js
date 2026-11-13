@@ -297,3 +297,21 @@ export function checkNumericFilterCondition(value, filterStr) {
   return true;
 }
 
+const ACRONYMS = new Set([
+  'IT', 'IPO', 'FMCG', 'NBFC', 'EV', 'PSU', 'MNC', 'SME', 'AI', 'OTB', 'VCP', 'PE', 'R&D', 'NSE', 'BSE'
+]);
+
+export function formatSectionTitle(text) {
+  if (!text || typeof text !== 'string') return '';
+  return text
+    .split(/([\s\-_/&]+)/)
+    .map((part) => {
+      if (/^[\s\-_/&]+$/.test(part)) return part;
+      const upper = part.toUpperCase();
+      if (ACRONYMS.has(upper)) return upper;
+      if (/^\d+[a-zA-Z]+$/.test(part)) return part.toUpperCase();
+      return part.charAt(0).toUpperCase() + part.slice(1).toLowerCase();
+    })
+    .join('');
+}
+

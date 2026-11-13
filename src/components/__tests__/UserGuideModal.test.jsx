@@ -55,6 +55,10 @@ describe('UserGuideModal', () => {
     fireEvent.click(screen.getByRole('button', { name: /Trading Journal/i }));
     expect(screen.getByRole('heading', { name: /Trading Journal Guide/i })).toBeDefined();
 
+    // Click Zerodha Integration
+    fireEvent.click(screen.getByRole('button', { name: /Zerodha Integration/i }));
+    expect(screen.getByRole('heading', { name: /Zerodha Kite Seamless Watchlist Integration/i })).toBeDefined();
+
     // Click Quick Start / Onboarding back
     fireEvent.click(screen.getByRole('button', { name: /Quick Start \/ Onboarding/i }));
     expect(screen.getByRole('heading', { name: /Quick Start & Onboarding Guide/i })).toBeDefined();

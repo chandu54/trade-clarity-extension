@@ -110,6 +110,12 @@ export default function UserGuideModal({
           >
             <span>Trading Journal</span>
           </button>
+          <button
+            onClick={() => setActiveTab("zerodha")}
+            className={`guide-menu-btn ${activeTab === "zerodha" ? "active" : ""}`}
+          >
+            <span>Zerodha Integration</span>
+          </button>
         </div>
 
         {/* Right Scrollable Content Area */}
@@ -278,6 +284,29 @@ export default function UserGuideModal({
                   </li>
                   <li>
                     <strong>Voice Dictation (Ctrl+Shift+S):</strong> Press <code>Ctrl+Shift+S</code> on TradingView to dictate setups hands-free (e.g. <em>"Set target to 150"</em>, <em>"Add tag IPO Base"</em>, <em>"Tradable Yes"</em>, <em>"Save setup"</em>).
+                  </li>
+                </ul>
+              </Section>
+
+              <Section
+                title="Step 8: Zerodha Kite Seamless Watchlist Integration"
+                location="Kite.zerodha.com Extension Sidecar"
+              >
+                <p>
+                  Experience institutional-grade charting workflows directly inside Zerodha Kite with our seamless sidecar panel and top header dock.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Automatic Activation:</strong> Open any Zerodha Kite chart (<a href="https://kite.zerodha.com" target="_blank" rel="noopener noreferrer">kite.zerodha.com</a>) to automatically see your active TradeClarity watchlist docked on the right side.
+                  </li>
+                  <li>
+                    <strong>Side-by-Side Chart Compression:</strong> Automatically compresses Kite's chart canvas so your charts, indicators, and watchlist never overlap or obstruct each other.
+                  </li>
+                  <li>
+                    <strong>Top Header Metrics Dock:</strong> Displays live Price, ADR %, 50-day Turnover / Liquidity (💧), Relative Strength rating (RS 🔥), 10/21/50/200 SMA Ribbon, and smart Earnings Countdown pill (<code>⚡ TODAY</code>, <code>⚡ 2d</code>, <code>📅 14d</code>).
+                  </li>
+                  <li>
+                    <strong>Rapid Arrow Navigation:</strong> Use <code>↑</code> / <code>↓</code> arrow keys to flip through charts instantly without reloading.
                   </li>
                 </ul>
               </Section>
@@ -1268,6 +1297,151 @@ export default function UserGuideModal({
                   </li>
                   <li>
                     <strong>Benchmark Comparison:</strong> Plots your equity curve directly against indices (Nifty 50 or S&P 500) to confirm if you are outperforming the market index.
+                  </li>
+                </ul>
+              </Section>
+            </>
+          )}
+
+          {activeTab === "zerodha" && (
+            <>
+              <h2 className="guide-tab-title">Zerodha Kite Seamless Watchlist Integration</h2>
+
+              <div className="guide-intro">
+                <p>
+                  <strong>Zero-Friction In-Chart Sidecar:</strong> TradeClarity seamlessly integrates with Zerodha Kite (<code>kite.zerodha.com</code>) by automatically embedding a full-featured watchlist panel and floating metrics dock directly into your active charting canvas without obscuring candles or technical indicators.
+                </p>
+              </div>
+
+              <Section title="1. Automatic Activation & Side-by-Side Canvas Compression" icon="⚡">
+                <p>
+                  TradeClarity automatically detects when you are viewing charts on Zerodha Kite.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Instant Injection:</strong> When you open any chart on Zerodha Kite (e.g. <code>kite.zerodha.com/markets/ext/chart/...</code> or <code>/chart/web/...</code>), TradeClarity automatically mounts the watchlist sidecar panel on the right.
+                  </li>
+                  <li>
+                    <strong>Seamless Canvas Compression:</strong> Unlike clumsy browser extensions that float over the chart, TradeClarity dynamically compresses Kite's body and chart canvas by the exact width of the panel. Your candles, order buttons, and indicators remain 100% visible side-by-side.
+                  </li>
+                  <li>
+                    <strong>Resizable Width:</strong> Click and drag the left resize handle of the panel to set your ideal width (default 320px). Your chosen panel width is automatically saved and remembered across sessions.
+                  </li>
+                  <li>
+                    <strong>One-Click Collapse:</strong> Click the collapse pill button (<code>◀</code> / <code>▶</code>) on the sidecar border to instantly collapse the panel into a slim strip when you want full-screen charting.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="2. Draggable Top Header Metrics Dock & Smart Earnings" icon="📊">
+                <p>
+                  A floating, draggable metrics dock is injected right above your chart in Zerodha Kite, giving you high-conviction decision data at a single glance.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Draggable Position:</strong> Click and drag the grip handle (<code>⋮⋮</code>) to place the header dock anywhere across the Kite navbar or chart area. Your custom position is persisted in local storage.
+                  </li>
+                  <li>
+                    <strong>Real-Time Price & Trend:</strong> Live symbol name, formatted price in ₹, and color-coded percentage change (+ green / - red).
+                  </li>
+                  <li>
+                    <strong>ADR % Volatility:</strong> Displays Average Daily Range percentage (e.g. <code>ADR 4.2%</code>) with cyan indicator so you know typical daily swing expectation.
+                  </li>
+                  <li>
+                    <strong>Turnover & Liquidity (💧):</strong> Shows 50-day average daily turnover (e.g. <code>💧 102.72Cr</code>) to ensure you only trade liquid names.
+                  </li>
+                  <li>
+                    <strong>Relative Strength (RS vs Nifty):</strong> Live RS rating visualized with flame indicators (<code>🔥 Strong</code>, <code>🔥🔥 Very Strong</code>, <code>⚖️ Neutral</code>, <code>👎 Weak</code>).
+                  </li>
+                  <li>
+                    <strong>Moving Average Multiple (10, 21, 50, 200 SMA):</strong> Compact color-coded ribbon reflecting moving average alignment status at a glance.
+                  </li>
+                  <li>
+                    <strong>Smart Earnings Countdown Pill:</strong>
+                    Imminent earnings within 7 days appear highlighted with an orange <code>⚡</code> badge (e.g. <code>⚡ TODAY</code> or <code>⚡ Nov 14 (2d)</code>). Upcoming earnings (8–45 days) show <code>{"📅 14d"}</code>, and recently reported earnings display <code>{"✓ Reported Nov 10"}</code>.
+                  </li>
+                  <li>
+                    <strong>Quick Dashboard Launch (↗):</strong> Click the external link icon to open the current stock directly in the full TradeClarity web terminal.
+                  </li>
+                  <li>
+                    <strong>Minimizable Circular FAB:</strong> Click the minimize button (<code>—</code>) to shrink the dock into an elegant TradingView-style glowing circular FAB showing live ticker and change %. Click it anytime to restore.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="3. Instant 1-Click Symbol Switching & Keyboard Navigation" icon="⌨️">
+                <p>
+                  Browse through dozens of charts with extreme speed.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>1-Click Instant Symbol Switch:</strong> Click any stock in the sidebar watchlist to instantly switch the Kite chart. The extension leverages an internal token map and URL navigator to switch symbols without a slow full-page reload.
+                  </li>
+                  <li>
+                    <strong>Arrow Key Flipping (↑ / ↓):</strong> Use the <code>ArrowUp</code> and <code>ArrowDown</code> keys to cycle sequentially through all visible stocks in your watchlist. Ideal for rapid weekend scans and end-of-day reviews.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="4. Watchlist Filtering, Multi-Mode Grouping & Search" icon="🔍">
+                <p>
+                  Organize your stocks according to your personal trading process.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Watchlist Selector:</strong> Use the top dropdown in the sidebar to toggle between <code>All Stocks</code> or any custom watchlist you created in TradeClarity (e.g. Focus 50, Breakouts, Swing Ideas).
+                  </li>
+                  <li>
+                    <strong>Instant Search:</strong> Real-time filter input that filters by symbol, company name, sector, or tag as you type.
+                  </li>
+                  <li>
+                    <strong>Multi-Mode Grouping:</strong> Group stocks using the group mode dropdown:
+                    <ul>
+                      <li><strong>Sector:</strong> Groups stocks by industry/sector (Manufacturing, Technology, Pharma, etc.) with group counts.</li>
+                      <li><strong>Flag Color:</strong> Groups stocks by your assigned review color flags.</li>
+                      <li><strong>Tag:</strong> Groups stocks by user tags (e.g. IPO Base, High Tight Flag, VCP).</li>
+                      <li><strong>Flat List:</strong> Displays a clean, unsegmented alphabetical or custom-ordered list.</li>
+                    </ul>
+                  </li>
+                  <li>
+                    <strong>Collapsible Groups:</strong> Click any group header to expand or collapse it, keeping your watchlist focused on high-priority setups.
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="5. Color Flags, Tradable Status & Context Menu" icon="🏷️">
+                <p>
+                  Review and tag setups directly from inside Zerodha Kite without switching back and forth between tabs.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Quick Color Flagging:</strong> Click the flag icon on any stock row to cycle through review colors (Red, Green, Orange, Blue, Purple, or Clear).
+                  </li>
+                  <li>
+                    <strong>Right-Click Context Menu:</strong> Right-click any stock (or click the <code>...</code> action menu) to:
+                    <ul>
+                      <li>Pick a specific Flag color instantly.</li>
+                      <li>Toggle <strong>Tradable</strong> status on/off to highlight high-conviction execution setups.</li>
+                      <li>Open the full <strong>Edit Stock Modal</strong> to update notes, setup checks, and custom parameters.</li>
+                      <li>Remove the stock from the current watchlist.</li>
+                    </ul>
+                  </li>
+                </ul>
+              </Section>
+
+              <Section title="6. Drag-and-Drop Reordering & Quick Stock Addition" icon="➕">
+                <p>
+                  Maintain full control over your watchlist ordering and composition right on Kite.
+                </p>
+                <ul className="guide-list">
+                  <li>
+                    <strong>Drag-and-Drop Reordering:</strong> Click and drag the handle (<code>⋮⋮</code>) next to any stock symbol to reorder stocks in custom priority order.
+                  </li>
+                  <li>
+                    <strong>Inline Quick Add:</strong> Type a ticker into the <em>+ Add Stock</em> input field at the bottom of the watchlist panel to add a new stock immediately with autocomplete suggestions.
+                  </li>
+                  <li>
+                    <strong>Live Quotes Refresh:</strong> Click the refresh button (<code>↻</code>) in the panel header to trigger a background sync of latest prices and daily percentage changes.
                   </li>
                 </ul>
               </Section>

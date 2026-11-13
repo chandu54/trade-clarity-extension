@@ -236,6 +236,34 @@ describe('marketPulse service', () => {
       const single = [{ time: 1754634600, open: 10, high: 11, low: 9, close: 10 }];
       expect(filterToLatestActiveSession(single)).toEqual(single);
     });
+
+    it('retains early morning intraday candles on a weekday active trading session (even if < 5 candles)', () => {
+      // Friday session: 25 candles (Fri Nov 06 2026)
+      const fridayBaseTime = 1754634600;
+      const fridayCandles = Array.from({ length: 25 }, (_, i) => ({
+        time: fridayBaseTime + i * 900,
+        open: 24000 + i,
+        high: 24010 + i,
+        low: 23990 + i,
+        close: 24005 + i
+      }));
+
+      // Monday morning: 2 candles just after market open (Mon Nov 09 2026)
+      const mondayBaseTime = fridayBaseTime + (3 * 86400); // Monday
+      const mondayCandles = [
+        { time: mondayBaseTime, open: 24100, high: 24120, low: 24090, close: 24110 },
+        { time: mondayBaseTime + 900, open: 24110, high: 24130, low: 24105, close: 24125 }
+      ];
+
+      const mixedCandles = [...fridayCandles, ...mondayCandles];
+      const mondayDate = new Date(mondayBaseTime * 1000);
+      const result = filterToLatestActiveSession(mixedCandles, mondayDate);
+
+      // Must keep Monday's 2 morning candles and NOT discard them for Friday
+      expect(result.length).toBe(2);
+      expect(result[0].time).toBe(mondayBaseTime);
+      expect(result[1].time).toBe(mondayBaseTime + 900);
+    });
   });
 
   describe('calculateDistributionDays', () => {

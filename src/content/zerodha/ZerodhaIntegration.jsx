@@ -60,6 +60,8 @@ const safeStorage = {
 export default function ZerodhaIntegration() {
   const [isChart, setIsChart] = useState(() => isZerodhaChartWindow());
   const [appData, setAppData] = useState(null);
+  const appDataRef = useRef(appData);
+  appDataRef.current = appData;
   const [activeSymbol, setActiveSymbol] = useState(() => extractKiteSymbol() || 'SONACOMS');
   const [region] = useState('IN');
   const [selectedDate] = useState(() => getLocalDateString(new Date()));
@@ -100,6 +102,7 @@ export default function ZerodhaIntegration() {
     x: 0,
     y: 0,
     stock: null,
+    initialSubmenu: null,
   });
 
   // Live quotes cache shared across Watchlist and Header Dock
@@ -248,10 +251,41 @@ export default function ZerodhaIntegration() {
     return list;
   }, [appData, region, weekKey]);
 
-  // Global Arrow Keys Navigation (Up/Down/Left/Right/Space)
+  // Stock data for active symbol in current week (or across weeks if from another watchlist/week)
+  const activeStockData = useMemo(() => {
+    if (!appData?.weeks || !activeSymbol) return null;
+    const regionBucket = appData.weeks[region] || appData.weeks;
+    const cleanActive = activeSymbol.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+
+    // 1. Check weekKey stocks first
+    const stocksMap = regionBucket?.[weekKey]?.stocks || {};
+    if (stocksMap[activeSymbol]) return stocksMap[activeSymbol];
+    if (stocksMap[cleanActive]) return stocksMap[cleanActive];
+    const inCurrentWeek = Object.values(stocksMap).find((s) => {
+      const cleanS = (s?.symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+      return cleanS === cleanActive;
+    });
+    if (inCurrentWeek) return inCurrentWeek;
+
+    // 2. Search across ALL other weeks in regionBucket
+    for (const wk of Object.keys(regionBucket)) {
+      if (wk !== weekKey && regionBucket[wk]?.stocks) {
+        for (const k of Object.keys(regionBucket[wk].stocks)) {
+          if (k.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase() === cleanActive) {
+            return regionBucket[wk].stocks[k];
+          }
+        }
+      }
+    }
+    return null;
+  }, [appData, region, weekKey, activeSymbol]);
+
+  // Global Arrow Keys Navigation & Quick Shortcuts (W: Watchlists, S: Sector)
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // Don't intercept if user is typing in any text box or modal is open
+      // Don't intercept if context menu is open, user is typing in any text box, or modal is open
+      if (contextMenu.isOpen) return;
+
       const activeEl = document.activeElement?.shadowRoot?.activeElement || document.activeElement;
       const targetEl = e.target?.shadowRoot?.activeElement || e.target;
       const tag = activeEl?.tagName || targetEl?.tagName;
@@ -266,7 +300,44 @@ export default function ZerodhaIntegration() {
         return;
       }
 
+      if (e.ctrlKey || e.metaKey || e.altKey) {
+        return;
+      }
+
       const navList = visibleStocks.length > 0 ? visibleStocks : currentWeekStocksList;
+
+      const key = e.key.toLowerCase();
+
+      // Quick Shortcuts: 'W' for Watchlist management, 'S' for Sector assignment
+      if (key === 'w' || key === 's') {
+        const cleanActive = (activeSymbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+        const targetStock = activeStockData || navList.find((s) => {
+          const sym = (s.symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+          return sym === cleanActive;
+        }) || (activeSymbol ? { symbol: activeSymbol } : navList[0]);
+
+        if (targetStock) {
+          e.preventDefault();
+          e.stopPropagation();
+
+          const clean = (targetStock.symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+          const rowEl = document.getElementById(`tc-stock-row-${clean}`) || document.getElementById(`tc-stock-row-${targetStock.symbol}`);
+          const rect = rowEl?.getBoundingClientRect();
+
+          const posX = rect ? Math.max(10, rect.left - 240) : Math.max(10, window.innerWidth - 380);
+          const posY = rect ? Math.min(rect.top, window.innerHeight - 300) : 150;
+
+          setContextMenu({
+            isOpen: true,
+            x: posX,
+            y: posY,
+            stock: targetStock,
+            initialSubmenu: key === 'w' ? 'watchlist' : 'sector',
+          });
+          return;
+        }
+      }
+
       if (navList.length === 0) return;
 
       let direction = 0;
@@ -312,7 +383,7 @@ export default function ZerodhaIntegration() {
 
     window.addEventListener('keydown', handleKeyDown, true);
     return () => window.removeEventListener('keydown', handleKeyDown, true);
-  }, [currentWeekStocksList, visibleStocks, activeSymbol, isEditModalOpen]);
+  }, [currentWeekStocksList, visibleStocks, activeSymbol, activeStockData, isEditModalOpen, contextMenu.isOpen]);
 
   // Mount Header Dock Portal (appended to document.body so dock can be freely dragged anywhere on screen)
   useEffect(() => {
@@ -342,35 +413,6 @@ export default function ZerodhaIntegration() {
     };
   }, []);
 
-  // Stock data for active symbol in current week (or across weeks if from another watchlist/week)
-  const activeStockData = useMemo(() => {
-    if (!appData?.weeks || !activeSymbol) return null;
-    const regionBucket = appData.weeks[region] || appData.weeks;
-    const cleanActive = activeSymbol.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
-
-    // 1. Check weekKey stocks first
-    const stocksMap = regionBucket?.[weekKey]?.stocks || {};
-    if (stocksMap[activeSymbol]) return stocksMap[activeSymbol];
-    if (stocksMap[cleanActive]) return stocksMap[cleanActive];
-    const inCurrentWeek = Object.values(stocksMap).find((s) => {
-      const cleanS = (s?.symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
-      return cleanS === cleanActive;
-    });
-    if (inCurrentWeek) return inCurrentWeek;
-
-    // 2. Search across ALL other weeks in regionBucket
-    for (const wk of Object.keys(regionBucket)) {
-      if (wk !== weekKey && regionBucket[wk]?.stocks) {
-        for (const k of Object.keys(regionBucket[wk].stocks)) {
-          if (k.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase() === cleanActive) {
-            return regionBucket[wk].stocks[k];
-          }
-        }
-      }
-    }
-    return null;
-  }, [appData, region, weekKey, activeSymbol]);
-
   // Handle selecting a stock from the watchlist
   const handleSelectStock = (stock) => {
     if (!stock?.symbol) return;
@@ -398,6 +440,71 @@ export default function ZerodhaIntegration() {
       });
     }
   };
+
+  // Move stock to another section (sector/flag/tag) and reorder via Drag & Drop
+  const handleMoveStockToSection = useCallback(
+    (draggedSymbol, targetSection, newOrderArray) => {
+      if (!draggedSymbol || !appData) return;
+      const clean = draggedSymbol.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+      const updated = structuredClone(appData);
+      let targetWeeks = updated.weeks;
+      if (updated.weeks?.US || updated.weeks?.IN) {
+        if (!updated.weeks[region]) updated.weeks[region] = {};
+        targetWeeks = updated.weeks[region];
+      }
+
+      if (!targetWeeks[weekKey]) {
+        targetWeeks[weekKey] = { displayName: `Week of ${weekKey}`, stocks: {} };
+      }
+
+      let foundStock = targetWeeks[weekKey]?.stocks?.[clean] || targetWeeks[weekKey]?.stocks?.[draggedSymbol];
+      if (!foundStock && targetWeeks) {
+        for (const wk of Object.keys(targetWeeks)) {
+          if (targetWeeks[wk]?.stocks) {
+            for (const k of Object.keys(targetWeeks[wk].stocks)) {
+              if (k.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase() === clean) {
+                foundStock = targetWeeks[wk].stocks[k];
+                break;
+              }
+            }
+          }
+          if (foundStock) break;
+        }
+      }
+
+      if (!foundStock) {
+        targetWeeks[weekKey].stocks[clean] = { symbol: clean, sector: '', tradable: false, notes: '', tags: [], params: {} };
+        foundStock = targetWeeks[weekKey].stocks[clean];
+      }
+
+      // Apply section attribute update
+      if (targetSection) {
+        if (targetSection.grouping === 'sector') {
+          foundStock.sector = targetSection.sector === 'Unassigned' ? '' : (targetSection.sector || '');
+        } else if (targetSection.grouping === 'flag') {
+          foundStock.flagColor = targetSection.flagColor === 'no_flag' ? null : targetSection.flagColor;
+        } else if (targetSection.grouping === 'tag') {
+          if (targetSection.tag && targetSection.tag !== 'no_tags') {
+            const currentTags = Array.isArray(foundStock.tags) ? [...foundStock.tags] : [];
+            if (!currentTags.includes(targetSection.tag)) {
+              foundStock.tags = [targetSection.tag, ...currentTags];
+            }
+          }
+        }
+      }
+
+      // Apply customOrder in weekKey
+      if (Array.isArray(newOrderArray)) {
+        targetWeeks[weekKey].customOrder = newOrderArray;
+      }
+
+      updated._lastModified = Date.now();
+      safeStorage.set({ trading_app_data: updated }, () => {
+        setAppData(updated);
+      });
+    },
+    [appData, region, weekKey]
+  );
 
   // Extract all available watchlists comprehensively across appData and all stocks
   const allWatchlists = useMemo(() => {
@@ -461,12 +568,43 @@ export default function ZerodhaIntegration() {
     return Array.from(set).filter((t) => !t.toUpperCase().startsWith('AI:'));
   }, [appData, region]);
 
+  // Extract all available sectors comprehensively across appData and all stocks
+  const allSectors = useMemo(() => {
+    const set = new Set();
+    if (Array.isArray(appData?.sectors)) {
+      appData.sectors.forEach((sec) => typeof sec === 'string' && sec.trim() && set.add(sec.trim()));
+    }
+    if (Array.isArray(appData?.uiConfig?.sectors)) {
+      appData.uiConfig.sectors.forEach((sec) => typeof sec === 'string' && sec.trim() && set.add(sec.trim()));
+    }
+    if (appData?.stockSectorCache && typeof appData.stockSectorCache === 'object') {
+      Object.values(appData.stockSectorCache).forEach((sec) => {
+        if (typeof sec === 'string' && sec.trim()) set.add(sec.trim());
+      });
+    }
+    const weeksObj = appData?.weeks?.[region] || appData?.weeks || {};
+    Object.values(weeksObj).forEach((wk) => {
+      if (wk?.stocks) {
+        Object.values(wk.stocks).forEach((st) => {
+          if (st?.sector && typeof st.sector === 'string' && st.sector.trim()) {
+            set.add(st.sector.trim());
+          }
+        });
+      }
+    });
+    if (set.size === 0) {
+      ['Auto', 'Banking', 'Capital Goods', 'Chemicals', 'Consumer Durables', 'Energy', 'FMCG', 'Healthcare', 'IT', 'Metals', 'Pharma', 'Telecom'].forEach((s) => set.add(s));
+    }
+    return Array.from(set).sort((a, b) => a.localeCompare(b));
+  }, [appData, region]);
+
   // Unified resilient stock updater across current week and all historical weeks
   const updateStockInAppData = useCallback(
     (symbol, updater) => {
-      if (!symbol || !appData) return;
+      const currentData = appDataRef.current || appData;
+      if (!symbol || !currentData) return;
       const clean = symbol.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
-      const updated = structuredClone(appData);
+      const updated = structuredClone(currentData);
       let targetWeeks = updated.weeks;
       if (updated.weeks?.US || updated.weeks?.IN) {
         if (!updated.weeks[region]) updated.weeks[region] = {};
@@ -510,14 +648,14 @@ export default function ZerodhaIntegration() {
         foundWeekKey = weekKey;
       }
 
-      updater(foundStock, targetWeeks[foundWeekKey]);
+      updater(foundStock, targetWeeks[foundWeekKey], updated);
 
       updated._lastModified = Date.now();
-      safeStorage.set({ trading_app_data: updated }, () => {
-        setAppData(updated);
-      });
+      appDataRef.current = updated;
+      setAppData(updated);
+      safeStorage.set({ trading_app_data: updated });
     },
-    [appData, region, weekKey]
+    [region, weekKey, appData]
   );
 
   // Handle updating stock flag color
@@ -598,7 +736,27 @@ export default function ZerodhaIntegration() {
   };
 
   const handleCloseContextMenu = () => {
-    setContextMenu((prev) => ({ ...prev, isOpen: false }));
+    setContextMenu((prev) => ({ ...prev, isOpen: false, initialSubmenu: null }));
+  };
+
+  const handleSelectSector = (newSector) => {
+    if (!contextMenu.stock?.symbol) return;
+    const sym = contextMenu.stock.symbol;
+    const clean = sym.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+    const trimmedSector = (newSector || '').trim();
+
+    updateStockInAppData(sym, (sObj, _weekObj, rootAppData) => {
+      sObj.sector = trimmedSector;
+      if (rootAppData) {
+        if (!rootAppData.stockSectorCache) rootAppData.stockSectorCache = {};
+        rootAppData.stockSectorCache[clean] = trimmedSector;
+      }
+    });
+
+    setContextMenu((prev) => (prev.stock?.symbol === sym ? {
+      ...prev,
+      stock: { ...prev.stock, sector: trimmedSector },
+    } : prev));
   };
 
   const handleToggleWatchlist = (wlId) => {
@@ -710,6 +868,7 @@ export default function ZerodhaIntegration() {
         onOpenEditModal={handleOpenEditModal}
         onAddStock={handleAddStock}
         onReorderStocks={handleReorderStocks}
+        onMoveStockToSection={handleMoveStockToSection}
         onVisibleStocksChange={setVisibleStocks}
         onQuotesChange={setLiveQuotes}
       />
@@ -720,10 +879,13 @@ export default function ZerodhaIntegration() {
         x={contextMenu.x}
         y={contextMenu.y}
         stock={contextMenu.stock}
+        initialSubmenu={contextMenu.initialSubmenu}
         watchlists={allWatchlists}
+        availableSectors={allSectors}
         availableTags={allTags}
         onClose={handleCloseContextMenu}
         onToggleWatchlist={handleToggleWatchlist}
+        onSelectSector={handleSelectSector}
         onSelectFlagColor={(col) => {
           if (contextMenu.stock) handleUpdateStockFlag(contextMenu.stock.symbol, col);
           handleCloseContextMenu();

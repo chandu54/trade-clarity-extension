@@ -474,6 +474,35 @@ describe('fetchStockQuotes', () => {
     expect(result[0].isAdvancing).toBe(false);
   });
 
+  it('should accurately calculate intraday % change when today daily candle is not yet emitted by Yahoo (PARASHLTH scenario)', async () => {
+    // Intraday session: Yahoo meta has live regularMarketPrice = 926.80 and official regularMarketPreviousClose = 882.20
+    // But daily candle array rawBars only has completed days: [760.00 (Nov 10), 806.33 (Nov 11), 882.20 (Nov 12)]
+    const mockParashlth = {
+      chart: {
+        result: [{
+          meta: {
+            regularMarketPrice: 926.80,
+            regularMarketPreviousClose: 882.20,
+            chartPreviousClose: 760.00,
+            regularMarketTime: 1731490000,
+            longName: 'Paras Healthcare'
+          },
+          indicators: { quote: [{ close: [760.00, 806.33, 882.20] }] },
+          timestamp: [1731297600, 1731384000, 1731470400]
+        }]
+      }
+    };
+
+    fetch.mockResolvedValueOnce(mockResponse(true, mockParashlth));
+    const result = await fetchStockQuotes(['PARASHLTH'], 'IN');
+
+    expect(result[0].symbol).toBe('PARASHLTH');
+    expect(result[0].currentPrice).toBe(926.80);
+    expect(result[0].previousClose).toBe(882.20); // Nov 12 close, NOT Nov 11 close (806.33)
+    expect(result[0].dailyChangePct).toBe(5.06);   // +5.06% (1-day change), NOT +14.94% (2-day jump)
+    expect(result[0].isAdvancing).toBe(true);
+  });
+
   it('should fetch stock data by custom timestamp range using period1 and period2', async () => {
     const mockRangeData = {
       chart: {

@@ -1,7 +1,8 @@
-import React, { useState, useMemo, useEffect, useRef } from 'react';
+import React, { useState, useMemo, useEffect, useRef, useCallback } from 'react';
 import { getSundayOfWeek, getLocalDateString } from '../../utils/weekHelpers';
 import { fetchStockQuotes } from '../../utils/yahooFinanceMap';
 import { calculateDaysAway, globalFundamentalsCache } from '../../utils/stockAnalysisApi';
+import { formatSectionTitle } from '../../utils/paramUtils';
 
 const FLAG_COLOR_MAP = {
   red: '#ef4444',
@@ -21,6 +22,7 @@ export default function ZerodhaWatchlistPanel({
   _onOpenEditModal,
   onAddStock,
   onReorderStocks,
+  onMoveStockToSection,
   onVisibleStocksChange,
   onQuotesChange,
 }) {
@@ -30,9 +32,22 @@ export default function ZerodhaWatchlistPanel({
   const [grouping, setGrouping] = useState('sector'); // 'none' | 'sector' | 'flag' | 'tag'
   const [isGroupMenuOpen, setIsGroupMenuOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [collapsedGroups, setCollapsedGroups] = useState({});
+  const [collapsedGroups, setCollapsedGroups] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tc_zerodha_collapsed_groups');
+      if (saved) return JSON.parse(saved);
+    } catch (_e) {}
+    return {};
+  });
   const [flagMenuSymbol, setFlagMenuSymbol] = useState(null);
   const [flagMenuPos, setFlagMenuPos] = useState({ x: 0, y: 0 });
+  const [recentFlagColor, setRecentFlagColor] = useState(() => {
+    try {
+      const saved = localStorage.getItem('tc_recent_flag_color');
+      if (saved && FLAG_COLOR_MAP[saved]) return saved;
+    } catch (_e) {}
+    return 'red';
+  });
   const [isRefreshing, setIsRefreshing] = useState(false);
   const [liveQuotes, setLiveQuotes] = useState({});
 
@@ -54,9 +69,11 @@ export default function ZerodhaWatchlistPanel({
   // Drag and Drop reordering state
   const [draggedSymbol, setDraggedSymbol] = useState(null);
   const [dragOverSymbol, setDragOverSymbol] = useState(null);
+  const [dragOverGroupKey, setDragOverGroupKey] = useState(null);
 
   const activeRowRef = useRef(null);
   const groupMenuRef = useRef(null);
+  const panelAsideRef = useRef(null);
 
   // Compute Sunday-based Week Key
   const weekKey = useMemo(() => {
@@ -174,12 +191,14 @@ export default function ZerodhaWatchlistPanel({
       let flagColor = null;
 
       if (grouping === 'sector') {
-        groupKey = s.sector || 'Unassigned';
-        title = groupKey;
+        const rawSec = s.sector || 'Unassigned';
+        title = formatSectionTitle(rawSec);
+        groupKey = title;
       } else if (grouping === 'flag') {
         if (s.flagColor && FLAG_COLOR_MAP[s.flagColor]) {
           groupKey = s.flagColor;
-          title = `${s.flagColor.toUpperCase()} FLAG`;
+          const colorName = s.flagColor.charAt(0).toUpperCase() + s.flagColor.slice(1).toLowerCase();
+          title = `${colorName} Flag`;
           flagColor = s.flagColor;
         } else {
           groupKey = 'no_flag';
@@ -187,8 +206,9 @@ export default function ZerodhaWatchlistPanel({
         }
       } else if (grouping === 'tag') {
         if (Array.isArray(s.tags) && s.tags.length > 0) {
-          groupKey = s.tags[0];
-          title = groupKey;
+          const rawTag = s.tags[0];
+          title = formatSectionTitle(rawTag);
+          groupKey = title;
         } else {
           groupKey = 'no_tags';
           title = 'No Tags';
@@ -201,8 +221,34 @@ export default function ZerodhaWatchlistPanel({
       groups[groupKey].stocks.push(s);
     });
 
-    return Object.values(groups).sort((a, b) => a.title.localeCompare(b.title));
+    return Object.values(groups).sort((a, b) => {
+      const isAEnd = a.key === 'Unassigned' || a.key === 'no_flag' || a.key === 'no_tags';
+      const isBEnd = b.key === 'Unassigned' || b.key === 'no_flag' || b.key === 'no_tags';
+      if (isAEnd && !isBEnd) return 1;
+      if (!isAEnd && isBEnd) return -1;
+      return a.title.localeCompare(b.title);
+    });
   }, [stockList, grouping]);
+
+  // Market Breadth calculation (Advancing vs Declining)
+  const calculateBreadth = useCallback((stocks) => {
+    let adv = 0;
+    let dec = 0;
+    stocks.forEach((s) => {
+      const chg = typeof s.dailyChangePct === 'number' ? s.dailyChangePct : null;
+      if (chg !== null) {
+        if (chg >= 0) adv++;
+        else dec++;
+      } else if (s.isAdvancing !== false) {
+        adv++;
+      } else {
+        dec++;
+      }
+    });
+    return { adv, dec, total: stocks.length };
+  }, []);
+
+  const totalBreadth = useMemo(() => calculateBreadth(stockList), [stockList, calculateBreadth]);
 
   // Compute exact flattened list of visible stocks as ordered on the screen
   const visibleStocksOrdered = useMemo(() => {
@@ -259,13 +305,12 @@ export default function ZerodhaWatchlistPanel({
     }
   };
 
-  // Auto-fetch quotes if any stocks in the selected watchlist are missing prices
+  // Auto-fetch quotes if any stocks in the selected watchlist are missing live quotes
   useEffect(() => {
     if (!stockList || stockList.length === 0) return;
     const hasUnfetched = stockList.some((s) => {
       const clean = (s.symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
-      const hasPrice = (liveQuotes[clean]?.currentPrice && liveQuotes[clean].currentPrice > 0) || (s.currentPrice && s.currentPrice > 0);
-      return !hasPrice;
+      return !liveQuotes[clean] && !liveQuotes[s.symbol];
     });
     if (hasUnfetched && !isRefreshing) {
       handleRefreshQuotes();
@@ -338,17 +383,37 @@ export default function ZerodhaWatchlistPanel({
 
   // Draggable Left Edge Resizer for smooth width adjustment
   const handleMouseDownResize = (e) => {
+    // Only handle primary left-click
+    if (e.button !== undefined && e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+
     setIsResizing(true);
     document.body.style.userSelect = 'none';
     document.body.style.cursor = 'col-resize';
     document.documentElement.classList.add('tc-resizing');
 
+    // Disable pointer-events on all iframes so TradingView doesn't swallow mouse movements during drag
+    const iframes = document.querySelectorAll('iframe');
+    iframes.forEach((iframe) => {
+      iframe.style.pointerEvents = 'none';
+    });
+
     const onMouseMove = (moveEvent) => {
-      const newWidth = Math.max(240, Math.min(window.innerWidth - moveEvent.clientX, 700));
+      const cursorWidth = window.innerWidth - moveEvent.clientX;
+      const maxLimit = Math.min(Math.round(window.innerWidth * 0.7), 800);
+      const newWidth = Math.max(280, Math.min(cursorWidth, maxLimit));
       setPanelWidth(newWidth);
+      panelWidthRef.current = newWidth;
       document.documentElement.style.setProperty('--tc-dock-width', `${newWidth}px`);
+
+      if (panelAsideRef.current) {
+        panelAsideRef.current.style.width = `${newWidth}px`;
+      }
+      const widthStr = `calc(100vw - ${newWidth}px)`;
+      document.body.style.width = widthStr;
+      document.body.style.maxWidth = widthStr;
+      document.body.style.marginRight = `${newWidth}px`;
     };
 
     const onMouseUp = () => {
@@ -356,8 +421,14 @@ export default function ZerodhaWatchlistPanel({
       document.body.style.userSelect = '';
       document.body.style.cursor = '';
       document.documentElement.classList.remove('tc-resizing');
+
+      iframes.forEach((iframe) => {
+        iframe.style.pointerEvents = '';
+      });
+
       window.removeEventListener('mousemove', onMouseMove);
       window.removeEventListener('mouseup', onMouseUp);
+      window.removeEventListener('blur', onMouseUp);
 
       try {
         localStorage.setItem('tc_zerodha_panel_width', String(panelWidthRef.current));
@@ -367,7 +438,7 @@ export default function ZerodhaWatchlistPanel({
 
       // Fire resize so chart adapts to final dropped width
       window.dispatchEvent(new Event('resize'));
-      document.querySelectorAll('iframe').forEach((iframe) => {
+      iframes.forEach((iframe) => {
         try {
           iframe.contentWindow?.dispatchEvent(new Event('resize'));
         } catch (_err) {
@@ -378,6 +449,7 @@ export default function ZerodhaWatchlistPanel({
 
     window.addEventListener('mousemove', onMouseMove);
     window.addEventListener('mouseup', onMouseUp);
+    window.addEventListener('blur', onMouseUp);
   };
 
   // Auto-scroll active stock row into view
@@ -390,7 +462,9 @@ export default function ZerodhaWatchlistPanel({
   // Close menus when clicking outside
   useEffect(() => {
     const handleClick = (e) => {
-      if (flagMenuSymbol) setFlagMenuSymbol(null);
+      if (flagMenuSymbol && !e.target.closest('.tc-flag-palette-popover')) {
+        setFlagMenuSymbol(null);
+      }
       if (isGroupMenuOpen && groupMenuRef.current && !groupMenuRef.current.contains(e.target)) {
         setIsGroupMenuOpen(false);
       }
@@ -399,50 +473,200 @@ export default function ZerodhaWatchlistPanel({
     return () => window.removeEventListener('click', handleClick);
   }, [flagMenuSymbol, isGroupMenuOpen]);
 
-  // Drag and Drop handlers
+  // Drag and Drop handlers (with section migration support)
   const handleDragStart = (e, symbol) => {
     setDraggedSymbol(symbol);
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', symbol);
   };
 
-  const handleDragOver = (e, targetSymbol) => {
+  const handleDragEnd = () => {
+    setDraggedSymbol(null);
+    setDragOverSymbol(null);
+    setDragOverGroupKey(null);
+  };
+
+  const handleRowDragOver = (e, targetSymbol) => {
     e.preventDefault();
+    e.stopPropagation();
     e.dataTransfer.dropEffect = 'move';
     if (dragOverSymbol !== targetSymbol) {
       setDragOverSymbol(targetSymbol);
     }
+    if (dragOverGroupKey !== null) {
+      setDragOverGroupKey(null);
+    }
   };
 
-  const handleDrop = (e, targetSymbol) => {
-    e.preventDefault();
-    if (!draggedSymbol || draggedSymbol === targetSymbol) {
-      setDraggedSymbol(null);
+  const handleRowDragLeave = (e, targetSymbol) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    if (dragOverSymbol === targetSymbol) {
       setDragOverSymbol(null);
+    }
+  };
+
+  const handleHeaderDragOver = (e, groupKey) => {
+    e.preventDefault();
+    e.stopPropagation();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverGroupKey !== groupKey) {
+      setDragOverGroupKey(groupKey);
+    }
+    if (dragOverSymbol !== null) {
+      setDragOverSymbol(null);
+    }
+  };
+
+  const handleHeaderDragLeave = (e, groupKey) => {
+    if (e.currentTarget.contains(e.relatedTarget)) return;
+    if (dragOverGroupKey === groupKey) {
+      setDragOverGroupKey(null);
+    }
+  };
+
+  const handleHeaderDrop = (e, targetGroup) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedSymbol) {
+      handleDragEnd();
       return;
     }
 
-    const currentSymbols = visibleStocksOrdered.map((s) => s.symbol);
+    const draggedStock = stockList.find((s) => s.symbol === draggedSymbol);
+    if (!draggedStock) {
+      handleDragEnd();
+      return;
+    }
+
+    let targetSection = null;
+    if (grouping === 'sector') {
+      targetSection = {
+        grouping: 'sector',
+        sector: targetGroup.key === 'Unassigned' ? '' : targetGroup.key,
+      };
+    } else if (grouping === 'flag') {
+      targetSection = {
+        grouping: 'flag',
+        flagColor: targetGroup.flagColor || 'no_flag',
+      };
+    } else if (grouping === 'tag') {
+      targetSection = {
+        grouping: 'tag',
+        tag: targetGroup.key === 'no_tags' ? '' : targetGroup.key,
+      };
+    }
+
+    // Auto expand the target section on drop so moved stock is immediately visible
+    setCollapsedGroups((prev) => {
+      const updated = { ...prev, [targetGroup.key]: false };
+      try {
+        localStorage.setItem('tc_zerodha_collapsed_groups', JSON.stringify(updated));
+      } catch (_e) {}
+      return updated;
+    });
+
+    const currentSymbols = (Array.isArray(customOrder) && customOrder.length > 0)
+      ? [...customOrder]
+      : stockList.map((s) => s.symbol);
+
+    const fromIdx = currentSymbols.indexOf(draggedSymbol);
+    if (fromIdx !== -1) {
+      currentSymbols.splice(fromIdx, 1);
+    }
+
+    // Insert at beginning of target section
+    const firstOther = targetGroup.stocks.find((s) => s.symbol !== draggedSymbol);
+    if (firstOther) {
+      const toIdx = currentSymbols.indexOf(firstOther.symbol);
+      if (toIdx !== -1) {
+        currentSymbols.splice(toIdx, 0, draggedSymbol);
+      } else {
+        currentSymbols.push(draggedSymbol);
+      }
+    } else {
+      currentSymbols.push(draggedSymbol);
+    }
+
+    if (onMoveStockToSection) {
+      onMoveStockToSection(draggedSymbol, targetSection, currentSymbols);
+    } else if (onReorderStocks) {
+      if (targetSection?.grouping === 'flag' && onUpdateStockFlag) {
+        onUpdateStockFlag(draggedSymbol, targetSection.flagColor === 'no_flag' ? null : targetSection.flagColor);
+      }
+      onReorderStocks(currentSymbols, weekKey);
+    }
+
+    handleDragEnd();
+  };
+
+  const handleRowDrop = (e, targetStock, targetGroup) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (!draggedSymbol || draggedSymbol === targetStock.symbol) {
+      handleDragEnd();
+      return;
+    }
+
+    const draggedStock = stockList.find((s) => s.symbol === draggedSymbol);
+    let targetSection = null;
+
+    if (grouping === 'sector') {
+      const targetSec = targetStock.sector || (targetGroup?.key !== 'all' ? targetGroup?.key : '') || '';
+      if (draggedStock?.sector !== targetSec) {
+        targetSection = {
+          grouping: 'sector',
+          sector: targetSec === 'Unassigned' ? '' : targetSec,
+        };
+      }
+    } else if (grouping === 'flag') {
+      const targetFlag = targetStock.flagColor || null;
+      if (draggedStock?.flagColor !== targetFlag) {
+        targetSection = {
+          grouping: 'flag',
+          flagColor: targetFlag || 'no_flag',
+        };
+      }
+    } else if (grouping === 'tag') {
+      const targetTag = Array.isArray(targetStock.tags) && targetStock.tags[0] ? targetStock.tags[0] : '';
+      targetSection = {
+        grouping: 'tag',
+        tag: targetTag,
+      };
+    }
+
+    const currentSymbols = (Array.isArray(customOrder) && customOrder.length > 0)
+      ? [...customOrder]
+      : stockList.map((s) => s.symbol);
+
     const fromIndex = currentSymbols.indexOf(draggedSymbol);
-    const toIndex = currentSymbols.indexOf(targetSymbol);
+    const toIndex = currentSymbols.indexOf(targetStock.symbol);
 
     if (fromIndex !== -1 && toIndex !== -1) {
       const newOrder = [...currentSymbols];
       const [removed] = newOrder.splice(fromIndex, 1);
       newOrder.splice(toIndex, 0, removed);
 
-      if (onReorderStocks) {
+      if (onMoveStockToSection) {
+        onMoveStockToSection(draggedSymbol, targetSection, newOrder);
+      } else if (onReorderStocks) {
+        if (targetSection?.grouping === 'flag' && onUpdateStockFlag) {
+          onUpdateStockFlag(draggedSymbol, targetSection.flagColor === 'no_flag' ? null : targetSection.flagColor);
+        }
         onReorderStocks(newOrder, weekKey);
+      }
+    } else {
+      if (onMoveStockToSection && targetSection) {
+        onMoveStockToSection(draggedSymbol, targetSection, currentSymbols);
       }
     }
 
-    setDraggedSymbol(null);
-    setDragOverSymbol(null);
+    handleDragEnd();
   };
 
   return (
     <aside
-      className={`tc-zerodha-watchlist-panel ${isCollapsed ? 'collapsed' : ''}`}
+      ref={panelAsideRef}
+      className={`tc-zerodha-watchlist-panel ${isCollapsed ? 'collapsed' : ''} ${draggedSymbol ? 'tc-is-dragging' : ''}`}
       onKeyDown={(e) => {
         // Prevent typing and panel shortcuts from triggering Kite's global shortcuts (e.g. B, S, /)
         e.stopPropagation();
@@ -472,31 +696,109 @@ export default function ZerodhaWatchlistPanel({
         fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif',
       }}
     >
-      {/* Draggable Left Border Resizer Handle */}
+      <style>{`
+        @keyframes tc-spin {
+          from { transform: rotate(0deg); }
+          to { transform: rotate(360deg); }
+        }
+        .tc-is-dragging * {
+          pointer-events: none !important;
+        }
+        .tc-is-dragging .tc-watchlist-section-header,
+        .tc-is-dragging [id^="tc-stock-row-"] {
+          pointer-events: auto !important;
+        }
+        html.tc-resizing body,
+        html.tc-resizing .tc-zerodha-watchlist-panel,
+        html.tc-resizing iframe {
+          transition: none !important;
+          user-select: none !important;
+        }
+        html.tc-resizing iframe {
+          pointer-events: none !important;
+        }
+        .tc-resizing,
+        .tc-resizing * {
+          cursor: col-resize !important;
+        }
+        .tc-dock-toggle-pill,
+        .tc-dock-toggle-pill * {
+          cursor: pointer !important;
+        }
+      `}</style>
+      {/* Draggable Left Border Resizer Handle (Clean transparent grab overlay, never obscures UI) */}
       {!isCollapsed && (
         <div
           className="tc-panel-resizer-handle"
           onMouseDown={handleMouseDownResize}
-          title="Drag to resize watchlist width"
+          title="Drag left/right to resize watchlist width"
           style={{
             position: 'absolute',
-            left: 0,
+            left: '-4px',
             top: 0,
             bottom: 0,
-            width: '6px',
+            width: '8px',
             cursor: 'col-resize',
             zIndex: 100,
-            background: isResizing ? '#38bdf8' : 'transparent',
-            transition: 'background 0.15s ease',
-          }}
-          onMouseEnter={(e) => {
-            if (!isResizing) e.currentTarget.style.background = 'rgba(56, 189, 248, 0.35)';
-          }}
-          onMouseLeave={(e) => {
-            if (!isResizing) e.currentTarget.style.background = 'transparent';
+            background: 'transparent',
+            userSelect: 'none',
           }}
         />
       )}
+
+      {/* Vertically Centered Left-Border Dock Expand/Collapse Action Pill */}
+      <div
+        role="button"
+        tabIndex={0}
+        onClick={(e) => {
+          e.stopPropagation();
+          setIsCollapsed((prev) => !prev);
+        }}
+        title={isCollapsed ? 'Expand Watchlist Panel' : 'Collapse Sidebar'}
+        className="tc-dock-toggle-pill"
+        style={{
+          position: 'absolute',
+          left: isCollapsed ? '-5px' : '-6px',
+          top: '50%',
+          transform: 'translateY(-50%)',
+          width: '9px',
+          height: '34px',
+          borderRadius: '12px',
+          background: '#0284c7',
+          border: '1px solid rgba(56, 189, 248, 0.55)',
+          boxShadow: '-1px 0 6px rgba(0, 0, 0, 0.45)',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          cursor: 'pointer',
+          zIndex: 105,
+          transition: 'all 0.15s ease',
+          userSelect: 'none',
+          padding: 0,
+        }}
+        onMouseEnter={(e) => {
+          e.currentTarget.style.background = '#38bdf8';
+          e.currentTarget.style.boxShadow = '-1px 0 10px rgba(56, 189, 248, 0.7)';
+        }}
+        onMouseLeave={(e) => {
+          e.currentTarget.style.background = '#0284c7';
+          e.currentTarget.style.boxShadow = '-1px 0 6px rgba(0, 0, 0, 0.45)';
+        }}
+      >
+        <svg
+          width="7"
+          height="7"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#ffffff"
+          strokeWidth="3.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{ display: 'block', pointerEvents: 'none' }}
+        >
+          {isCollapsed ? <polyline points="15 18 9 12 15 6" /> : <polyline points="9 18 15 12 9 6" />}
+        </svg>
+      </div>
 
       {/* COLLAPSED RAIL VIEW */}
       {isCollapsed ? (
@@ -570,39 +872,114 @@ export default function ZerodhaWatchlistPanel({
           {/* Header Bar */}
           <div
             style={{
-              padding: '8px 12px',
+              padding: '6px 10px',
               background: '#10141e',
               borderBottom: '1px solid #2a2e39',
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'space-between',
+              gap: '6px',
             }}
           >
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <span style={{ fontSize: '13px', fontWeight: 800, color: '#ffffff', letterSpacing: '-0.2px' }}>
-                TradeClarity.market
+            {/* Left Brand Lockup, Count & Total Adv/Decline Breadth */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0, minWidth: 0 }}>
+              <div
+                className="tc-brand-logo"
+                title="TradeClarity.market"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'baseline',
+                  cursor: 'default',
+                  userSelect: 'none',
+                  lineHeight: 1.1,
+                }}
+              >
+                <span
+                  style={{
+                    fontSize: '12px',
+                    fontWeight: 800,
+                    color: '#ffffff',
+                    letterSpacing: '-0.02em',
+                  }}
+                >
+                  TradeClarity
+                </span>
+                <span
+                  style={{
+                    fontSize: '13px',
+                    fontWeight: 900,
+                    color: '#00d1ff',
+                    margin: '0 1px',
+                    textShadow: '0 0 10px rgba(0, 209, 255, 0.45)',
+                    display: 'inline-block',
+                    transform: 'scale(1.15)',
+                  }}
+                >
+                  .
+                </span>
+                <span
+                  style={{
+                    fontSize: '10.5px',
+                    fontWeight: 300,
+                    color: '#cbd5e1',
+                    letterSpacing: '0.06em',
+                    opacity: 0.9,
+                    display: 'inline-block',
+                  }}
+                >
+                  market
+                </span>
+              </div>
+              <span style={{ fontSize: '10.5px', color: '#64748b', fontWeight: 600, whiteSpace: 'nowrap', flexShrink: 0 }}>
+                ({stockList.length})
               </span>
-              <span style={{ fontSize: '11px', color: '#64748b', fontWeight: 600 }}>({stockList.length})</span>
+
+              {/* Total Adv vs Decline Market Breadth Pill */}
+              {totalBreadth.total > 0 && (
+                <div
+                  title={`Watchlist Breadth: ${totalBreadth.adv} Advancing (${Math.round((totalBreadth.adv / totalBreadth.total) * 100)}%), ${totalBreadth.dec} Declining`}
+                  style={{
+                    display: 'inline-flex',
+                    alignItems: 'center',
+                    gap: '3px',
+                    fontSize: '10px',
+                    fontWeight: 700,
+                    padding: '1px 5px',
+                    borderRadius: '4px',
+                    background: 'rgba(255, 255, 255, 0.05)',
+                    border: '1px solid rgba(255, 255, 255, 0.1)',
+                    fontVariantNumeric: 'tabular-nums',
+                    whiteSpace: 'nowrap',
+                    cursor: 'default',
+                    flexShrink: 0,
+                    lineHeight: '13px',
+                  }}
+                >
+                  <span style={{ color: '#22c55e' }}>{totalBreadth.adv}▲</span>
+                  <span style={{ color: '#64748b', fontSize: '9px' }}>:</span>
+                  <span style={{ color: '#ef4444' }}>{totalBreadth.dec}▼</span>
+                </div>
+              )}
             </div>
 
-            {/* THREE TOP-RIGHT ACTION ICONS (Built with div role="button" to avoid any global CSS padding/min-width bleed) */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+            {/* TOP-RIGHT ACTION ICONS: Refresh, Add Stock, Open in Extension (Compact 24x24 buttons with 4px gap) */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '4px', flexShrink: 0 }}>
               {/* 1. Refresh Live Quotes */}
               <div
                 role="button"
                 tabIndex={0}
                 onClick={handleRefreshQuotes}
-                title="Refresh Live Market Quotes"
+                title={isRefreshing ? "Refreshing Live Quotes..." : "Refresh Live Market Quotes"}
                 style={{
-                  width: '28px',
-                  height: '28px',
-                  minWidth: '28px',
-                  maxWidth: '28px',
-                  minHeight: '28px',
-                  maxHeight: '28px',
-                  borderRadius: '6px',
+                  width: '24px',
+                  height: '24px',
+                  minWidth: '24px',
+                  maxWidth: '24px',
+                  minHeight: '24px',
+                  maxHeight: '24px',
+                  borderRadius: '5px',
                   background: '#1c2233',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
+                  border: isRefreshing ? '1px solid #38bdf8' : '1px solid rgba(255, 255, 255, 0.12)',
                   display: 'flex',
                   alignItems: 'center',
                   justifyContent: 'center',
@@ -617,12 +994,12 @@ export default function ZerodhaWatchlistPanel({
                 }}
                 onMouseLeave={(e) => {
                   e.currentTarget.style.background = '#1c2233';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                  e.currentTarget.style.borderColor = isRefreshing ? '#38bdf8' : 'rgba(255, 255, 255, 0.12)';
                 }}
               >
                 <svg
-                  width="14"
-                  height="14"
+                  width="12"
+                  height="12"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="#38bdf8"
@@ -631,8 +1008,8 @@ export default function ZerodhaWatchlistPanel({
                   strokeLinejoin="round"
                   style={{
                     display: 'block',
-                    transition: 'transform 0.4s ease',
-                    transform: isRefreshing ? 'rotate(180deg)' : 'none',
+                    animation: isRefreshing ? 'tc-spin 0.75s linear infinite' : 'none',
+                    transformOrigin: 'center center',
                   }}
                 >
                   <path d="M21.5 2v6h-6M2.5 22v-6h6M2 11.5a10 10 0 0118.8-4.3M22 12.5a10 10 0 01-18.8 4.3" />
@@ -647,13 +1024,13 @@ export default function ZerodhaWatchlistPanel({
                   onClick={onAddStock}
                   title="Add Stock to Watchlist"
                   style={{
-                    width: '28px',
-                    height: '28px',
-                    minWidth: '28px',
-                    maxWidth: '28px',
-                    minHeight: '28px',
-                    maxHeight: '28px',
-                    borderRadius: '6px',
+                    width: '24px',
+                    height: '24px',
+                    minWidth: '24px',
+                    maxWidth: '24px',
+                    minHeight: '24px',
+                    maxHeight: '24px',
+                    borderRadius: '5px',
                     background: '#1c2233',
                     border: '1px solid rgba(255, 255, 255, 0.12)',
                     display: 'flex',
@@ -674,8 +1051,8 @@ export default function ZerodhaWatchlistPanel({
                   }}
                 >
                   <svg
-                    width="14"
-                    height="14"
+                    width="12"
+                    height="12"
                     viewBox="0 0 24 24"
                     fill="none"
                     stroke="#e2e8f0"
@@ -712,13 +1089,13 @@ export default function ZerodhaWatchlistPanel({
                 }}
                 title={`Open ${activeSymbol || 'current symbol'} in TradeClarity Extension`}
                 style={{
-                  width: '28px',
-                  height: '28px',
-                  minWidth: '28px',
-                  maxWidth: '28px',
-                  minHeight: '28px',
-                  maxHeight: '28px',
-                  borderRadius: '6px',
+                  width: '24px',
+                  height: '24px',
+                  minWidth: '24px',
+                  maxWidth: '24px',
+                  minHeight: '24px',
+                  maxHeight: '24px',
+                  borderRadius: '5px',
                   background: '#1c2233',
                   border: '1px solid rgba(56, 189, 248, 0.3)',
                   display: 'flex',
@@ -742,8 +1119,8 @@ export default function ZerodhaWatchlistPanel({
                 }}
               >
                 <svg
-                  width="13"
-                  height="13"
+                  width="12"
+                  height="12"
                   viewBox="0 0 24 24"
                   fill="none"
                   stroke="currentColor"
@@ -754,54 +1131,6 @@ export default function ZerodhaWatchlistPanel({
                   <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
                   <polyline points="15 3 21 3 21 9" />
                   <line x1="10" y1="14" x2="21" y2="3" />
-                </svg>
-              </div>
-
-              {/* 3. Collapse Sidebar Rail */}
-              <div
-                role="button"
-                tabIndex={0}
-                onClick={() => setIsCollapsed(true)}
-                title="Collapse Sidebar"
-                style={{
-                  width: '28px',
-                  height: '28px',
-                  minWidth: '28px',
-                  maxWidth: '28px',
-                  minHeight: '28px',
-                  maxHeight: '28px',
-                  borderRadius: '6px',
-                  background: '#1c2233',
-                  border: '1px solid rgba(255, 255, 255, 0.12)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  cursor: 'pointer',
-                  boxSizing: 'border-box',
-                  padding: 0,
-                  transition: 'all 0.15s ease',
-                }}
-                onMouseEnter={(e) => {
-                  e.currentTarget.style.background = '#27344f';
-                  e.currentTarget.style.borderColor = '#38bdf8';
-                }}
-                onMouseLeave={(e) => {
-                  e.currentTarget.style.background = '#1c2233';
-                  e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
-                }}
-              >
-                <svg
-                  width="14"
-                  height="14"
-                  viewBox="0 0 24 24"
-                  fill="none"
-                  stroke="#94a3b8"
-                  strokeWidth="2.5"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ display: 'block' }}
-                >
-                  <polyline points="9 18 15 12 9 6" />
                 </svg>
               </div>
             </div>
@@ -1025,6 +1354,70 @@ export default function ZerodhaWatchlistPanel({
                   </div>
                 )}
               </div>
+
+              {/* QUICK EXPAND ALL / COLLAPSE ALL SECTIONS BUTTON */}
+              {grouping !== 'none' && groupedStocks.length > 0 && (
+                <div
+                  role="button"
+                  tabIndex={0}
+                  onClick={() => {
+                    const allCollapsed = groupedStocks.every((g) => collapsedGroups[g.key]);
+                    const nextState = {};
+                    if (!allCollapsed) {
+                      groupedStocks.forEach((g) => {
+                        nextState[g.key] = true;
+                      });
+                    }
+                    setCollapsedGroups(nextState);
+                    try {
+                      localStorage.setItem('tc_zerodha_collapsed_groups', JSON.stringify(nextState));
+                    } catch (_e) {}
+                  }}
+                  title={
+                    groupedStocks.every((g) => collapsedGroups[g.key])
+                      ? 'Expand All Sections'
+                      : 'Collapse All Sections'
+                  }
+                  style={{
+                    width: '28px',
+                    height: '28px',
+                    minWidth: '28px',
+                    borderRadius: '5px',
+                    background: '#1c2233',
+                    border: '1px solid rgba(255, 255, 255, 0.12)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    cursor: 'pointer',
+                    color: '#94a3b8',
+                    padding: 0,
+                    transition: 'all 0.15s ease',
+                    boxSizing: 'border-box',
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.borderColor = '#38bdf8';
+                    e.currentTarget.style.color = '#38bdf8';
+                    e.currentTarget.style.background = '#27344f';
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.borderColor = 'rgba(255, 255, 255, 0.12)';
+                    e.currentTarget.style.color = '#94a3b8';
+                    e.currentTarget.style.background = '#1c2233';
+                  }}
+                >
+                  {groupedStocks.every((g) => collapsedGroups[g.key]) ? (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="7 13 12 18 17 13" />
+                      <polyline points="7 6 12 11 17 6" />
+                    </svg>
+                  ) : (
+                    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="17 11 12 6 7 11" />
+                      <polyline points="17 18 12 13 7 18" />
+                    </svg>
+                  )}
+                </div>
+              )}
             </div>
           </div>
 
@@ -1038,36 +1431,106 @@ export default function ZerodhaWatchlistPanel({
               padding: '2px 0',
             }}
           >
-            {groupedStocks.map((group) => {
+            {groupedStocks.map((group, groupIdx) => {
               const isGroupCollapsed = collapsedGroups[group.key] || false;
               const showGroupHeader = group.title !== '';
+              const isHeaderDropTarget = dragOverGroupKey === group.key;
+              const groupBreadth = calculateBreadth(group.stocks);
+              const isFirst = groupIdx === 0;
 
               return (
-                <div key={group.key}>
+                <div key={group.key} style={{ marginTop: showGroupHeader && !isFirst ? '8px' : '0' }}>
                   {showGroupHeader && (
                     <div
-                      onClick={() =>
-                        setCollapsedGroups((prev) => ({
-                          ...prev,
-                          [group.key]: !prev[group.key],
-                        }))
-                      }
+                      className="tc-watchlist-section-header"
+                      onClick={() => {
+                        setCollapsedGroups((prev) => {
+                          const updated = {
+                            ...prev,
+                            [group.key]: !prev[group.key],
+                          };
+                          try {
+                            localStorage.setItem('tc_zerodha_collapsed_groups', JSON.stringify(updated));
+                          } catch (_e) {}
+                          return updated;
+                        });
+                      }}
+                      onDragOver={(e) => handleHeaderDragOver(e, group.key)}
+                      onDragLeave={(e) => handleHeaderDragLeave(e, group.key)}
+                      onDrop={(e) => handleHeaderDrop(e, group)}
+                      title={`${isGroupCollapsed ? 'Expand' : 'Collapse'} ${group.title} section (or drop here to move)`}
                       style={{
-                        padding: '5px 12px',
-                        background: 'rgba(18, 22, 34, 0.95)',
-                        fontSize: '11px',
-                        fontWeight: 700,
-                        color: '#94a3b8',
-                        textTransform: 'uppercase',
-                        letterSpacing: '0.4px',
+                        padding: '0 10px',
+                        height: '30px',
+                        minHeight: '30px',
+                        background: isHeaderDropTarget
+                          ? 'rgba(56, 189, 248, 0.25)'
+                          : 'linear-gradient(90deg, #1b2438 0%, #151b29 100%)',
+                        borderLeft: isHeaderDropTarget
+                          ? '3px solid #38bdf8'
+                          : '3px solid #0284c7',
+                        borderTop: '1px solid rgba(255, 255, 255, 0.09)',
+                        borderBottom: '1px solid rgba(255, 255, 255, 0.05)',
+                        boxShadow: '0 1px 3px rgba(0, 0, 0, 0.25)',
                         display: 'flex',
                         alignItems: 'center',
                         justifyContent: 'space-between',
                         cursor: 'pointer',
-                        borderBottom: '1px solid rgba(255, 255, 255, 0.04)',
+                        userSelect: 'none',
+                        transition: 'all 0.15s ease',
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isHeaderDropTarget) e.currentTarget.style.background = 'linear-gradient(90deg, #243049 0%, #1c2438 100%)';
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isHeaderDropTarget) e.currentTarget.style.background = 'linear-gradient(90deg, #1b2438 0%, #151b29 100%)';
                       }}
                     >
-                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '7px' }}>
+                        {/* Interactive Collapse / Expand Chevron Icon */}
+                        <span
+                          style={{
+                            display: 'inline-flex',
+                            alignItems: 'center',
+                            justifyContent: 'center',
+                            width: '14px',
+                            height: '14px',
+                            color: '#38bdf8',
+                            transition: 'transform 0.18s ease',
+                            transform: isGroupCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
+                          }}
+                        >
+                          <svg
+                            width="10"
+                            height="10"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2.5"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="6 9 12 15 18 9" />
+                          </svg>
+                        </span>
+
+                        {/* Category / Sector Icon */}
+                        <svg
+                          width="12"
+                          height="12"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="#38bdf8"
+                          strokeWidth="2"
+                          strokeLinecap="round"
+                          strokeLinejoin="round"
+                          style={{ opacity: 0.85, flexShrink: 0 }}
+                        >
+                          <polygon points="12 2 2 7 12 12 22 7 12 2" />
+                          <polyline points="2 17 12 22 22 17" />
+                          <polyline points="2 12 12 17 22 12" />
+                        </svg>
+
                         {group.flagColor ? (
                           <div
                             style={{
@@ -1075,22 +1538,69 @@ export default function ZerodhaWatchlistPanel({
                               height: '8px',
                               borderRadius: '50%',
                               background: FLAG_COLOR_MAP[group.flagColor],
+                              boxShadow: `0 0 6px ${FLAG_COLOR_MAP[group.flagColor]}`,
                             }}
                           />
                         ) : null}
-                        <span>{group.title}</span>
+
+                        {/* Bold Distinctive Sector Title */}
+                        <span
+                          style={{
+                            color: '#ffffff',
+                            fontSize: '11px',
+                            fontWeight: 700,
+                            letterSpacing: '0.2px',
+                          }}
+                        >
+                          {group.title}
+                        </span>
                       </div>
-                      <span
-                        style={{
-                          background: '#252e42',
-                          color: '#94a3b8',
-                          fontSize: '10px',
-                          padding: '1px 6px',
-                          borderRadius: '8px',
-                        }}
-                      >
-                        {group.stocks.length}
-                      </span>
+
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                        {isHeaderDropTarget && (
+                          <span style={{ fontSize: '9px', color: '#38bdf8', fontWeight: 700, textTransform: 'none' }}>
+                            Drop to move
+                          </span>
+                        )}
+
+                        {/* Sector Adv vs Decline Breadth Pill */}
+                        {groupBreadth.total > 0 && (
+                          <span
+                            title={`Sector Breadth: ${groupBreadth.adv} Advancing, ${groupBreadth.dec} Declining`}
+                            style={{
+                              fontSize: '10px',
+                              fontWeight: 700,
+                              display: 'inline-flex',
+                              alignItems: 'center',
+                              gap: '3px',
+                              background: 'rgba(0, 0, 0, 0.4)',
+                              padding: '1px 5px',
+                              borderRadius: '4px',
+                              border: '1px solid rgba(255, 255, 255, 0.1)',
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            <span style={{ color: '#22c55e' }}>{groupBreadth.adv}▲</span>
+                            <span style={{ color: '#64748b', fontSize: '8px' }}>:</span>
+                            <span style={{ color: '#ef4444' }}>{groupBreadth.dec}▼</span>
+                          </span>
+                        )}
+
+                        {/* Elevated Count Badge */}
+                        <span
+                          style={{
+                            background: '#1e293b',
+                            color: '#38bdf8',
+                            fontSize: '10px',
+                            fontWeight: 700,
+                            padding: '1px 6px',
+                            borderRadius: '6px',
+                            border: '1px solid rgba(56, 189, 248, 0.25)',
+                          }}
+                        >
+                          {group.stocks.length}
+                        </span>
+                      </div>
                     </div>
                   )}
 
@@ -1219,7 +1729,7 @@ export default function ZerodhaWatchlistPanel({
                               }}
                               title={`Reported Earnings: ${rawEarningsDate || ''} (${Math.abs(earningsDays)}d ago)`}
                             >
-                              ✓ Reported
+                              ✓ Rep
                             </span>
                           );
                         }
@@ -1256,8 +1766,10 @@ export default function ZerodhaWatchlistPanel({
                           ref={isActive ? activeRowRef : null}
                           draggable={true}
                           onDragStart={(e) => handleDragStart(e, s.symbol)}
-                          onDragOver={(e) => handleDragOver(e, s.symbol)}
-                          onDrop={(e) => handleDrop(e, s.symbol)}
+                          onDragEnd={handleDragEnd}
+                          onDragOver={(e) => handleRowDragOver(e, s.symbol)}
+                          onDragLeave={(e) => handleRowDragLeave(e, s.symbol)}
+                          onDrop={(e) => handleRowDrop(e, s, group)}
                           onClick={() => onSelectStock(s)}
                           onContextMenu={(e) => {
                             e.preventDefault();
@@ -1269,33 +1781,62 @@ export default function ZerodhaWatchlistPanel({
                             display: 'flex',
                             alignItems: 'center',
                             justifyContent: 'space-between',
-                            padding: '0 10px',
+                            padding: '0 8px',
                             height: '28px',
                             minHeight: '28px',
                             maxHeight: '28px',
                             boxSizing: 'border-box',
                             borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
-                            background: isActive ? '#1e293b' : 'transparent',
+                            background: isActive
+                              ? '#1e293b'
+                              : isDropTarget
+                              ? 'rgba(56, 189, 248, 0.08)'
+                              : 'transparent',
                             borderLeft: isActive ? '3px solid #38bdf8' : '3px solid transparent',
-                            borderTop: isDropTarget ? '2px solid #38bdf8' : 'none',
                             opacity: isBeingDragged ? 0.35 : 1,
                             cursor: 'pointer',
                             position: 'relative',
                             transition: 'background 0.12s',
                           }}
                           onMouseEnter={(e) => {
-                            if (!isActive) e.currentTarget.style.background = '#1c2233';
+                            if (!isActive && !isDropTarget) e.currentTarget.style.background = '#1c2233';
                             const grip = e.currentTarget.querySelector('.tc-drag-grip');
                             if (grip) grip.style.opacity = '0.85';
                           }}
                           onMouseLeave={(e) => {
-                            if (!isActive) e.currentTarget.style.background = 'transparent';
+                            if (!isActive && !isDropTarget) e.currentTarget.style.background = 'transparent';
                             const grip = e.currentTarget.querySelector('.tc-drag-grip');
                             if (grip) grip.style.opacity = '0.25';
                           }}
                         >
+                          {/* Smooth Zero-Jitter Drop Position Indicator Line */}
+                          {isDropTarget && (
+                            <div
+                              style={{
+                                position: 'absolute',
+                                top: 0,
+                                left: 0,
+                                right: 0,
+                                height: '2px',
+                                background: '#38bdf8',
+                                zIndex: 10,
+                                boxShadow: '0 0 6px rgba(56, 189, 248, 0.9)',
+                                pointerEvents: 'none',
+                              }}
+                            />
+                          )}
                           {/* Left: Drag grip, Flag icon, Symbol name, Earnings badge, Tag */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', minWidth: 0, flex: 1, marginRight: '8px' }}>
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '5px',
+                              minWidth: 0,
+                              flex: 1,
+                              overflow: 'hidden',
+                              marginRight: '6px',
+                            }}
+                          >
                             {/* Grip Drag Handle - subtle until hovered */}
                             <span
                               className="tc-drag-grip"
@@ -1308,60 +1849,84 @@ export default function ZerodhaWatchlistPanel({
                                 marginRight: '-2px',
                                 lineHeight: '1',
                                 opacity: 0.25,
+                                flexShrink: 0,
                                 transition: 'opacity 0.15s',
                               }}
                             >
                               ⋮⋮
                             </span>
 
-                            {/* Flag Icon */}
+                            {/* Flag Icon (TradingView-style ribbon banner) */}
                             <div
                               onClick={(e) => {
                                 e.stopPropagation();
+                                const hasFlag = Boolean(s.flagColor);
+                                if (!hasFlag) {
+                                  // First by default apply the last applied colour (TradingView behavior)
+                                  if (onUpdateStockFlag) {
+                                    onUpdateStockFlag(s.symbol, recentFlagColor);
+                                  }
+                                }
+                                // Position palette right above or below the clicked flag icon
                                 setFlagMenuSymbol(s.symbol);
-                                setFlagMenuPos({ x: e.clientX, y: e.clientY });
+                                const posX = Math.max(10, e.clientX - 60);
+                                const posY = e.clientY > 50 ? e.clientY - 38 : e.clientY + 22;
+                                setFlagMenuPos({ x: posX, y: posY });
                               }}
-                              title="Set Flag Color"
+                              title={
+                                s.flagColor
+                                  ? `${s.flagColor.charAt(0).toUpperCase() + s.flagColor.slice(1).toLowerCase()} Flag (Click to change/clear)`
+                                  : `Flag stock (${recentFlagColor.charAt(0).toUpperCase() + recentFlagColor.slice(1).toLowerCase()})`
+                              }
                               style={{
                                 cursor: 'pointer',
-                                padding: '1px',
+                                padding: '1px 2px',
                                 display: 'flex',
                                 alignItems: 'center',
                                 justifyContent: 'center',
-                                opacity: s.flagColor ? 1 : 0.35,
-                                transition: 'opacity 0.15s',
+                                flexShrink: 0,
+                                opacity: s.flagColor ? 1 : 0.45,
+                                transition: 'opacity 0.15s, transform 0.12s',
                               }}
                               onMouseEnter={(e) => {
-                                if (!s.flagColor) e.currentTarget.style.opacity = '0.9';
+                                e.currentTarget.style.opacity = '1';
                               }}
                               onMouseLeave={(e) => {
-                                if (!s.flagColor) e.currentTarget.style.opacity = '0.35';
+                                e.currentTarget.style.opacity = s.flagColor ? '1' : '0.45';
                               }}
                             >
+                              {/* TradingView Bookmark Ribbon Flag (Exact match to TV watchlist) */}
                               <svg
-                                width="11"
-                                height="11"
-                                viewBox="0 0 24 24"
-                                fill={s.flagColor ? FLAG_COLOR_MAP[s.flagColor] : 'none'}
-                                stroke={s.flagColor ? FLAG_COLOR_MAP[s.flagColor] : '#94a3b8'}
-                                strokeWidth="2.5"
-                                strokeLinecap="round"
-                                strokeLinejoin="round"
+                                width="10"
+                                height="12"
+                                viewBox="0 0 12 14"
+                                style={{ display: 'block', pointerEvents: 'none' }}
                               >
-                                <path d="M4 15s1-1 4-1 5 2 8 2 4-1 4-1V3s-1 1-4 1-5-2-8-2-4 1-4 1z" />
-                                <line x1="4" y1="22" x2="4" y2="15" />
+                                <path
+                                  d="M0 1h11l-3.5 6 3.5 6H0z"
+                                  fill={s.flagColor ? FLAG_COLOR_MAP[s.flagColor] : 'none'}
+                                  stroke={s.flagColor ? FLAG_COLOR_MAP[s.flagColor] : '#64748b'}
+                                  strokeWidth="1.2"
+                                  strokeLinejoin="round"
+                                />
                               </svg>
                             </div>
 
-                            {/* Symbol Name */}
+                            {/* Symbol Name (Refined, crisp TradingView-grade medium weight with ellipsis if constrained) */}
                             <span
                               style={{
-                                fontSize: '12.5px',
-                                fontWeight: 700,
-                                color: '#f8fafc',
+                                fontSize: '12px',
+                                fontWeight: isActive ? 600 : 500,
+                                color: isActive ? '#ffffff' : '#e2e8f0',
                                 whiteSpace: 'nowrap',
-                                letterSpacing: '0.2px',
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                letterSpacing: '0.15px',
+                                transition: 'color 0.12s',
+                                flexShrink: 1,
+                                minWidth: 0,
                               }}
+                              title={s.symbol}
                             >
                               {s.symbol}
                             </span>
@@ -1384,19 +1949,19 @@ export default function ZerodhaWatchlistPanel({
                                   lineHeight: '12px',
                                 }}
                               >
-                                {primaryTag}
+                                {formatSectionTitle(primaryTag)}
                               </span>
                             )}
                           </div>
 
                           {/* Right: Price & % Change aligned in dedicated fixed columns with tabular numbers */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '8px', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
+                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
                             {priceVal > 0 ? (
                               <>
                                 <span
                                   style={{
-                                    width: '74px',
-                                    minWidth: '74px',
+                                    width: '64px',
+                                    minWidth: '64px',
                                     textAlign: 'right',
                                     fontWeight: 600,
                                     color: '#f1f5f9',
@@ -1407,8 +1972,8 @@ export default function ZerodhaWatchlistPanel({
                                 </span>
                                 <span
                                   style={{
-                                    width: '56px',
-                                    minWidth: '56px',
+                                    width: '50px',
+                                    minWidth: '50px',
                                     textAlign: 'right',
                                     fontWeight: 700,
                                     fontSize: '11px',
@@ -1420,7 +1985,7 @@ export default function ZerodhaWatchlistPanel({
                                 </span>
                               </>
                             ) : (
-                              <span style={{ width: '138px', textAlign: 'right', fontSize: '11px', fontWeight: 500, color: '#64748b' }}>-</span>
+                              <span style={{ width: '120px', textAlign: 'right', fontSize: '11px', fontWeight: 500, color: '#64748b' }}>-</span>
                             )}
                           </div>
                         </div>
@@ -1433,61 +1998,112 @@ export default function ZerodhaWatchlistPanel({
         </div>
       )}
 
-      {/* Flag Popover Menu */}
-      {flagMenuSymbol && (
-        <div
-          onClick={(e) => e.stopPropagation()}
-          style={{
-            position: 'fixed',
-            left: `${flagMenuPos.x - 120}px`,
-            top: `${flagMenuPos.y - 12}px`,
-            background: '#1e293b',
-            border: '1px solid rgba(255, 255, 255, 0.2)',
-            borderRadius: '20px',
-            padding: '4px 8px',
-            display: 'flex',
-            alignItems: 'center',
-            gap: '6px',
-            boxShadow: '0 4px 15px rgba(0, 0, 0, 0.5)',
-            zIndex: 10001,
-          }}
-        >
-          {Object.entries(FLAG_COLOR_MAP).map(([colorName, colorHex]) => (
+      {/* Flag Popover Menu (TradingView-Style Floating Color Palette) */}
+      {flagMenuSymbol && (() => {
+        const targetStock = stockList.find((st) => st.symbol === flagMenuSymbol);
+        const currentFlag = targetStock?.flagColor;
+
+        return (
+          <div
+            onClick={(e) => e.stopPropagation()}
+            onMouseDown={(e) => e.stopPropagation()}
+            className="tc-flag-palette-popover"
+            style={{
+              position: 'fixed',
+              left: `${flagMenuPos.x}px`,
+              top: `${flagMenuPos.y}px`,
+              background: '#182030',
+              border: '1px solid rgba(56, 189, 248, 0.45)',
+              borderRadius: '24px',
+              padding: '5px 8px',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.75), 0 0 12px rgba(56, 189, 248, 0.25)',
+              zIndex: 10001,
+              userSelect: 'none',
+            }}
+          >
+            {Object.entries(FLAG_COLOR_MAP).map(([colorName, colorHex]) => {
+              const isSelected = currentFlag === colorName;
+              return (
+                <div
+                  key={colorName}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    const targetSym = flagMenuSymbol;
+                    setFlagMenuSymbol(null);
+                    if (isSelected) {
+                      // Clicking currently active color clears the flag
+                      if (onUpdateStockFlag) onUpdateStockFlag(targetSym, null);
+                    } else {
+                      if (onUpdateStockFlag) onUpdateStockFlag(targetSym, colorName);
+                      setRecentFlagColor(colorName);
+                      try {
+                        localStorage.setItem('tc_recent_flag_color', colorName);
+                      } catch (_e) {}
+                    }
+                  }}
+                  style={{
+                    width: '16px',
+                    height: '16px',
+                    borderRadius: '50%',
+                    background: colorHex,
+                    cursor: 'pointer',
+                    border: isSelected ? '2px solid #ffffff' : '1px solid rgba(255, 255, 255, 0.25)',
+                    boxShadow: isSelected ? `0 0 8px ${colorHex}` : 'none',
+                    transform: isSelected ? 'scale(1.2)' : 'scale(1)',
+                    transition: 'all 0.12s ease',
+                    boxSizing: 'border-box',
+                  }}
+                  title={
+                    isSelected
+                      ? `${colorName.charAt(0).toUpperCase() + colorName.slice(1).toLowerCase()} Flag (Click to clear)`
+                      : `Set ${colorName.charAt(0).toUpperCase() + colorName.slice(1).toLowerCase()} Flag`
+                  }
+                  onMouseEnter={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.transform = 'scale(1.2)';
+                      e.currentTarget.style.boxShadow = `0 0 8px ${colorHex}`;
+                    }
+                  }}
+                  onMouseLeave={(e) => {
+                    if (!isSelected) {
+                      e.currentTarget.style.transform = 'scale(1)';
+                      e.currentTarget.style.boxShadow = 'none';
+                    }
+                  }}
+                />
+              );
+            })}
             <div
-              key={colorName}
-              onClick={() => {
-                if (onUpdateStockFlag) onUpdateStockFlag(flagMenuSymbol, colorName);
+              onClick={(e) => {
+                e.stopPropagation();
+                const targetSym = flagMenuSymbol;
                 setFlagMenuSymbol(null);
+                if (onUpdateStockFlag) onUpdateStockFlag(targetSym, null);
               }}
               style={{
-                width: '14px',
-                height: '14px',
-                borderRadius: '50%',
-                background: colorHex,
+                color: '#94a3b8',
+                fontSize: '11px',
                 cursor: 'pointer',
-                border: '1px solid rgba(255, 255, 255, 0.2)',
+                padding: '0 3px',
+                fontWeight: 700,
+                transition: 'color 0.12s',
               }}
-              title={`${colorName.toUpperCase()} Flag`}
-            />
-          ))}
-          <div
-            onClick={() => {
-              if (onUpdateStockFlag) onUpdateStockFlag(flagMenuSymbol, null);
-              setFlagMenuSymbol(null);
-            }}
-            style={{
-              color: '#94a3b8',
-              fontSize: '11px',
-              cursor: 'pointer',
-              padding: '0 3px',
-              fontWeight: 700,
-            }}
-            title="Clear Flag"
-          >
-            ✕
+              title="Clear Flag"
+              onMouseEnter={(e) => {
+                e.currentTarget.style.color = '#ef4444';
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.color = '#94a3b8';
+              }}
+            >
+              ✕
+            </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </aside>
   );
 }

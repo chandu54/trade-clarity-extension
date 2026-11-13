@@ -13,10 +13,13 @@ export default function ZerodhaContextMenu({
   x,
   y,
   stock,
+  initialSubmenu = null,
+  availableSectors = [],
   watchlists = [],
   availableTags = [],
   onClose,
   onToggleWatchlist,
+  onSelectSector,
   onSelectFlagColor,
   onToggleTag,
   onToggleTradable,
@@ -28,8 +31,18 @@ export default function ZerodhaContextMenu({
   onDeleteStock,
 }) {
   const menuRef = useRef(null);
-  const [activeSubmenu, setActiveSubmenu] = useState(null); // 'watchlist' | 'flag' | 'tags' | null
+  const [activeSubmenu, setActiveSubmenu] = useState(initialSubmenu); // 'watchlist' | 'sector' | 'flag' | 'tags' | null
+  const [customSectorInput, setCustomSectorInput] = useState('');
   const [pos, setPos] = useState({ top: y, left: x });
+
+  useEffect(() => {
+    if (isOpen) {
+      setActiveSubmenu(initialSubmenu || null);
+    } else {
+      setActiveSubmenu(null);
+      setCustomSectorInput('');
+    }
+  }, [isOpen, initialSubmenu]);
 
   useLayoutEffect(() => {
     if (!isOpen || !menuRef.current) return;
@@ -75,6 +88,9 @@ export default function ZerodhaContextMenu({
       } else if (e.key.toLowerCase() === 'w') {
         e.preventDefault();
         setActiveSubmenu((prev) => (prev === 'watchlist' ? null : 'watchlist'));
+      } else if (e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        setActiveSubmenu((prev) => (prev === 'sector' ? null : 'sector'));
       } else if (e.key.toLowerCase() === 't') {
         e.preventDefault();
         if (onToggleTradable) onToggleTradable();
@@ -274,6 +290,9 @@ export default function ZerodhaContextMenu({
                 onClick={(e) => {
                   e.stopPropagation();
                   if (onSelectFlagColor) onSelectFlagColor(colName);
+                  try {
+                    localStorage.setItem('tc_recent_flag_color', colName);
+                  } catch (_e) {}
                   onClose();
                 }}
                 style={{
@@ -285,7 +304,7 @@ export default function ZerodhaContextMenu({
                   border: stock.flagColor === colName ? '2px solid #fff' : '1px solid rgba(255,255,255,0.2)',
                   transform: stock.flagColor === colName ? 'scale(1.15)' : 'none',
                 }}
-                title={`${colName.toUpperCase()} Flag`}
+                title={`${colName.charAt(0).toUpperCase() + colName.slice(1).toLowerCase()} Flag`}
               />
             ))}
             <div
@@ -411,6 +430,146 @@ export default function ZerodhaContextMenu({
                 );
               })
             )}
+          </div>
+        )}
+      </div>
+
+      {/* Menu Item: Sector Submenu */}
+      <div
+        onMouseEnter={() => setActiveSubmenu('sector')}
+        style={{
+          padding: '6px 12px',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'space-between',
+          cursor: 'pointer',
+          position: 'relative',
+        }}
+      >
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <span>🏢</span>
+          <span>Sector</span>
+        </div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+          <kbd style={{ fontSize: '10px', color: '#64748b', background: 'rgba(255,255,255,0.06)', padding: '1px 4px', borderRadius: '3px' }}>
+            S
+          </kbd>
+          <span style={{ fontSize: '10px', color: '#64748b' }}>{openSubmenuLeft ? '◂' : '▸'}</span>
+        </div>
+
+        {activeSubmenu === 'sector' && (
+          <div
+            className="tc-context-submenu"
+            style={{
+              position: 'absolute',
+              ...(openSubmenuLeft ? { right: 'calc(100% - 2px)' } : { left: 'calc(100% - 2px)' }),
+              ...(anchorSubmenuBottom ? { bottom: '-4px' } : { top: '-4px' }),
+              background: '#182030',
+              border: '1px solid rgba(56, 189, 248, 0.3)',
+              borderRadius: '8px',
+              width: '210px',
+              padding: '4px 0',
+              boxShadow: '0 8px 24px rgba(0, 0, 0, 0.7)',
+              zIndex: 2147483647,
+              maxHeight: '260px',
+              overflowY: 'auto',
+              pointerEvents: 'auto',
+            }}
+          >
+            <div style={{ padding: '4px 10px', fontSize: '10px', color: '#94a3b8', fontWeight: 700, textTransform: 'uppercase' }}>
+              Assign Sector
+            </div>
+
+            {/* Unassigned / Clear Sector Option */}
+            <div
+              onClick={(e) => {
+                e.stopPropagation();
+                if (onSelectSector) onSelectSector('');
+                onClose();
+              }}
+              style={{
+                padding: '4px 10px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'space-between',
+                cursor: 'pointer',
+                fontSize: '11px',
+                color: !stock.sector ? '#38bdf8' : '#94a3b8',
+                background: !stock.sector ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = !stock.sector ? 'rgba(56, 189, 248, 0.2)' : '#252f44')}
+              onMouseLeave={(e) => (e.currentTarget.style.background = !stock.sector ? 'rgba(56, 189, 248, 0.12)' : 'transparent')}
+            >
+              <span style={{ fontStyle: 'italic' }}>Unassigned</span>
+              {!stock.sector && <span style={{ color: '#38bdf8', fontSize: '10px' }}>✓</span>}
+            </div>
+
+            {/* Available Sectors List */}
+            {availableSectors.map((sec) => {
+              const secName = typeof sec === 'string' ? sec : sec.name || sec.id;
+              const isCurrent = Boolean(
+                stock.sector &&
+                secName &&
+                stock.sector.trim().toLowerCase() === secName.trim().toLowerCase()
+              );
+              return (
+                <div
+                  key={secName}
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    if (onSelectSector) onSelectSector(secName);
+                    onClose();
+                  }}
+                  style={{
+                    padding: '4px 10px',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'space-between',
+                    cursor: 'pointer',
+                    fontSize: '11px',
+                    background: isCurrent ? 'rgba(56, 189, 248, 0.12)' : 'transparent',
+                  }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = isCurrent ? 'rgba(56, 189, 248, 0.2)' : '#252f44')}
+                  onMouseLeave={(e) => (e.currentTarget.style.background = isCurrent ? 'rgba(56, 189, 248, 0.12)' : 'transparent')}
+                >
+                  <span style={{ color: isCurrent ? '#38bdf8' : '#e2e8f0', fontWeight: isCurrent ? 700 : 400 }}>
+                    {secName}
+                  </span>
+                  {isCurrent && <span style={{ color: '#38bdf8', fontSize: '10px' }}>✓</span>}
+                </div>
+              );
+            })}
+
+            {/* Custom Sector Inline Input */}
+            <div style={{ padding: '6px 8px', borderTop: '1px solid rgba(255, 255, 255, 0.08)', marginTop: '4px' }}>
+              <input
+                type="text"
+                placeholder="+ Add custom sector..."
+                value={customSectorInput}
+                onChange={(e) => setCustomSectorInput(e.target.value)}
+                onKeyDown={(e) => {
+                  e.stopPropagation();
+                  if (e.key === 'Enter' && customSectorInput.trim()) {
+                    if (onSelectSector) onSelectSector(customSectorInput.trim());
+                    setCustomSectorInput('');
+                    onClose();
+                  } else if (e.key === 'Escape') {
+                    onClose();
+                  }
+                }}
+                style={{
+                  width: '100%',
+                  boxSizing: 'border-box',
+                  background: '#0f172a',
+                  border: '1px solid rgba(56, 189, 248, 0.3)',
+                  borderRadius: '4px',
+                  color: '#f8fafc',
+                  fontSize: '11px',
+                  padding: '4px 6px',
+                  outline: 'none',
+                }}
+              />
+            </div>
           </div>
         )}
       </div>

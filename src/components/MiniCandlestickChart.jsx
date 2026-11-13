@@ -2353,6 +2353,17 @@ function getVisibleCandlesticks(candlesticks, timeframe) {
   const lastCandle = candlesticks[candlesticks.length - 1];
   const lastTimeMs = getTimeMs(lastCandle);
   if (!lastTimeMs) return candlesticks;
+
+  // For 1D intraday view, anchor to the latest active trading day session (from morning open),
+  // avoiding a rolling 24-hour cutoff that bleeds backwards into the previous day's afternoon.
+  if (tf === '1d') {
+    const lastDateStr = new Date(lastTimeMs).toDateString();
+    const sessionCandles = candlesticks.filter(c => new Date(getTimeMs(c)).toDateString() === lastDateStr);
+    if (sessionCandles.length > 0) {
+      return sessionCandles;
+    }
+  }
+
   const cutoffTimeMs = lastTimeMs - (days * 24 * 60 * 60 * 1000);
 
   return candlesticks.filter(c => getTimeMs(c) >= cutoffTimeMs);

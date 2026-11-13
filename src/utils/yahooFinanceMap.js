@@ -96,7 +96,7 @@ export class LRUQuoteCache {
 }
 
 export const globalQuoteCache = new LRUQuoteCache(300);
-const QUOTE_CACHE_VERSION = 'v6_ohlc_consistency_fix';
+const QUOTE_CACHE_VERSION = 'v7_daily_change_fix';
 const inflightRequestsMap = new Map();
 
 let saveTimer = null;
@@ -319,41 +319,45 @@ const inFlightStockRequests = new Map();
 
 export function extractPreviousClose(meta, rawBars, currentPrice = null) {
   const curPx = currentPrice || meta?.regularMarketPrice || (Array.isArray(rawBars) && rawBars.length > 0 ? rawBars[rawBars.length - 1].close : null);
+  const startOfRange = Array.isArray(rawBars) && rawBars.length > 2 ? rawBars[0].close : null;
 
-  // 1. If we have at least 2 candlestick bars, the true previous day's close is literally the bar prior to today's bar!
-  // This is the most accurate source: chartPreviousClose on multi-day ranges (like 5d) returns
-  // the close from 5 days ago, NOT yesterday's close!
-  if (Array.isArray(rawBars) && rawBars.length >= 2) {
-    const lastBar = rawBars[rawBars.length - 1];
-    const lastBarDateStr = new Date(lastBar.time * 1000).toDateString();
-
-    for (let i = rawBars.length - 1; i >= 0; i--) {
-      const d = new Date(rawBars[i].time * 1000).toDateString();
-      if (d !== lastBarDateStr && typeof rawBars[i].close === 'number' && rawBars[i].close > 0) {
-        return rawBars[i].close;
-      }
-    }
-
-    if (typeof rawBars[rawBars.length - 2].close === 'number' && rawBars[rawBars.length - 2].close > 0) {
-      return rawBars[rawBars.length - 2].close;
+  // 1. Official regularMarketPreviousClose from Yahoo Finance meta
+  // (Valid when present, positive, not corrupted by Yahoo post-market 0% bug, and not start-of-range)
+  if (meta && typeof meta.regularMarketPreviousClose === 'number' && meta.regularMarketPreviousClose > 0) {
+    const isPostMarketEqual = curPx && Math.abs(meta.regularMarketPreviousClose - curPx) < 0.01;
+    const isStartOfRange = startOfRange && Math.abs(meta.regularMarketPreviousClose - startOfRange) < 0.01 && (!meta.previousClose || meta.previousClose === startOfRange);
+    if (!isPostMarketEqual && !isStartOfRange) {
+      return meta.regularMarketPreviousClose;
     }
   }
 
-  // 2. Official regularMarketPreviousClose or previousClose from Yahoo Finance meta
-  if (meta) {
-    if (typeof meta.regularMarketPreviousClose === 'number' && meta.regularMarketPreviousClose > 0) {
-      if (!curPx || Math.abs(meta.regularMarketPreviousClose - curPx) > 0.01) {
-        return meta.regularMarketPreviousClose;
+  // 2. Candlestick array extraction
+  if (Array.isArray(rawBars) && rawBars.length >= 2) {
+    const lastBar = rawBars[rawBars.length - 1];
+    const prevBar = rawBars[rawBars.length - 2];
+
+    // If last bar's close matches current price (or meta.regularMarketPrice),
+    // then lastBar is TODAY'S live candle -> yesterday is the preceding bar!
+    // If last bar's close differs from current price,
+    // then today's candle is NOT in rawBars yet (lastBar IS yesterday's completed candle) -> lastBar is yesterday!
+    if (typeof curPx === 'number' && curPx > 0 && Math.abs(lastBar.close - curPx) < 0.01) {
+      const lastBarDateStr = new Date(lastBar.time * 1000).toDateString();
+      for (let i = rawBars.length - 2; i >= 0; i--) {
+        const d = new Date(rawBars[i].time * 1000).toDateString();
+        if (d !== lastBarDateStr && typeof rawBars[i].close === 'number' && rawBars[i].close > 0) {
+          return rawBars[i].close;
+        }
       }
+      return prevBar.close;
+    } else {
+      return lastBar.close;
     }
-    if (typeof meta.previousClose === 'number' && meta.previousClose > 0) {
+  }
+
+  // 3. Fallbacks
+  if (meta && typeof meta.previousClose === 'number' && meta.previousClose > 0) {
+    if (!startOfRange || Math.abs(meta.previousClose - startOfRange) > 0.01) {
       return meta.previousClose;
-    }
-    // Only trust chartPreviousClose if range is explicitly 1-day or there's only 1 bar
-    if (meta.range === '1d' || !rawBars || rawBars.length <= 1) {
-      if (typeof meta.chartPreviousClose === 'number' && meta.chartPreviousClose > 0) {
-        return meta.chartPreviousClose;
-      }
     }
   }
 

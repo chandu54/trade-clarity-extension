@@ -40,6 +40,12 @@ Follow this 7-step sequence to set up TradeClarity.market for your trading workf
    - Use the injected TradeClarity widget directly on TradingView charts.
    - Dictate setups hands-free using `Ctrl+Shift+S`.
 
+8. **Step 8: Zerodha Kite Seamless Watchlist Integration**
+   - Open any chart window on Zerodha Kite (`kite.zerodha.com`).
+   - Automatically dock your TradeClarity watchlist right beside Kite's chart with full canvas compression (no overlap).
+   - View live ADR %, Turnover / Liquidity (💧), Relative Strength ratings (RS 🔥), 10/21/50/200 SMA moving average ribbon, and smart earnings countdown pills (`⚡ TODAY`, `⚡ 2d`, `📅 14d`) in the draggable top header dock.
+   - Cycle through setups rapidly using the `↑` / `↓` arrow keys for instant chart switching.
+
 ---
 
 ## 2. Environment & General Settings
@@ -355,7 +361,71 @@ Once the correct symbol is detected, you can input your trade plan:
 
 ---
 
-## 12. Market Pulse Guide
+## 12. Zerodha Kite Seamless Watchlist Integration
+
+TradeClarity delivers institutional-grade charting workflows directly inside **Zerodha Kite** (`kite.zerodha.com`). By combining an automated in-chart sidecar watchlist with a floating, draggable metrics dock, you can scan, review, and execute setups on your broker charts without context switching.
+
+### 1. Automatic Activation & Smart Canvas Compression
+
+- **Zero-Setup Activation**: Navigate to any chart on Zerodha Kite (e.g. `https://kite.zerodha.com/markets/ext/chart/...` or `/chart/web/...`). The TradeClarity watchlist panel automatically mounts along the right side of your browser window.
+- **Side-by-Side Canvas Compression**: Rather than floating over your candles or blocking Kite's order pad, TradeClarity dynamically compresses the Kite chart container by the exact width of the sidecar. Your charts, candles, drawing tools, and technical indicators remain 100% visible side-by-side.
+- **Resizable Width**: Drag the divider handle on the left edge of the sidecar to adjust its width (default: 320px). Your custom width is automatically remembered in your browser across sessions.
+- **Collapsible Toggle**: Click the collapse pill (`◀` / `▶`) to slide the watchlist away into a minimal strip whenever you require a full-width chart view.
+
+### 2. Draggable Top Header Metrics Dock & Smart Earnings
+
+A dedicated, draggable metrics dock sits pinned right above your chart in the Kite header, putting critical technical metrics directly into your eye line:
+
+- **Draggable & Persisted**: Drag the grip handle (`⋮⋮`) to position the dock anywhere along the Kite navigation bar. The position coordinates are automatically preserved.
+- **Live Price & Change**: Shows real-time symbol name, formatted price in ₹, and color-coded percentage change (+ green / - red).
+- **ADR % Volatility**: Instant Average Daily Range percentage (e.g. `ADR 6%`), helping you evaluate volatility expectations before entry.
+- **Liquidity & 50-Day Turnover (💧)**: Displays 50-day average daily turnover (e.g. `💧 102.72Cr`), safeguarding you from illiquid traps.
+- **Relative Strength vs Benchmark (RS)**: Live RS rating visualized with intuitive flame icons (`🔥🔥 Very Strong`, `🔥 Strong`, `⚖️ Neutral`, `👎 Weak`).
+- **Moving Average Multiple Ribbon**: Color-coded 10, 21, 50, and 200 SMA status ribbon for instant multi-timeframe trend verification.
+- **Smart Earnings Countdown Pill**:
+  - **Imminent (<= 7 days)**: Displays a glowing orange badge with a lightning bolt: `⚡ TODAY` or `⚡ Nov 14 (2d)`.
+  - **Upcoming (8 to 45 days)**: Displays cyan calendar pill with countdown: `📅 Nov 28 (16d)`.
+  - **Recently Reported (-14 to -1 days)**: Displays `✓ Reported Nov 7` or `✓ Reported 5d ago`.
+- **Open in TradeClarity Terminal (↗)**: Click the hyperlinked external icon to instantly open the active stock in the comprehensive TradeClarity web terminal.
+- **Minimizable Floating FAB**: Click the minimize button (`—`) to condense the dock into a sleek, glowing circular FAB indicator displaying the active symbol and change %. Click it anytime to restore the full metrics bar.
+
+### 3. Rapid Keyboard Navigation & 1-Click Chart Switching
+
+- **1-Click Symbol Switching**: Click any stock in the sidebar watchlist to instantly change the active Kite chart. The extension resolves the symbol via an internal instrument token map, switching the chart smoothly without a jarring full-page refresh.
+- **Arrow Key Flipping (↑ / ↓)**: Press `ArrowUp` or `ArrowDown` to navigate sequentially through every visible stock in your current watchlist. This turns weekend scans and end-of-day watchlist routines into a lightning-fast process.
+
+### 4. Watchlist Filtering, Multi-Mode Grouping & Search
+
+- **Watchlist Selector**: Use the top dropdown to switch between `All Stocks` or any specific custom watchlist created in TradeClarity (e.g. Focus 50, High Tight Flags, Swing Setups).
+- **Instant Search Filter**: Filter down visible symbols in real-time by typing in the search box; matches tickers, company names, sectors, and custom tags.
+- **Flexible Grouping Options**: Group your watchlist by:
+  - **Sector**: Group stocks by industry category (Manufacturing, Technology, Pharma, etc.) with group member counts.
+  - **Flag Color**: Group by review color flags for prioritized tiering.
+  - **Tag**: Group by technical tags (e.g. IPO Base, VCP, Momentum).
+  - **Flat List**: Standard alphabetical or custom-ordered list.
+- **Collapsible Groups**: Click group headers to collapse or expand groups on demand.
+
+### 5. Color Flags, Context Menu & Inline Actions
+
+- **Quick Color Flagging**: Click the flag icon directly on any row to toggle through review colors (Red, Green, Orange, Blue, Purple, or Clear).
+- **Right-Click Context Menu**: Right-click any stock in the list or click the `...` menu to:
+  - Assign or change the stock's **Sector** with instant visual checkmark or add custom sectors.
+  - Assign or toggle custom **Watchlists** (`Focus 50`, `Swing Ideas`, etc.).
+  - Select a specific Flag color immediately.
+  - Toggle **Tradable** status to mark high-conviction ideas.
+  - Open the full **Edit Stock Modal** to record setup notes, update checks, or review catalysts.
+  - Remove the stock from your watchlist.
+- **Keyboard Shortcuts on Zerodha**:
+  - **`W`**: Instant shortcut to toggle/open Watchlist assignment for the active or right-clicked stock.
+  - **`S`**: Instant shortcut to change/open Sector assignment for the active or right-clicked stock.
+  - **`↑` / `↓`**: Navigate smoothly between stocks in the watchlist and switch Kite charts instantly.
+- **Drag-and-Drop Reordering**: Grab the handle (`⋮⋮`) to drag and drop stocks into custom priority order.
+- **Inline Quick Add**: Type a symbol into the input field at the bottom of the sidebar to add new ideas on the fly with auto-suggestions.
+- **Live Quote Refresh (↻)**: Click the sync button in the panel header to refresh quotes and percentage changes across the entire watchlist.
+
+---
+
+## 13. Market Pulse Guide
 
 The **Market Pulse** dashboard acts as your bird's-eye view of indices and sector performance. Rather than evaluating tickers in isolation, you should first look here to understand the broader market trend, momentum strength, and system risk levels.
 
@@ -386,7 +456,7 @@ At the bottom of the Snapshot page, the system displays the **Technical Thesis**
 
 ---
 
-## 13. Trading Journal Guide
+## 14. Trading Journal Guide
 
 A professional trading journal enforces discipline. Recording your setups, risk-reward parameters, and scaling points prevents impulsive decisions, provides audit trails, and lets you calculate performance stats objectively. Treating trading as a business requires tracking every unit of risk and analyzing your performance parameters over time.
 
@@ -442,7 +512,7 @@ An analytical dashboard to audit your system edge.
 
 ---
 
-## 14. AI Settings & Prompt Library
+## 15. AI Settings & Prompt Library
 
 TradeClarity.market lets you integrate institutional-grade AI analysis (powered securely by the Google Gemini API) directly into your trading workflow. Instead of relying on generic prompts, you can create and manage a proprietary strategy library to dictate exactly how the AI evaluates your watchlists, sectors, and individual setups.
 
@@ -485,7 +555,7 @@ The mini editor allows you to type custom analysis instructions. To inject real-
 
 ---
 
-## 15. IPO Master Radar (1-Year Master Record & Discovery)
+## 16. IPO Master Radar (1-Year Master Record & Discovery)
 
 The **IPO Master Radar** is a specialized institutional discovery terminal dedicated to tracking newly listed public companies over their critical first year of trading history. It bridges official exchange listing calendars with real-time candle hydration to help swing traders identify early Stage 2 breakouts, tight volatility contractions, and emerging institutional market leaders.
 
