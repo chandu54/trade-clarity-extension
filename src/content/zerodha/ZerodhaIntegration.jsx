@@ -86,6 +86,7 @@ export default function ZerodhaIntegration() {
   // Guards to prevent background URL poll from overriding user's intentional keyboard/click navigation
   const lastUserNavigatedSymbolRef = useRef(null);
   const lastUserNavigatedTimeRef = useRef(0);
+  const handleDeleteStockRef = useRef(null);
 
   // Setup Edit Modal state
   const [isEditModalOpen, setIsEditModalOpen] = useState(false);
@@ -332,6 +333,16 @@ export default function ZerodhaIntegration() {
       }
 
       const navList = visibleStocks.length > 0 ? visibleStocks : currentWeekStocksList;
+
+      // Quick Delete Shortcut: 'Delete' or 'Backspace' removes the active stock from watchlist
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (activeSymbol && handleDeleteStockRef.current) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleDeleteStockRef.current(activeSymbol);
+          return;
+        }
+      }
 
       const key = e.key.toLowerCase();
 
@@ -847,23 +858,66 @@ export default function ZerodhaIntegration() {
     handleCloseContextMenu();
   };
 
-  const handleDeleteStock = () => {
-    if (!contextMenu.stock?.symbol) return;
-    const symbol = contextMenu.stock.symbol;
-    if (!confirm(`Remove ${symbol} from Watchlist?`)) return;
+  const handleDeleteStock = useCallback(
+    (targetSymbol) => {
+      const symbol =
+        (typeof targetSymbol === 'string' && targetSymbol) ||
+        targetSymbol?.symbol ||
+        contextMenu.stock?.symbol ||
+        activeSymbol;
+      if (!symbol) return;
 
-    updateStockInAppData(symbol, (_sObj, weekObj) => {
-      if (weekObj?.stocks) {
-        delete weekObj.stocks[symbol];
-        const clean = symbol.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
-        delete weekObj.stocks[clean];
-        if (Array.isArray(weekObj.customOrder)) {
-          weekObj.customOrder = weekObj.customOrder.filter((s) => s !== symbol && s !== clean);
+      const navList = visibleStocks.length > 0 ? visibleStocks : currentWeekStocksList;
+      const cleanActive = (activeSymbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+      const cleanTarget = (symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+
+      let nextStockToSelect = null;
+      if (cleanActive === cleanTarget && navList.length > 1) {
+        const currentIdx = navList.findIndex((s) => {
+          const sym = (s.symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+          return sym === cleanTarget;
+        });
+        if (currentIdx !== -1) {
+          const nextIdx = currentIdx < navList.length - 1 ? currentIdx + 1 : currentIdx - 1;
+          nextStockToSelect = navList[nextIdx];
         }
       }
-    });
-    handleCloseContextMenu();
-  };
+
+      updateStockInAppData(symbol, (_sObj, weekObj) => {
+        if (weekObj?.stocks) {
+          delete weekObj.stocks[symbol];
+          const clean = symbol.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+          delete weekObj.stocks[clean];
+          Object.keys(weekObj.stocks).forEach((k) => {
+            if (k.replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase() === clean) {
+              delete weekObj.stocks[k];
+            }
+          });
+          if (Array.isArray(weekObj.customOrder)) {
+            weekObj.customOrder = weekObj.customOrder.filter((s) => {
+              const sc = (s || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
+              return s !== symbol && sc !== clean;
+            });
+          }
+        }
+      });
+
+      if (nextStockToSelect && nextStockToSelect.symbol) {
+        lastUserNavigatedSymbolRef.current = nextStockToSelect.symbol;
+        lastUserNavigatedTimeRef.current = Date.now();
+        setActiveSymbol(nextStockToSelect.symbol);
+        switchKiteSymbol(nextStockToSelect.symbol);
+        const el = document.getElementById(`tc-stock-row-${nextStockToSelect.symbol}`);
+        if (typeof el?.scrollIntoView === 'function') {
+          el.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+        }
+      }
+
+      handleCloseContextMenu();
+    },
+    [contextMenu.stock, activeSymbol, visibleStocks, currentWeekStocksList, updateStockInAppData]
+  );
+  handleDeleteStockRef.current = handleDeleteStock;
 
   if (!isChart) {
     return null;
@@ -899,6 +953,7 @@ export default function ZerodhaIntegration() {
         onUpdateStockFlag={handleUpdateStockFlag}
         onOpenEditModal={handleOpenEditModal}
         onAddStock={handleAddStock}
+        onDeleteStock={handleDeleteStock}
         onReorderStocks={handleReorderStocks}
         onMoveStockToSection={handleMoveStockToSection}
         onVisibleStocksChange={setVisibleStocks}

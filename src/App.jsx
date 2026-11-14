@@ -892,6 +892,7 @@ function AppContent() {
           weekKey={weekKey}
           setWeekKey={setWeekKey}
           onClose={() => modals.setShowDataManagement(false)}
+          onClearAll={clearAllData}
         />
       )}
 

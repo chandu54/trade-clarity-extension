@@ -21,6 +21,7 @@ export default function ZerodhaWatchlistPanel({
   onUpdateStockFlag,
   _onOpenEditModal,
   onAddStock,
+  onDeleteStock,
   onReorderStocks,
   onMoveStockToSection,
   onVisibleStocksChange,
@@ -758,6 +759,38 @@ export default function ZerodhaWatchlistPanel({
         .tc-dock-toggle-pill * {
           cursor: pointer !important;
         }
+        .tc-stock-delete-btn {
+          display: none;
+          position: absolute;
+          right: 4px;
+          top: 50%;
+          transform: translateY(-50%);
+          width: 20px;
+          height: 20px;
+          align-items: center;
+          justify-content: center;
+          border-radius: 4px;
+          background: #242b3d;
+          border: 1px solid rgba(255, 255, 255, 0.15);
+          color: #94a3b8;
+          cursor: pointer;
+          padding: 0;
+          z-index: 5;
+          box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+          transition: background 0.12s, color 0.12s, border-color 0.12s, transform 0.1s;
+        }
+        [id^="tc-stock-row-"]:hover .tc-stock-delete-btn {
+          display: flex;
+        }
+        .tc-is-dragging .tc-stock-delete-btn {
+          display: none !important;
+        }
+        .tc-stock-delete-btn:hover {
+          background: #ef4444 !important;
+          border-color: #ef4444 !important;
+          color: #ffffff !important;
+          transform: translateY(-50%) scale(1.08);
+        }
       `}</style>
       {/* Draggable Left Border Resizer Handle (Clean transparent grab overlay, never obscures UI) */}
       {!isCollapsed && (
@@ -1107,18 +1140,26 @@ export default function ZerodhaWatchlistPanel({
                 onClick={(e) => {
                   e.stopPropagation();
                   const clean = (activeSymbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
-                  if (typeof chrome !== 'undefined' && chrome?.runtime?.sendMessage) {
-                    chrome.runtime.sendMessage({
-                      action: 'OPEN_DASHBOARD',
-                      symbol: clean,
-                    }, (_res) => {
-                      if (chrome.runtime.lastError) {
-                        window.open(chrome.runtime.getURL(`dashboard.html?symbol=${encodeURIComponent(clean)}`), '_blank');
-                      }
-                    });
-                  } else {
-                    window.open(chrome.runtime.getURL(`dashboard.html?symbol=${encodeURIComponent(clean)}`), '_blank');
+                  try {
+                    if (typeof chrome !== 'undefined' && chrome?.runtime?.id && chrome?.runtime?.sendMessage) {
+                      chrome.runtime.sendMessage({
+                        action: 'OPEN_DASHBOARD',
+                        symbol: clean,
+                      }, (_res) => {
+                        if (chrome.runtime.lastError) {
+                          try {
+                            window.open(chrome.runtime.getURL(`dashboard.html?symbol=${encodeURIComponent(clean)}`), '_blank');
+                          } catch (_err) {}
+                        }
+                      });
+                      return;
+                    }
+                  } catch (_err) {
+                    // Fall through to window.open
                   }
+                  try {
+                    window.open(chrome.runtime.getURL(`dashboard.html?symbol=${encodeURIComponent(clean)}`), '_blank');
+                  } catch (_err) {}
                 }}
                 title={`Open ${activeSymbol || 'current symbol'} in TradeClarity Extension`}
                 style={{
@@ -1834,9 +1875,12 @@ export default function ZerodhaWatchlistPanel({
                         );
                       }
 
-                      const primaryTag = Array.isArray(s.tags)
-                        ? s.tags.find((t) => t && t !== 'Recent Listing' && t !== 'Established')
-                        : null;
+                      const rawTags = Array.isArray(s.tags)
+                        ? s.tags.filter((t) => t && t !== 'Recent Listing' && t !== 'Established')
+                        : [];
+
+                      // Show tag icon only if tags exist AND mode is NOT tag
+                      const showTagIcon = grouping !== 'tag' && rawTags.length > 0;
 
                       return (
                         <div
@@ -1855,17 +1899,18 @@ export default function ZerodhaWatchlistPanel({
                             e.stopPropagation();
                             if (onOpenContextMenu) onOpenContextMenu(e, s);
                           }}
-                          title={`${s.symbol}${s.name ? ` • ${s.name}` : ''}${s.sector ? ` • ${s.sector}` : ''}`}
+                          title={`${s.symbol}${s.name ? ` • ${s.name}` : ''}${s.sector ? ` • ${s.sector}` : ''}${rawTags.length > 0 ? ` • ${rawTags.join(', ')}` : ''}`}
                           style={{
                             display: 'flex',
+                            flexDirection: 'row',
                             alignItems: 'center',
                             justifyContent: 'space-between',
                             padding: '0 8px',
-                            height: '28px',
                             minHeight: '28px',
+                            height: '28px',
                             maxHeight: '28px',
                             boxSizing: 'border-box',
-                            borderBottom: '1px solid rgba(255, 255, 255, 0.03)',
+                            borderBottom: '1px solid rgba(255, 255, 255, 0.08)',
                             background: isActive
                               ? '#1e293b'
                               : isDropTarget
@@ -1904,7 +1949,8 @@ export default function ZerodhaWatchlistPanel({
                               }}
                             />
                           )}
-                          {/* Left: Drag grip, Flag icon, Symbol name, Earnings badge, Tag */}
+
+                          {/* Left: Grip, Flag, Symbol, Tag Icon, Earnings Badge */}
                           <div
                             style={{
                               display: 'flex',
@@ -1916,7 +1962,7 @@ export default function ZerodhaWatchlistPanel({
                               marginRight: '6px',
                             }}
                           >
-                            {/* Grip Drag Handle - subtle until hovered */}
+                            {/* Grip Drag Handle */}
                             <span
                               className="tc-drag-grip"
                               title="Drag to reorder"
@@ -1935,18 +1981,14 @@ export default function ZerodhaWatchlistPanel({
                               ⋮⋮
                             </span>
 
-                            {/* Flag Icon (TradingView-style ribbon banner) */}
+                            {/* Flag Icon */}
                             <div
                               onClick={(e) => {
                                 e.stopPropagation();
                                 const hasFlag = Boolean(s.flagColor);
-                                if (!hasFlag) {
-                                  // First by default apply the last applied colour (TradingView behavior)
-                                  if (onUpdateStockFlag) {
-                                    onUpdateStockFlag(s.symbol, recentFlagColor);
-                                  }
+                                if (!hasFlag && onUpdateStockFlag) {
+                                  onUpdateStockFlag(s.symbol, recentFlagColor);
                                 }
-                                // Position palette right above or below the clicked flag icon
                                 setFlagMenuSymbol(s.symbol);
                                 const posX = Math.max(10, e.clientX - 60);
                                 const posY = e.clientY > 50 ? e.clientY - 38 : e.clientY + 22;
@@ -1974,7 +2016,6 @@ export default function ZerodhaWatchlistPanel({
                                 e.currentTarget.style.opacity = s.flagColor ? '1' : '0.45';
                               }}
                             >
-                              {/* TradingView Bookmark Ribbon Flag (Exact match to TV watchlist) */}
                               <svg
                                 width="10"
                                 height="12"
@@ -1991,82 +2032,127 @@ export default function ZerodhaWatchlistPanel({
                               </svg>
                             </div>
 
-                            {/* Symbol Name (Refined, crisp TradingView-grade medium weight with ellipsis if constrained) */}
+                            {/* Symbol Name (High legibility, flexShrink: 0) */}
                             <span
                               style={{
                                 fontSize: '12px',
                                 fontWeight: isActive ? 600 : 500,
-                                color: isActive ? '#ffffff' : '#e2e8f0',
+                                color: isActive ? '#ffffff' : '#f1f5f9',
                                 whiteSpace: 'nowrap',
-                                overflow: 'hidden',
-                                textOverflow: 'ellipsis',
                                 letterSpacing: '0.15px',
-                                transition: 'color 0.12s',
-                                flexShrink: 1,
-                                minWidth: 0,
+                                flexShrink: 0,
                               }}
                               title={s.symbol}
                             >
                               {s.symbol}
                             </span>
 
-                            {/* Smart Earnings Badge */}
-                            {earningsBadge}
-
-                            {/* Tag Pill */}
-                            {primaryTag && (
+                            {/* Compact Tag Icon with tooltip (Hidden in tag grouping or when no tags) */}
+                            {showTagIcon && (
                               <span
+                                className="tc-tag-icon-badge"
+                                title={`Tags: ${rawTags.join(', ')}`}
                                 style={{
-                                  fontSize: '9px',
-                                  fontWeight: 600,
-                                  padding: '1px 4px',
+                                  display: 'inline-flex',
+                                  alignItems: 'center',
+                                  justifyContent: 'center',
+                                  padding: '1px 3px',
                                   borderRadius: '3px',
-                                  background: 'rgba(56, 189, 248, 0.15)',
+                                  background: 'rgba(56, 189, 248, 0.12)',
+                                  border: '1px solid rgba(56, 189, 248, 0.25)',
                                   color: '#38bdf8',
-                                  whiteSpace: 'nowrap',
+                                  fontSize: '8px',
+                                  fontWeight: 800,
+                                  gap: '2px',
+                                  lineHeight: 1,
                                   flexShrink: 0,
-                                  lineHeight: '12px',
+                                  cursor: 'help',
                                 }}
                               >
-                                {formatSectionTitle(primaryTag)}
+                                <svg
+                                  width="8"
+                                  height="8"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M20.59 13.41l-7.17 7.17a2 2 0 0 1-2.83 0L2 12V2h10l8.59 8.59a2 2 0 0 1 0 2.82z" />
+                                  <line x1="7" y1="7" x2="7.01" y2="7" />
+                                </svg>
+                                {rawTags.length > 1 && <span>{rawTags.length}</span>}
                               </span>
                             )}
+
+                            {/* Smart Earnings Badge */}
+                            {earningsBadge}
                           </div>
 
-                          {/* Right: Price & % Change aligned in dedicated fixed columns with tabular numbers */}
-                          <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0, fontVariantNumeric: 'tabular-nums' }}>
-                            {priceVal > 0 ? (
-                              <>
-                                <span
-                                  style={{
-                                    width: '64px',
-                                    minWidth: '64px',
-                                    textAlign: 'right',
-                                    fontWeight: 600,
-                                    color: '#f1f5f9',
-                                    fontSize: '11.5px',
-                                  }}
-                                >
-                                  ₹{priceVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-                                </span>
-                                <span
-                                  style={{
-                                    width: '50px',
-                                    minWidth: '50px',
-                                    textAlign: 'right',
-                                    fontWeight: 700,
-                                    fontSize: '11px',
-                                    color: isAdv ? '#22c55e' : '#ef4444',
-                                  }}
-                                >
-                                  {isAdv ? '+' : ''}
-                                  {changeVal.toFixed(2)}%
-                                </span>
-                              </>
-                            ) : (
-                              <span style={{ width: '120px', textAlign: 'right', fontSize: '11px', fontWeight: 500, color: '#64748b' }}>-</span>
-                            )}
+                          {/* Right: Dedicated Fixed-Width Columns for Price & % Change (Matching TradingView) */}
+                          <div
+                            style={{
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '8px',
+                              flexShrink: 0,
+                              fontVariantNumeric: 'tabular-nums',
+                            }}
+                          >
+                            {/* Last Price Column */}
+                            <div
+                              style={{
+                                width: '64px',
+                                textAlign: 'right',
+                                fontWeight: 600,
+                                color: '#f1f5f9',
+                                fontSize: '11.5px',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {priceVal > 0 ? (
+                                `₹${priceVal.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`
+                              ) : (
+                                <span style={{ color: '#64748b', fontWeight: 500 }}>-</span>
+                              )}
+                            </div>
+
+                            {/* Chg% Column */}
+                            <div
+                              style={{
+                                width: '52px',
+                                textAlign: 'right',
+                                fontWeight: 700,
+                                fontSize: '11px',
+                                color: priceVal > 0 ? (isAdv ? '#22c55e' : '#ef4444') : '#64748b',
+                                whiteSpace: 'nowrap',
+                              }}
+                            >
+                              {priceVal > 0 ? (
+                                `${isAdv ? '+' : ''}${changeVal.toFixed(2)}%`
+                              ) : null}
+                            </div>
                           </div>
+
+                          {/* Hover Delete Action Button */}
+                          <button
+                            type="button"
+                            className="tc-stock-delete-btn"
+                            title={`Remove ${s.symbol} from watchlist (Del)`}
+                            aria-label={`Remove ${s.symbol}`}
+                            onClick={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              if (onDeleteStock) onDeleteStock(s.symbol);
+                            }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                              <polyline points="3 6 5 6 21 6" />
+                              <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                              <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6" />
+                            </svg>
+                          </button>
                         </div>
                       );
                     })}

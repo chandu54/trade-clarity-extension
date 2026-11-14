@@ -1380,6 +1380,9 @@ export default function UserGuideModal({
                   <li>
                     <strong>Arrow Key Flipping (↑ / ↓):</strong> Use the <code>ArrowUp</code> and <code>ArrowDown</code> keys to cycle sequentially through all visible stocks in your watchlist. Ideal for rapid weekend scans and end-of-day reviews.
                   </li>
+                  <li>
+                    <strong>Fast Watchlist Pruning (Delete / Backspace & Hover Bin):</strong> Press <code>Delete</code> or <code>Backspace</code> while cycling through stocks to instantly remove the active stock from your watchlist and auto-advance to the next symbol. You can also hover over any row to reveal the sleek bin delete icon on the far right for 1-click removal.
+                  </li>
                 </ul>
               </Section>
 

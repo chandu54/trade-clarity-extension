@@ -104,11 +104,16 @@ describe('ZerodhaHeaderDock', () => {
   });
 
   it('renders earnings pill properly with formatted date and countdown', () => {
+    // Dynamic imminent date (3 days from now, <= 7 so it shows ⚡)
+    const futureDate = new Date(Date.now() + 3 * 86400000);
+    const dateStr = futureDate.toISOString().split('T')[0];
+    const monthDay = futureDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+
     const { container } = render(
       <ZerodhaHeaderDock
         symbol="TECHNOCRAF"
         stockData={{ symbol: 'TECHNOCRAF' }}
-        liveQuote={{ symbol: 'TECHNOCRAF', currentPrice: 490.35, dailyChangePct: -2.23, earningsDate: '2026-11-14', earningsDaysAway: 2 }}
+        liveQuote={{ symbol: 'TECHNOCRAF', currentPrice: 490.35, dailyChangePct: -2.23, earningsDate: dateStr, earningsDaysAway: 3 }}
         currentPrice={490.35}
         dailyChangePct={-2.23}
       />
@@ -117,8 +122,8 @@ describe('ZerodhaHeaderDock', () => {
     const dock = container.querySelector('.tc-zerodha-header-dock');
     expect(dock).toBeDefined();
     expect(screen.getByText('⚡')).toBeDefined();
-    expect(screen.getByText('Nov 14')).toBeDefined();
-    expect(screen.getByText(/\(\d+d\)/)).toBeDefined();
+    expect(screen.getByText(monthDay)).toBeDefined();
+    expect(screen.getByText(/\(3d\)/)).toBeDefined();
   });
 
   it('minimizes to glowing circular icon and expands back on click', () => {
@@ -463,6 +468,86 @@ describe('ZerodhaWatchlistPanel', () => {
     expect(screen.getByText('-')).toBeDefined();
     expect(screen.queryByText('+0.00%')).toBeNull();
   });
+
+  it('renders hover delete button on stock row and triggers onDeleteStock when clicked', () => {
+    const handleDeleteStock = vi.fn();
+    render(
+      <ZerodhaWatchlistPanel
+        appData={mockAppData}
+        region="IN"
+        activeSymbol="SONACOMS"
+        onSelectStock={vi.fn()}
+        onDeleteStock={handleDeleteStock}
+      />
+    );
+
+    const sonaRow = document.getElementById('tc-stock-row-SONACOMS');
+    expect(sonaRow).toBeDefined();
+
+    const deleteBtn = sonaRow.querySelector('.tc-stock-delete-btn');
+    expect(deleteBtn).toBeDefined();
+    expect(deleteBtn.getAttribute('title')).toContain('Remove SONACOMS from watchlist');
+
+    fireEvent.click(deleteBtn);
+    expect(handleDeleteStock).toHaveBeenCalledWith('SONACOMS');
+  });
+
+  it('renders single-row column headers and compact tag icon with tooltip', () => {
+    const dataWithUntagged = {
+      ...mockAppData,
+      weeks: {
+        IN: {
+          '2026-11-08': {
+            stocks: {
+              ...mockAppData.weeks.IN['2026-11-08'].stocks,
+              NOTAGS: {
+                symbol: 'NOTAGS',
+                name: 'No Tags Company',
+                sector: 'General',
+                currentPrice: 100.0,
+                dailyChangePct: 1.0,
+                tags: [],
+              },
+            },
+          },
+        },
+      },
+    };
+
+    render(
+      <ZerodhaWatchlistPanel
+        appData={dataWithUntagged}
+        region="IN"
+        activeSymbol="SONACOMS"
+        onSelectStock={vi.fn()}
+      />
+    );
+
+    // ACUTAAS has tag 'IPO Base', so it should render tag icon with tooltip
+    const acutaasRow = document.getElementById('tc-stock-row-ACUTAAS');
+    const tagIcon = acutaasRow.querySelector('.tc-tag-icon-badge');
+    expect(tagIcon).toBeDefined();
+    expect(tagIcon.getAttribute('title')).toBe('Tags: IPO Base');
+
+    // SONACOMS has tag 'VCP', so it should render tag icon with tooltip
+    const sonaRow = document.getElementById('tc-stock-row-SONACOMS');
+    const sonaTagIcon = sonaRow.querySelector('.tc-tag-icon-badge');
+    expect(sonaTagIcon).toBeDefined();
+    expect(sonaTagIcon.getAttribute('title')).toBe('Tags: VCP');
+
+    // NOTAGS has no tags, so no tag icon
+    const noTagsRow = document.getElementById('tc-stock-row-NOTAGS');
+    const noTagIcon = noTagsRow.querySelector('.tc-tag-icon-badge');
+    expect(noTagIcon).toBeNull();
+
+    // Switch to Tag grouping mode -> tag icon should be omitted to avoid redundancy
+    const groupBtn = screen.getByTitle('Group Watchlist');
+    fireEvent.click(groupBtn);
+    fireEvent.click(screen.getByText('Tag'));
+
+    const acutaasInTagMode = document.getElementById('tc-stock-row-ACUTAAS');
+    expect(acutaasInTagMode.querySelector('.tc-tag-icon-badge')).toBeNull();
+  });
 });
 
 describe('ZerodhaIntegration master component', () => {
@@ -525,6 +610,16 @@ describe('ZerodhaIntegration master component', () => {
     // Press 's' globally on active stock -> opens Sector submenu
     fireEvent.keyDown(window, { key: 's', code: 'KeyS' });
     expect(screen.getByText('Assign Sector')).toBeDefined();
+  });
+
+  it('triggers Delete/Backspace shortcut key to remove active stock', () => {
+    render(<ZerodhaIntegration />);
+
+    // Press Delete key globally
+    fireEvent.keyDown(window, { key: 'Delete', code: 'Delete' });
+
+    // Press Backspace key globally
+    fireEvent.keyDown(window, { key: 'Backspace', code: 'Backspace' });
   });
 });
 

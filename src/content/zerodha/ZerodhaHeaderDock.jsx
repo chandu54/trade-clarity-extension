@@ -532,18 +532,26 @@ export default function ZerodhaHeaderDock({
         onClick={(e) => {
           e.stopPropagation();
           const clean = (symbol || '').replace(/^(NSE|BSE|NFO|MCX):/i, '').replace(/\.(NS|BO)$/i, '').toUpperCase();
-          if (typeof chrome !== 'undefined' && chrome?.runtime?.sendMessage) {
-            chrome.runtime.sendMessage({
-              action: 'OPEN_DASHBOARD',
-              symbol: clean,
-            }, (_res) => {
-              if (chrome.runtime.lastError) {
-                window.open(chrome.runtime.getURL(`dashboard.html?symbol=${encodeURIComponent(clean)}`), '_blank');
-              }
-            });
-          } else {
-            window.open(chrome.runtime.getURL(`dashboard.html?symbol=${encodeURIComponent(clean)}`), '_blank');
+          try {
+            if (typeof chrome !== 'undefined' && chrome?.runtime?.id && chrome?.runtime?.sendMessage) {
+              chrome.runtime.sendMessage({
+                action: 'OPEN_DASHBOARD',
+                symbol: clean,
+              }, (_res) => {
+                if (chrome.runtime.lastError) {
+                  try {
+                    window.open(chrome.runtime.getURL(`dashboard.html?symbol=${encodeURIComponent(clean)}`), '_blank');
+                  } catch (_err) {}
+                }
+              });
+              return;
+            }
+          } catch (_err) {
+            // Fall through to window.open
           }
+          try {
+            window.open(chrome.runtime.getURL(`dashboard.html?symbol=${encodeURIComponent(clean)}`), '_blank');
+          } catch (_err) {}
         }}
         title={`Open ${symbol || 'stock'} in TradeClarity Extension`}
         style={{

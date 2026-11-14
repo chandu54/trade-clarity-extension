@@ -126,38 +126,44 @@ export function resetNseCalendarCache() {
   nseCalendarInFlight = null;
 }
 
-// Proxies third-party HTTP requests through background service worker to prevent CORS failures in content scripts
+// Proxies third-party HTTP requests through background service worker to prevent CORS failures
 async function safeFetch(url, options = {}) {
   const isTest = (typeof process !== 'undefined' && process.env?.NODE_ENV === 'test') || (typeof import.meta !== 'undefined' && import.meta.env?.MODE === 'test');
+  const isExtension = typeof chrome !== 'undefined' && chrome.runtime?.sendMessage;
   const isContentScript = !isTest && typeof window !== 'undefined' && window.location.protocol !== 'chrome-extension:';
-  if (isContentScript) {
-    if (typeof chrome !== 'undefined' && chrome.runtime?.sendMessage) {
-      return new Promise((resolve, reject) => {
-        if (options.signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
-        chrome.runtime.sendMessage(
-          {
-            action: 'PROXY_FETCH',
-            payload: {
-              url,
-              method: options.method || 'GET',
-              headers: options.headers || {},
-            },
+  const isNseCrossDomain = Boolean(url && (url.includes('nseindia.com') || url.includes('nseindia.in')));
+
+  if (!isTest && isExtension && (isContentScript || isNseCrossDomain)) {
+    return new Promise((resolve, reject) => {
+      if (options.signal?.aborted) return reject(new DOMException('Aborted', 'AbortError'));
+      chrome.runtime.sendMessage(
+        {
+          action: 'PROXY_FETCH',
+          payload: {
+            url,
+            method: options.method || 'GET',
+            headers: options.headers || {},
           },
-          (res) => {
-            if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
-            if (!res) return reject(new Error('No response from background proxy'));
-            resolve({
-              ok: Boolean(res.ok),
-              status: res.status || (res.ok ? 200 : 500),
-              statusText: res.statusText || (res.ok ? 'OK' : 'Error'),
-              text: async () => res.text || '',
-              json: async () => JSON.parse(res.text || '{}'),
-            });
-          }
-        );
-      });
-    }
-    throw new Error(`Cannot proxy fetch to ${url} from content script`);
+        },
+        (res) => {
+          if (chrome.runtime.lastError) return reject(new Error(chrome.runtime.lastError.message));
+          if (!res) return reject(new Error('No response from background proxy'));
+          resolve({
+            ok: Boolean(res.ok),
+            status: res.status || (res.ok ? 200 : 500),
+            statusText: res.statusText || (res.ok ? 'OK' : 'Error'),
+            text: async () => res.text || '',
+            json: async () => {
+              try {
+                return JSON.parse(res.text || '{}');
+              } catch {
+                return {};
+              }
+            },
+          });
+        }
+      );
+    });
   }
   return fetch(url, options);
 }

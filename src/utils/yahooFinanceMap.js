@@ -639,7 +639,7 @@ export async function fetchStockData(symbols, country, timeframe = '6mo', custom
   };
 
   // Process in small batches to respect rate limits
-  const BATCH_SIZE = 5;
+  const BATCH_SIZE = 6;
   const results = [];
   
   for (let i = 0; i < symbols.length; i += BATCH_SIZE) {
@@ -672,7 +672,7 @@ export async function fetchStockData(symbols, country, timeframe = '6mo', custom
     
     if (i + BATCH_SIZE < symbols.length && networkRequestMade) {
       if (signal?.aborted) break;
-      await new Promise(resolve => setTimeout(resolve, 250));
+      await new Promise(resolve => setTimeout(resolve, 200));
     }
   }
 

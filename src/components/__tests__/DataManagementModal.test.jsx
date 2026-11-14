@@ -2,6 +2,7 @@ import React from "react";
 import { render, screen, fireEvent, waitFor } from "@testing-library/react";
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import DataManagementModal from "../DataManagementModal";
+import { ConfirmContext } from "../ConfirmContext";
 
 // Mock the week helpers since they calculate dynamic dates
 vi.mock("../../utils/weekHelpers", async (importOriginal) => {
@@ -189,6 +190,40 @@ describe("DataManagementModal Components", () => {
 
     await waitFor(() => {
       expect(screen.getByText(/Business Scope, Thematic & Sector cache cleared/i)).toBeInTheDocument();
+    });
+  });
+
+  it("confirms and calls onClearAll when Reset All Data button is clicked", async () => {
+    const mockOnClearAll = vi.fn();
+    const mockConfirm = vi.fn().mockResolvedValue(true);
+
+    render(
+      <ConfirmContext.Provider value={{ confirm: mockConfirm }}>
+        <DataManagementModal
+          isOpen={true}
+          onClose={mockOnClose}
+          data={mockData}
+          setData={mockSetData}
+          country="US"
+          weekKey="2024-04-07"
+          setWeekKey={mockSetWeekKey}
+          onClearAll={mockOnClearAll}
+        />
+      </ConfirmContext.Provider>
+    );
+
+    const resetBtn = screen.getByRole("button", { name: /Reset All Data/i });
+    expect(resetBtn).toBeInTheDocument();
+
+    fireEvent.click(resetBtn);
+
+    await waitFor(() => {
+      expect(mockConfirm).toHaveBeenCalledWith(
+        expect.stringContaining("permanently deleted"),
+        "delete all data"
+      );
+      expect(mockOnClearAll).toHaveBeenCalled();
+      expect(mockOnClose).toHaveBeenCalled();
     });
   });
 });

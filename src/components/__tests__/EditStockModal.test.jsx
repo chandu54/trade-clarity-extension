@@ -624,9 +624,9 @@ describe('EditStockModal', () => {
       fireEvent.click(screen.getByTitle('Group & Categorize watchlist'));
       fireEvent.click(screen.getByText('Tag'));
 
-      // Both AI:SELL and LARGE BASE headers should be rendered
-      expect(screen.getByText('AI:SELL')).toBeDefined();
-      expect(screen.getByText('LARGE BASE')).toBeDefined();
+      // Both AI:SELL and LARGE BASE headers should be rendered (formatted via formatSectionTitle)
+      expect(screen.getByText(/AI:SELL/i)).toBeDefined();
+      expect(screen.getByText(/LARGE BASE/i)).toBeDefined();
 
       // Find TCS in LARGE BASE section by clicking the item inside LARGE BASE group
       const tcsItems = screen.getAllByText('TCS');

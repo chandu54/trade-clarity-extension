@@ -625,6 +625,37 @@ export async function fetchNseAllIndices() {
   const url = isLocalhost ? '/nse-api/api/allIndices' : targetUrl;
 
   const tryFetch = async (fetchUrl) => {
+    // In extension environment, proxy through background worker to avoid CORS header collisions
+    const isExtension = typeof chrome !== 'undefined' && chrome.runtime?.sendMessage;
+    if (isExtension && (fetchUrl.includes('nseindia.com') || fetchUrl.includes('nseindia.in'))) {
+      try {
+        const proxyRes = await new Promise((resolve) => {
+          chrome.runtime.sendMessage(
+            {
+              action: 'PROXY_FETCH',
+              payload: {
+                url: fetchUrl,
+                method: 'GET',
+                headers: {
+                  'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36',
+                  'Accept': 'application/json, text/plain, */*'
+                }
+              }
+            },
+            (r) => {
+              if (chrome.runtime?.lastError || !r || !r.ok) return resolve(null);
+              resolve(r);
+            }
+          );
+        });
+        if (proxyRes?.text) {
+          return JSON.parse(proxyRes.text);
+        }
+      } catch {
+        // Fall back to direct fetch if proxy fails
+      }
+    }
+
     const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     const timeoutId = controller ? setTimeout(() => controller.abort(), 2000) : null;
     try {

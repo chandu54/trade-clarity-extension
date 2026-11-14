@@ -1566,18 +1566,20 @@ export default function StockGrid({
     });
   }, []);
 
-  // Watchdog timer: Guarantee loadingQuotes never gets stuck spinning indefinitely
+  // Watchdog timer: Guarantee loadingQuotes never gets stuck spinning indefinitely.
+  // Resets countdown whenever new quotes stream in, only firing if stalled for >35s.
+  const quotesCount = Object.keys(quotes).length;
   useEffect(() => {
     if (!loadingQuotes) return;
-    const timeoutMs = Math.max(35000, allStocks.length * 600);
+    const stallTimeoutMs = 35000;
     const timer = setTimeout(() => {
-      console.warn(`[Watchdog] loadingQuotes exceeded ${Math.round(timeoutMs / 1000)}s. Forcing reset.`);
+      console.warn(`[Watchdog] loadingQuotes stalled for ${Math.round(stallTimeoutMs / 1000)}s without new quotes. Forcing reset.`);
       fetchAbortControllerRef.current?.abort();
       fetchAbortControllerRef.current = null;
       setLoadingQuotes(false);
-    }, timeoutMs);
+    }, stallTimeoutMs);
     return () => clearTimeout(timer);
-  }, [loadingQuotes, allStocks.length]);
+  }, [loadingQuotes, quotesCount]);
 
   // Watchdog timer: Guarantee fetchProgress (metrics sync) never gets stuck spinning indefinitely
   useEffect(() => {

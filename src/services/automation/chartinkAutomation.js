@@ -254,12 +254,33 @@ export const chartinkAutomation = {
       return hasMa && hasLiq;
     };
 
-    const startTime = Date.now();
-    const maxWaitMs = 180000; // 3 min
-    let hydratedStocks = {};
-    let lastWakeupTime = 0;
+    // Snapshot initial queue counter to track delta accurately across runs
+    const initialQueueStatus = await new Promise((res) => {
+      if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({ action: "GET_METRICS_QUEUE_STATUS" }, (r) => {
+          if (chrome.runtime?.lastError) return res(null);
+          res(r);
+        });
+      } else {
+        res(null);
+      }
+    });
+    const initialCompleted = initialQueueStatus?.completedJobs || 0;
 
-    while (Date.now() - startTime < maxWaitMs) {
+    const startTime = Date.now();
+    // Dynamic safety ceiling: minimum 10 minutes, or 4 seconds per ticker (overridable in tests)
+    const maxSafetyCeilingMs = context?.maxWaitMs || Math.max(600000, symbols.length * 4000);
+    // Stall timeout: watchdog triggers if 60 seconds elapse with zero progress (overridable in tests)
+    const STALL_TIMEOUT_MS = context?.stallTimeoutMs || 60000;
+
+    let hydratedStocks = {};
+    let lastProgressTime = Date.now();
+    let maxEffectiveCompleted = 0;
+    let lastWakeupTime = 0;
+    let retryCount = 0;
+    const MAX_WAKEUP_RETRIES = 2;
+
+    while (Date.now() - startTime < maxSafetyCeilingMs) {
       const storageData = await new Promise((res) => {
         if (typeof chrome !== "undefined" && chrome.storage?.local) {
           chrome.storage.local.get(["trading_app_data"], (r) => res(r?.trading_app_data || null));
@@ -281,7 +302,7 @@ export const chartinkAutomation = {
       const queueStatus = await new Promise((res) => {
         if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
           chrome.runtime.sendMessage({ action: "GET_METRICS_QUEUE_STATUS" }, (r) => {
-            if (chrome.runtime.lastError) return res(null);
+            if (chrome.runtime?.lastError) return res(null);
             res(r);
           });
         } else {
@@ -289,70 +310,133 @@ export const chartinkAutomation = {
         }
       });
 
-      // Synchronize displayed count with background queue progress to avoid lag between disk writes and network calls
-      const effectiveCompleted = Math.min(
+      // Synchronize displayed count with background queue progress
+      // Relative completed jobs during this session
+      const queueDelta = Math.max(0, (queueStatus?.completedJobs || 0) - initialCompleted);
+      const currentCompleted = Math.min(
         symbols.length,
-        Math.max(hydratedCount, queueStatus?.completedJobs || 0)
+        Math.max(hydratedCount, queueDelta)
       );
-      const pct = Math.round((effectiveCompleted / symbols.length) * 100);
-      const stageProgress = 50 + Math.round((pct / 100) * 35); // 50% to 85%
-      onProgress(3, stageProgress, `Stage 4/5: Hydrating candles & indicators: ${effectiveCompleted}/${symbols.length} (${pct}%)...`);
 
-      if (hydratedCount >= symbols.length || (queueStatus && queueStatus.completedJobs >= symbols.length && queueStatus.totalJobs > 0)) {
-        break;
+      if (currentCompleted > maxEffectiveCompleted) {
+        maxEffectiveCompleted = currentCompleted;
+        lastProgressTime = Date.now();
       }
 
-      // Check if all symbols in this scan have been resolved (either hydrated or marked invalid)
+      const pct = symbols.length > 0 ? Math.round((maxEffectiveCompleted / symbols.length) * 100) : 100;
+      const stageProgress = 50 + Math.round((pct / 100) * 35); // 50% to 85%
+      onProgress(3, stageProgress, `Stage 4/5: Hydrating candles & indicators: ${maxEffectiveCompleted}/${symbols.length} (${pct}%)...`);
+
+      // Exit condition 1: All symbols in this scan have been resolved (either hydrated or marked invalid)
       const allResolved = symbols.every((sym) => {
         const s = activeStocks[sym];
         return s && (isStockHydrated(s) || s.isInvalid);
       });
-      if (allResolved) break;
-
-      // Break if background queue has finished all assigned jobs
-      if (
-        queueStatus &&
-        !queueStatus.isProcessing &&
-        queueStatus.queueLength === 0 &&
-        queueStatus.totalJobs > 0 &&
-        queueStatus.completedJobs >= queueStatus.totalJobs
-      ) {
+      if (allResolved || (symbols.length > 0 && hydratedCount >= symbols.length)) {
         break;
       }
 
-      // Self-healing wake-up: if background queue became idle (e.g. MV3 service worker recycled)
-      // but some symbols are still unhydrated, wake it up with the remaining batch
-      const unhydratedLeft = symbols.filter((sym) => {
-        const s = activeStocks[sym];
-        return !s || (!isStockHydrated(s) && !s.isInvalid);
-      });
-
-      if (
+      // Exit condition 2: Background queue has finished all assigned jobs and is no longer processing
+      const queueDrained =
         queueStatus &&
         !queueStatus.isProcessing &&
         queueStatus.queueLength === 0 &&
-        unhydratedLeft.length > 0 &&
-        Date.now() - startTime > 8000 &&
-        Date.now() - lastWakeupTime > 6000
-      ) {
-        lastWakeupTime = Date.now();
-        console.log(`[ChartinkAutomation] Self-healing wake-up for ${unhydratedLeft.length} remaining tickers...`);
-        if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
-          chrome.runtime.sendMessage({
-            action: "FETCH_STOCK_METRICS",
-            payload: {
-              symbols: unhydratedLeft,
-              country,
-              weekKey: targetWeek,
-              paramDefs: data?.paramDefinitions,
-              adrDays: data?.uiConfig?.adrDays || 20,
-              liquidityDays: data?.uiConfig?.liquidityDays || 20,
-            },
-          });
+        (queueStatus.totalJobs === 0 || queueStatus.completedJobs >= queueStatus.totalJobs);
+
+      if (queueDrained) {
+        // Double check if any symbols remain unhydrated
+        const unhydratedLeft = symbols.filter((sym) => {
+          const s = activeStocks[sym];
+          return !s || (!isStockHydrated(s) && !s.isInvalid);
+        });
+
+        if (unhydratedLeft.length === 0) {
+          break;
+        }
+
+        // If the queue drained but some stocks remain unhydrated, attempt a wake-up retry if not exhausted
+        if (retryCount < MAX_WAKEUP_RETRIES && Date.now() - lastWakeupTime > 5000) {
+          retryCount++;
+          lastWakeupTime = Date.now();
+          lastProgressTime = Date.now();
+          console.log(`[ChartinkAutomation] Self-healing wake-up retry ${retryCount}/${MAX_WAKEUP_RETRIES} for ${unhydratedLeft.length} remaining tickers...`);
+          if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+            chrome.runtime.sendMessage({
+              action: "FETCH_STOCK_METRICS",
+              payload: {
+                symbols: unhydratedLeft,
+                country,
+                weekKey: targetWeek,
+                paramDefs: data?.paramDefinitions,
+                adrDays: data?.uiConfig?.adrDays || 20,
+                liquidityDays: data?.uiConfig?.liquidityDays || 20,
+              },
+            });
+          }
+        } else {
+          // Retries exhausted or background finished (failed/invalid tickers)
+          break;
+        }
+      }
+
+      // Watchdog: If queue is processing but absolutely no progress has occurred for 60s
+      if (Date.now() - lastProgressTime > STALL_TIMEOUT_MS) {
+        const unhydratedLeft = symbols.filter((sym) => {
+          const s = activeStocks[sym];
+          return !s || (!isStockHydrated(s) && !s.isInvalid);
+        });
+
+        if (unhydratedLeft.length > 0 && retryCount < MAX_WAKEUP_RETRIES) {
+          retryCount++;
+          lastWakeupTime = Date.now();
+          lastProgressTime = Date.now();
+          console.warn(`[ChartinkAutomation] Queue stalled for 60s. Triggering wake-up retry ${retryCount}...`);
+          if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+            chrome.runtime.sendMessage({
+              action: "FETCH_STOCK_METRICS",
+              payload: {
+                symbols: unhydratedLeft,
+                country,
+                weekKey: targetWeek,
+                paramDefs: data?.paramDefinitions,
+                adrDays: data?.uiConfig?.adrDays || 20,
+                liquidityDays: data?.uiConfig?.liquidityDays || 20,
+              },
+            });
+          }
+        } else {
+          console.warn(`[ChartinkAutomation] Queue stalled and retries exhausted. Exiting Stage 4.`);
+          break;
         }
       }
 
       await new Promise((r) => setTimeout(r, 1200));
+    }
+
+    // Safety Audit: Verify hydration status before proceeding to Stage 5
+    let countHydratedBeforeStage5 = 0;
+    symbols.forEach((sym) => {
+      if (isStockHydrated(hydratedStocks[sym])) countHydratedBeforeStage5++;
+    });
+
+    const finalQueueCheck = await new Promise((res) => {
+      if (typeof chrome !== "undefined" && chrome.runtime?.sendMessage) {
+        chrome.runtime.sendMessage({ action: "GET_METRICS_QUEUE_STATUS" }, (r) => {
+          if (chrome.runtime?.lastError) return res(null);
+          res(r);
+        });
+      } else {
+        res(null);
+      }
+    });
+
+    // Guard against premature Stage 5 execution if background queue is still actively running
+    if (finalQueueCheck?.isProcessing && countHydratedBeforeStage5 < symbols.length * 0.7) {
+      throw new Error(
+        `Hydration was interrupted: Only ${countHydratedBeforeStage5}/${symbols.length} tickers hydrated (${Math.round(
+          (countHydratedBeforeStage5 / symbols.length) * 100
+        )}%) while the background queue is still running. Please wait for background metrics fetch to finish.`
+      );
     }
 
     // Stage 5: Multi-Work-Item Filtering & Unassigned Pruning
@@ -441,8 +525,9 @@ export const chartinkAutomation = {
       onProgress(4, 96, "Stage 5/5: Pruning non-qualifying unassigned stocks from week pool...");
       Object.keys(updatedStocks).forEach((sym) => {
         const wls = updatedStocks[sym]?.watchlists || [];
-        // Only prune stocks that belong to the scanned set and ended up with 0 watchlists
-        if (wls.length === 0 && symbols.includes(sym)) {
+        // Only prune stocks that belong to the scanned set, ended up with 0 watchlists,
+        // AND were verified hydrated (never prune unhydrated tickers)
+        if (wls.length === 0 && symbols.includes(sym) && isStockHydrated(updatedStocks[sym])) {
           delete updatedStocks[sym];
           prunedCount++;
         }

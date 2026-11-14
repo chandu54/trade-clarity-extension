@@ -4,9 +4,11 @@ import { getActualCurrentSunday, getLatestWeekKey, getLocalDateString, getSunday
 import { globalQuoteCache } from "../utils/yahooFinanceMap";
 import { globalFundamentalsCache } from "../utils/stockAnalysisApi";
 import { useToast } from "./ToastContext";
+import { useConfirm } from "./ConfirmContext";
 
-const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey, setWeekKey }) => {
+const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey, setWeekKey, onClearAll }) => {
   const { showToast } = useToast();
+  const { confirm } = useConfirm();
   const [selectedWeeks, setSelectedWeeks] = useState([]);
   const [showConfirm, setShowConfirm] = useState(false);
   const [confirmText, setConfirmText] = useState("");
@@ -83,6 +85,25 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
     } catch (err) {
       console.error("Failed to clear scope cache:", err);
       showToast?.("Failed to clear scope cache.", "error");
+    }
+  };
+
+  const handleResetAllData = async () => {
+    if (
+      await confirm(
+        "Are you sure? All application data (watchlists, stocks, notes, tags, indicators) across all regions and weeks will be permanently deleted. Continue?",
+        "delete all data"
+      )
+    ) {
+      try {
+        await globalQuoteCache.clear();
+        await globalFundamentalsCache.clear();
+      } catch (e) {
+        console.warn("Could not clear quote caches during full reset:", e);
+      }
+      onClearAll?.();
+      showToast?.("All application data has been completely reset to default state.", "success");
+      onClose();
     }
   };
 
@@ -252,6 +273,35 @@ const DataManagementModal = ({ isOpen, onClose, data, setData, country, weekKey,
                   onClick={handleClearScopeCache}
                 >
                   Clear Scope Cache
+                </button>
+              </div>
+            </div>
+
+            <div className="settings-card" style={{ marginTop: "16px" }}>
+              <label className="settings-label-v2 settings-label-mb flex justify-between items-center">
+                <span>Reset All Application Data</span>
+                <span className="info-icon" title="Completely reset the application across all regions" />
+              </label>
+
+              <div className="flex justify-between items-center py-2.5">
+                <div className="pr-4">
+                  <div className="text-xs font-semibold text-rose-500 dark:text-rose-400">
+                    Full System Reset (All Regions)
+                  </div>
+                  <div className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                    Permanently wipes all watchlists, stocks, parameters, notes, tags, and historic data across both India (IN) and United States (US).
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  className="settings-btn-v2 dm-btn-outline-danger shrink-0"
+                  style={{ borderColor: "#ef4444", color: "#ef4444" }}
+                  onClick={handleResetAllData}
+                >
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ marginRight: "5px", display: "inline-block", verticalAlign: "middle" }}>
+                    <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+                  </svg>
+                  Reset All Data
                 </button>
               </div>
             </div>

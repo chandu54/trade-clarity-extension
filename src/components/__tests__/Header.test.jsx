@@ -1,5 +1,5 @@
 import { describe, it, vi, beforeEach } from 'vitest';
-import { render, screen, fireEvent, act } from '@testing-library/react';
+import { render, screen, fireEvent } from '@testing-library/react';
 import Header from '../Header';
 import { ConfirmContext } from '../ConfirmContext';
 
@@ -71,19 +71,6 @@ describe('Header', () => {
     fireEvent.click(screen.getByText('Settings'));
     fireEvent.click(screen.getByText('Tags'));
     expect(props.onManageTags).toHaveBeenCalled();
-  });
-
-  it('shows confirmation before clearing all', async () => {
-    mockConfirm.mockResolvedValue(true);
-    renderWithContext(<Header {...props} />);
-    
-    const resetBtn = screen.getByText('Reset All');
-    await act(async () => {
-      fireEvent.click(resetBtn);
-    });
-    
-    expect(mockConfirm).toHaveBeenCalled();
-    expect(props.onClearAll).toHaveBeenCalled();
   });
 
   it('switches country when region menu is used', () => {

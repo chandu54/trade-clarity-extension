@@ -12,11 +12,11 @@ Follow this 7-step sequence to set up TradeClarity.market for your trading workf
 
 1. **Step 1: Region & Watchlist Setup**
    - Click the region indicator in the header to switch between **US** and **Indian** markets.
-   - Go to *Settings > Watchlists* to create custom watchlists (e.g., "Focus 50", "High Tight Flags") with custom column visibility.
+   - Go to _Settings > Watchlists_ to create custom watchlists (e.g., "Focus 50", "High Tight Flags") with custom column visibility.
 
 2. **Step 2: Define Criteria & Scoring Parameters**
-   - Go to *Settings > Parameters* to define setup criteria (e.g. RSI, Pattern, Volume Surge). Toggle **"Consider as Check"** and set target ideal values to generate an objective score (e.g. 4/5).
-   - Configure *Sectors*, *Tags*, and *Rules* (RS timeframe, benchmark index).
+   - Go to _Settings > Parameters_ to define setup criteria (e.g. RSI, Pattern, Volume Surge). Toggle **"Consider as Check"** and set target ideal values to generate an objective score (e.g. 4/5).
+   - Configure _Sectors_, _Tags_, and _Rules_ (RS timeframe, benchmark index).
 
 3. **Step 3: Add & Import Stocks**
    - Click **+ Add Stock** to bulk-paste tickers (e.g. `AAPL, NVDA, MSFT`).
@@ -28,7 +28,7 @@ Follow this 7-step sequence to set up TradeClarity.market for your trading workf
    - Check **Tradable** on high conviction setups.
 
 5. **Step 5: Set Up Gemini AI Keys & Custom Strategies**
-   - Go to *Settings > AI Integration*, enter your Google Gemini API Key (stored 100% locally), and test connection.
+   - Go to _Settings > AI Integration_, enter your Google Gemini API Key (stored 100% locally), and test connection.
    - Customize strategy templates in the **Proprietary Strategy Library** using dynamic variables (`{stocks}`, `{sectors}`).
    - Click the **AI Insights** button for macro watchlist bias summaries, phenomena sector analysis, or single stock deep dives.
 
@@ -138,14 +138,18 @@ Once your stocks are in the grid, it's time to process them.
 When you click on any stock symbol in the main grid, it opens the **Deep View Workspace** modal. This is a comprehensive workspace designed for in-depth technical analysis and watchlist management without losing your context.
 
 ### 📋 Watchlist Sidebar & Grouping Options
+
 On the left side of the workspace, the active watchlist is displayed as a sidebar list. You can customize this list to organize your thoughts:
+
 - **Watchlist Grouping Popover**: Click the **Layers Icon (Group & Categorize)** next to the refresh button. You can group your stocks in the sidebar by **Sector** or **Tag**, or select **None (Flat List)**.
 - **Collapsible Groups**: When grouped, each sector or tag section displays a collapsible header with the stock count (e.g. `Tech (5)`). Click the header to expand or collapse the section. Stocks that do not have an assigned category are neatly grouped under an "Unassigned" header at the bottom.
 - **Auto-Expansion**: Selecting a stock automatically expands its containing group, highlighting it in the list.
 - **Search & Switch**: Use the **Search stock... (Ctrl+K)** input to filter the list and quickly switch tickers. Use the `ArrowUp`/`ArrowDown` or `ArrowLeft`/`ArrowRight` keys to navigate the list, and next/prev buttons in the header for seamless paging.
 
 ### ⚙️ Moving Average (MAs) Settings Popover
+
 In the chart control toolbar, you can manage the visibility and style of technical moving averages:
+
 - Click the **Gear Icon (MAs)** trigger to open the settings popover.
 - Check/uncheck individual moving averages (e.g. `5-day SMA`, `10-day SMA`, `21-day SMA`, `50-day SMA`, `200-day SMA`) to show or hide them on the chart.
 - Change the display color of each line.
@@ -153,7 +157,9 @@ In the chart control toolbar, you can manage the visibility and style of technic
 - Your styling preferences are stored locally and persist across sessions.
 
 ### 📈 Relative Strength (RS) View & Automatic Rules Resolution
+
 TradeClarity automatically evaluates market outperformance for every stock against its benchmark index:
+
 - **Smart Benchmark Auto-Selection**:
   - **India (IN)**: Default benchmark is **Nifty Mid/Smallcap (`^CRSMID`)**.
   - **US (Tech)** (`IT`, `AI Stocks`, `Software`, `Electronics`): Benchmark is **Nasdaq 100 (`^NDX`)**.
@@ -187,7 +193,7 @@ Click the **Bar Chart Icon** next to the "Analyze" button to open the dashboard.
 
 From any chart or list, click a **Category/Sector badge** to open the specialized Category Analysis modal. This provides a professional-grade drill-down into an entire market group.
 
-- **Snapshot Tab**: 
+- **Snapshot Tab**:
   - View a "Bird's Eye" grid of all stocks in the category.
   - Interactive mini-candlestick charts (toggle between 1M, 3M, 6M, and 1Y views).
   - Hover to expand and inspect specific price action.
@@ -232,13 +238,16 @@ Hover over the **"i" icon** next to the week dropdown.
 Click any stock symbol in the interactive grid to open the **Deep View Workspace**. This focused modal provides a candlestick chart, moving average overlays, watchlist grouping, and a non-blocking right-side rail dock for rapid trade analysis.
 
 ### 📊 1. Candlestick Charting & Infinity Backfill
+
 - **Interactive Candlestick Charting**: Displays crisp candlestick price action with custom timeframe selectors (1d, 1w, 1m).
 - **Moving Average Customization**: Click the **Gear (MAs)** icon to toggle 5, 10, 21, 50, and 200 SMAs/EMAs, customize hex colors, and adjust line thicknesses from 1px to 4px.
 - **Infinity Data Backfill**: Continuously scroll left on any chart to dynamically backfill and load older historical price candles on demand.
 - **Header Water-Drop Pills**: Displays real-time Average Daily Range (**ADR %**) and Daily Turnover (**Liquidity**) directly in the header ribbon.
 
 ### 🎛️ 2. Modular Right Rail Dock
+
 A persistent vertical dock docked cleanly to the right side of the chart gives you instant access to three modular analytical tools without obscuring or blurring the active candlestick chart:
+
 1. **💼 Position Ledger**:
    - Inspect transaction history, open share quantities, average entry cost basis, and current trailing stop-loss levels.
    - For closed positions, reveals locked R-multiples and win/loss performance badges.
@@ -249,13 +258,14 @@ A persistent vertical dock docked cleanly to the right side of the chart gives y
    - Floating, non-blocking popover overlay displaying real-time company catalysts and breaking market headlines.
 
 ### 📰 3. News & Catalysts Radar Engine
-- **Strict Chronological Ranking (Newest First)**: Every headline is mathematically sorted in descending order by publication timestamp (`timestamp = pubMs || pubTimestamp`). Breaking developments (e.g. *2h ago*, *12h ago*, *Yesterday*) are guaranteed to appear at the top, preventing stale historical news from pushing breaking catalysts down.
+
+- **Strict Chronological Ranking (Newest First)**: Every headline is mathematically sorted in descending order by publication timestamp (`timestamp = pubMs || pubTimestamp`). Breaking developments (e.g. _2h ago_, _12h ago_, _Yesterday_) are guaranteed to appear at the top, preventing stale historical news from pushing breaking catalysts down.
 - **Cascading Freshness Filters (`when:14d` → `when:30d`)**: Applies dynamic 14-day recency filters directly into the news query engine. If a less liquid stock has fewer than 2 headlines in 14 days, the engine automatically expands the window to 30 days.
 - **Stale Archive Purging**: If recent articles (< 30 days) exist, the engine automatically filters out any article older than 45 days.
 - **Word-Boundary Ticker Isolation**: Employs strict word-boundary matching (`\bSYMBOL\b`) to ensure short symbols like `ABB` never match unrelated corporate tickers like AbbVie (`ABBV`) or Abbott Laboratories (`ABT`).
 - **Multi-Source Regional Depth**:
-  - **Indian Stocks (NSE/BSE)**: Aggregates real-time feeds from *LiveMint, The Economic Times, Moneycontrol, BusinessLine, CNBC-TV18, Univest, and Financial Express*.
-  - **US Stocks**: Aggregates top institutional financial media (*Reuters, Bloomberg, Benzinga, Stocktwits, Yahoo Finance*).
+  - **Indian Stocks (NSE/BSE)**: Aggregates real-time feeds from _LiveMint, The Economic Times, Moneycontrol, BusinessLine, CNBC-TV18, Univest, and Financial Express_.
+  - **US Stocks**: Aggregates top institutional financial media (_Reuters, Bloomberg, Benzinga, Stocktwits, Yahoo Finance_).
 - **Instant Background Auto-Fetch**: Opening the news tool automatically fetches fresh headlines in the background with an animated shimmer loading skeleton, caching results locally for instant recall when browsing between stocks.
 
 ---
@@ -286,9 +296,9 @@ As your database grows over many months, you may want to clean up old data to ke
 
 - **Location**: **Settings (⚙️) > Data Management**.
 - **Purge Specific Weeks**: Select multiple historical weeks from the list to permanently delete them from the local database.
-- **Safety Lock**: 
-    - You cannot delete the **Current Active Week**.
-    - For bulk deletions, you must type a confirmation string (e.g., `delete US data`) to finalize the action.
+- **Safety Lock**:
+  - You cannot delete the **Current Active Week**.
+  - For bulk deletions, you must type a confirmation string (e.g., `delete US data`) to finalize the action.
 - **Full Reset**: Use the **Reset All** button in the main header for a complete factory reset (Irreversible).
 
 ---
@@ -361,6 +371,8 @@ Once the correct symbol is detected, you can input your trade plan:
 
 ---
 
+## 12. Market Pulse Guide
+
 ## 12. Zerodha Kite Seamless Watchlist Integration
 
 TradeClarity delivers institutional-grade charting workflows directly inside **Zerodha Kite** (`kite.zerodha.com`). By combining an automated in-chart sidecar watchlist with a floating, draggable metrics dock, you can scan, review, and execute setups on your broker charts without context switching.
@@ -407,18 +419,25 @@ A dedicated, draggable metrics dock sits pinned right above your chart in the Ki
 
 ### 5. Color Flags, Context Menu & Inline Actions
 
-- **Quick Color Flagging**: Click the flag icon directly on any row to toggle through review colors (Red, Green, Orange, Blue, Purple, or Clear).
-- **Right-Click Context Menu**: Right-click any stock in the list or click the `...` menu to:
-  - Assign or change the stock's **Sector** with instant visual checkmark or add custom sectors.
-  - Assign or toggle custom **Watchlists** (`Focus 50`, `Swing Ideas`, etc.).
-  - Select a specific Flag color immediately.
-  - Toggle **Tradable** status to mark high-conviction ideas.
-  - Open the full **Edit Stock Modal** to record setup notes, update checks, or review catalysts.
-  - Remove the stock from your watchlist.
-- **Keyboard Shortcuts on Zerodha**:
-  - **`W`**: Instant shortcut to toggle/open Watchlist assignment for the active or right-clicked stock.
-  - **`S`**: Instant shortcut to change/open Sector assignment for the active or right-clicked stock.
-  - **`↑` / `↓`**: Navigate smoothly between stocks in the watchlist and switch Kite charts instantly.
+- **TradingView-Style 5-Color Flags**:
+  - Click the flag ribbon icon directly on any stock row to instantly apply or toggle your most recently used flag color (Red, Blue, Green, Orange, Purple).
+  - Hover over the flag icon to open the floating color palette popover and select a specific color or clear the flag.
+- **Institutional Right-Click Context Menu**:
+  - Right-click any stock in the list or press hotkeys to open the context menu, styled with crisp, monochrome vector SVG icons matching TradingView dark mode:
+    - **Edit Setup in TradeClarity** (`Enter`): Opens the full setup edit modal.
+    - **Open in TradeClarity Tab** (`↗`): Opens the stock in the extension dashboard.
+    - **Set Flag Color** (`F`): Opens the 5-color palette popover.
+    - **Mark as Tradable** (`T`): Toggles high-conviction setup status.
+    - **Assign Watchlists** (`W`): Multi-select custom watchlists with instant checkmarks.
+    - **Assign Sector** (`S`): Select an existing sector, clear sector, or type a custom sector inline.
+    - **Toggle Tags**: Toggle custom technical tags.
+    - **Copy Ticker** (`C`): Copies the symbol directly to your clipboard.
+    - **Open in TradingView** (`↗`): Opens the chart directly on TradingView.com.
+    - **Open in Screener.in** (`📊`): Opens institutional fundamentals on Screener.in.
+    - **Remove from Watchlist** (`Del` / `Backspace` or Hover Bin button): Swiftly remove any stock from the watchlist. Hovering over any row reveals a sleek bin icon on the far right end, or simply press `Del` / `Backspace` during keyboard navigation to drop the symbol and advance seamlessly to the next stock.
+- **Capture-Phase Keyboard Shortcuts**: All shortcuts (`W`, `S`, `F`, `T`, `C`, `Enter`, `Del`, `Esc`) are registered in the capture phase, guaranteeing they execute cleanly without interference from Kite's native order hotkeys.
+- **Hover-Intent Grace Buffer & Click-to-Lock**: A 160ms diagonal hover grace window and invisible hitbox bridges prevent submenus from prematurely closing when moving your cursor to the left, with full click-to-lock support.
+- **Accurate % Change Benchmark Calculation**: Intraday price changes are calculated against official exchange previous close benchmarks from Yahoo Finance, ensuring daily % changes match TradingView and NSE benchmarks without timing offsets.
 - **Drag-and-Drop Reordering**: Grab the handle (`⋮⋮`) to drag and drop stocks into custom priority order.
 - **Inline Quick Add**: Type a symbol into the input field at the bottom of the sidebar to add new ideas on the fly with auto-suggestions.
 - **Live Quote Refresh (↻)**: Click the sync button in the panel header to refresh quotes and percentage changes across the entire watchlist.
@@ -430,16 +449,20 @@ A dedicated, draggable metrics dock sits pinned right above your chart in the Ki
 The **Market Pulse** dashboard acts as your bird's-eye view of indices and sector performance. Rather than evaluating tickers in isolation, you should first look here to understand the broader market trend, momentum strength, and system risk levels.
 
 ### 🖼️ Snapshot (Indices Grid)
+
 A real-time overview of the indices, sector ETFs, or breadth indicators.
+
 - **Mini Candlestick Charts**: Small charts displaying the historical price action of each index. Hover or check the fullscreen layout for details.
 - **52-Week Range Bar**: Shows the current position of the index between its yearly low (L) and yearly high (H). A fill ratio near 100% signifies it is trading at or near new yearly highs, indicating potential breakouts.
 - **MAs Bar (Moving Averages)**: Five small blocks displaying whether the current price is above (Green/Bullish) or below (Red/Bearish) the **5MA, 10MA, 21MA, 50MA, and 200MA**.
 - **Drag and Drop ordering**: Rearrange cards by dragging the drag handle in the upper left corner to sort them based on your monitoring needs.
 - **Favorites**: Click the star icon to save indices as favorites. You can sort the screen to show favorites first.
-- **Fullscreen Charting**: Click the expand icon to view an interactive chart, switch timeframes from 1d to 5y, see exact moving average values, or click *Analyze ↗* to open it directly in TradingView.
+- **Fullscreen Charting**: Click the expand icon to view an interactive chart, switch timeframes from 1d to 5y, see exact moving average values, or click _Analyze ↗_ to open it directly in TradingView.
 
 ### 🧠 Intelligence (Market Matrix)
+
 An institutional-grade, detailed breakdown of all index metrics.
+
 - **RS Rating (Relative Strength)**: Measures how strongly the index is outperforming (+) or underperforming (-) the primary benchmark (Nifty 50 in India, S&P 500 in the US) on a rolling timeframe.
 - **52W High %**: Distance of the current index price from its 52-week high. 0.0% means it is currently trading at a yearly high.
 - **RSI (14)**: Relative Strength Index. Values above 70 indicate an overbought market (vulnerable to consolidation/pullbacks), while values below 30 indicate oversold conditions (potential reversal candidates).
@@ -447,35 +470,46 @@ An institutional-grade, detailed breakdown of all index metrics.
 - **Market Phase / Verdict**: The color-coded badge displays the structural phase (e.g. Bullish, Consolidation, Bearish, or Distribution) determined by the alignment of the moving averages and price behavior.
 
 ### 🔥 Heatmap (Sector Relative Strength)
+
 A visual relative strength grid of sectors to identify where institutions are rotating capital.
+
 - **Intensity Shading**: Tiled sectors are sorted by daily percent change. Strong gainers are colored in deep green, while strong decliners are shaded deep red.
 - **Sector Breadth**: If most tiles are green, it signals strong market-wide participation. If only a few defensive sectors are green, it suggests market caution.
 
 ### 📝 Technical Thesis
+
 At the bottom of the Snapshot page, the system displays the **Technical Thesis**. This is an automated analysis summarizing the daily tape, structural trends, leading sectors, and key tactical action plans based on the current matrix data.
 
 ---
+
+## 13. Trading Journal Guide
 
 ## 14. Trading Journal Guide
 
 A professional trading journal enforces discipline. Recording your setups, risk-reward parameters, and scaling points prevents impulsive decisions, provides audit trails, and lets you calculate performance stats objectively. Treating trading as a business requires tracking every unit of risk and analyzing your performance parameters over time.
 
 ### 📝 Position Ledger (Standard Tab)
+
 The position ledger is your central trade database. It displays all open, closed, scaled, and planned positions in a custom table view.
+
 - **Table Customization**: Click the gear icon next to table columns to customize column visibility, adjust width, and change sorting priority. You can sort by columns to analyze specific trades.
 - **Real-time P&L**: Computes floating profit/loss for open positions based on live index price ticks, and locks in realized P&L when a trade status is changed to "Closed".
 - **Search & Filter**: Search for trades instantly by symbol or text in notes, and filter trades by status (Open, Closed, Scaled, Planned) or strategies (e.g. Pullback, Breakout).
 
 ### 📥 Auto-Importing Trades (Zerodha, Drag & Drop, Excel/CSV)
+
 Quickly populate your journal by importing executions and tax P&L statements without manual data entry.
+
 - **Drag & Drop Upload**: Drag any Zerodha Tradebook, Zerodha Tax P&L Statement, or broker export file (`.xlsx`, `.xls`, `.csv`, `.txt`) directly onto the upload zone, or click to select from your file browser.
 - **Broker Support & Intelligence**: Auto-detects Zerodha Tax P&L summary sheets, Zerodha Tradebook executions, or general broker CSVs. Automatically groups buy and sell trades using FIFO position matching.
 - **Trade Status Intelligence**: Positions with 0 open quantity are automatically identified as **Closed** with locked realized P&L and holding days, while remaining open shares are imported as **Active**.
-- **Exclude Liquid ETFs**: Enable the *Exclude Liquid ETFs (LIQUIDCASE)* checkbox to filter out cash liquid funds (LIQUIDCASE, LIQUIDBEES, ICICILIQ, etc.) from importing into your stock journal.
-- **Interactive Preview & Customization**: Review matched positions in a spacious 1280px grid, adjust initial stop loss levels or setup tags inline, and use *Select All* or *Clear Selection* controls before saving.
+- **Exclude Liquid ETFs**: Enable the _Exclude Liquid ETFs (LIQUIDCASE)_ checkbox to filter out cash liquid funds (LIQUIDCASE, LIQUIDBEES, ICICILIQ, etc.) from importing into your stock journal.
+- **Interactive Preview & Customization**: Review matched positions in a spacious 1280px grid, adjust initial stop loss levels or setup tags inline, and use _Select All_ or _Clear Selection_ controls before saving.
 
 ### 📝 Creating & Editing Trades (Form Fields)
+
 When you add a trade or click the edit icon in the ledger, a comprehensive detail form opens:
+
 - **Ticker Symbol**: The stock ticker code representing your trade (e.g. AAPL or RELIANCE).
 - **Strategy / Setup**: Select the technical setup or strategy used. Select "Other" to input a custom strategy name.
 - **Entry Price & Quantity**: The initial execution price and number of shares/units purchased.
@@ -488,23 +522,31 @@ When you add a trade or click the edit icon in the ledger, a comprehensive detai
 - **Post-Mortem & Reflections**: For closed trades, record key psychological lessons, execution notes, or mistakes to improve future decisions.
 
 ### ⚖️ Advanced Position Sizing Calculator
+
 Enforces risk discipline before you click buy. The form contains an automatic sizing calculator:
+
 - **Account Capital & Risk %**: Enter your total trading capital and select the capital risk percentage you want to allocate to this trade (e.g., 0.5%, 1%, 2%, or a custom amount).
 - **Quantity & Max Risk Calculation**: Based on the distance between your Entry Price and Stop Loss, the calculator automatically suggests the optimal share quantity to buy, ensuring that if you get stopped out, your loss is strictly limited to your risk percentage (Max Cash Risk).
 
 ### ➕ Scale-In & Pyramiding (Multi-Transaction Support)
+
 Professional traders scale their trades. The journal supports managing multiple entries or partial exits under a single position:
+
 - **Scaling Log**: Under the scaling form, log each subsequent addition (scale-in buy) or partial exit (scale-out sell).
 - **Average Cost Basis**: The system automatically computes the weighted average entry price and updates the total quantity of active shares in real-time, preventing messy duplicate logs.
 
 ### 🖼️ Visual Candlesticks (Snapshot Tab)
+
 A visual overview gallery of all open positions.
+
 - **Price Chart Overlays**: Displays active positions as mini candlestick charts.
 - **Technical Reference Levels**: Plots three key horizontal lines representing your trade parameters: **Entry Price (Blue)**, **Stop Loss (Red)**, and **Target Price (Green)**.
 - **Distance Stats**: Displays real-time percentages indicating how far the current price is from your stop-loss or target, giving you a clear visual of trade progression.
 
 ### 📈 Auditing Performance Edge (Analytics Tab)
+
 An analytical dashboard to audit your system edge.
+
 - **Win Rate & Profit Factor**: Win Rate calculates the percentage of closed positions that resulted in profits. Profit Factor is the ratio of gross gains to gross losses. A value above 1.5 indicates a highly profitable strategy.
 - **R-Multiple Metrics**: Measures your returns in units of risk (R). A trade that returns 2R means your gain was 2 times your initial dollar risk. The analytics tab aggregates total R-Multiple returns to measure the efficiency of your risk management.
 - **Performance Curve**: A line graph charting your account equity over time.
@@ -512,28 +554,35 @@ An analytical dashboard to audit your system edge.
 
 ---
 
+## 14. AI Settings & Prompt Library
+
 ## 15. AI Settings & Prompt Library
 
 TradeClarity.market lets you integrate institutional-grade AI analysis (powered securely by the Google Gemini API) directly into your trading workflow. Instead of relying on generic prompts, you can create and manage a proprietary strategy library to dictate exactly how the AI evaluates your watchlists, sectors, and individual setups.
 
 ### 🤖 1. General AI Configuration
+
 - **Access**: Open **Settings (⚙️) > AI integration** (at the bottom of the dropdown).
 - **Secure API Key**: Enter your Google Gemini API key. For maximum privacy, this key is saved exclusively in your local browser's storage and is never sent to external servers.
 - **Connection Testing**: Click **Test Connection** to perform a live diagnostic check. A success status banner will confirm if the API is configured correctly.
 - **Model Selection**: Choose between available models:
-  - *Gemini 1.5 Flash*: Best for fast, cost-efficient, everyday analysis.
-  - *Gemini 1.5 Pro*: Best for premium features, complex logic, and deep reasoning.
-  - *Custom Model ID*: You can type in any specific model ID from Google AI Studio.
+  - _Gemini 1.5 Flash_: Best for fast, cost-efficient, everyday analysis.
+  - _Gemini 1.5 Pro_: Best for premium features, complex logic, and deep reasoning.
+  - _Custom Model ID_: You can type in any specific model ID from Google AI Studio.
 - **Pro Mode**: Check "Enable Premium Features (Pro Mode)" to activate premium strategy models.
 
 ### 📚 2. Proprietary Strategy Library Tabs
+
 The Prompt Library tab organizes your custom AI instructions into three distinct scopes:
+
 1. **Watchlist**: Used when analyzing the weekly watchlist (macro bias, sector flow, SEPA setups).
 2. **Phenomena**: Used in the Category Analysis modal to analyze entire sectors (leadership tiering, relative strength decoupling anomalies).
 3. **Single Stock**: Used in the Journal Detail view to conduct deep technical and setup research on a single symbol.
 
 ### ✍️ 3. Variable Placeholders & Mini Editor
+
 The mini editor allows you to type custom analysis instructions. To inject real-time data from your database, click the variable badges below the text area to insert placeholders:
+
 - **Watchlist Variables**:
   - `{stocks}`: Clean JSON of all active stocks, checks, notes, and tags in the grid.
   - `{sectors}`: A list of sectors present in the current grid.
@@ -548,6 +597,7 @@ The mini editor allows you to type custom analysis instructions. To inject real-
   - `{notes}`: Your manual journal notes or speech-dictated remarks.
 
 ### ⚡ 4. Library Operations & Actions
+
 - **Set as Default (🎯)**: Mark any custom or system strategy as the default analyzer for that tab. The system will automatically use the default template when triggering AI actions.
 - **Clone / Duplicate (📋)**: Copy any strategy, including system templates, to create a customizable copy without losing the original.
 - **Edit / Update (📝)**: Modify prompt names and text inline, with a character counter to monitor length.
@@ -555,17 +605,22 @@ The mini editor allows you to type custom analysis instructions. To inject real-
 
 ---
 
+## 15. IPO Master Radar (1-Year Master Record & Discovery)
+
 ## 16. IPO Master Radar (1-Year Master Record & Discovery)
 
 The **IPO Master Radar** is a specialized institutional discovery terminal dedicated to tracking newly listed public companies over their critical first year of trading history. It bridges official exchange listing calendars with real-time candle hydration to help swing traders identify early Stage 2 breakouts, tight volatility contractions, and emerging institutional market leaders.
 
 ### 🎯 1. Overview & 1-Year Horizon
+
 - **Rolling 365-Day Window**: Continuously scans, archives, and tracks every stock listed within the past 365 days.
 - **Clean Pipeline**: Filters out legacy listings while keeping high-growth newly public companies on your active radar.
 - **Non-Blocking Streaming Hydration**: Automatically fetches and computes technical indicators via background candle hydration with an elegant top progress indicator that leaves the terminal completely responsive.
 
 ### 🌐 2. Multi-Region Exchange Support
+
 TradeClarity's IPO Radar operates with separate, country-aware exchange pipelines:
+
 - **India (NSE)**: Direct integration with official National Stock Exchange archives.
   - **Mainboard (EQ)**: Large, established corporate offerings.
   - **SME (SM)**: High-beta small & medium enterprise IPOs, distinguished with color-coded amber badges.
@@ -574,7 +629,9 @@ TradeClarity's IPO Radar operates with separate, country-aware exchange pipeline
 - **Regional Toggle**: Switch between Indian and US markets directly from the top header; data caches and filter sets adapt instantly.
 
 ### ⚡ 3. Country-Aware Metrics & Adaptive Sizing
+
 All valuation, price, and turnover metrics automatically render in canonical market standards:
+
 - **Pricing & Daily % Change**: Displayed in **₹** (India) or **$** (US), with emerald/rose daily percent change badges.
 - **Listing Day Gain %**: Measures performance on the initial listing day (Day 1 Open vs Day 1 Close). Hovering reveals exact auction opening and closing prices.
 - **Return Since Listing %**: Tracks cumulative performance from listing day close to current price.
@@ -583,18 +640,20 @@ All valuation, price, and turnover metrics automatically render in canonical mar
 - **Adaptive Young IPO Handling**: If a company listed only 4 days ago, ADR and Liquidity automatically calculate across its exact available trading days (e.g. 4d average) rather than distorting figures with zero-padded averages. Tooltips clearly report the exact history window.
 
 ### 📊 4. Setup & Pattern Detectors
+
 - **IPO Base**: Identifies stocks forming a compact consolidation base within 15% to 25% of their post-listing highs.
 - **Tight VCP**: Volatility Contraction Pattern detector identifying narrowing price swings with volume dry-ups preceding breakouts.
 - **Moving Average Ribbon**: Compact visual indicator checking price posture relative to the 10 EMA, 21 EMA, and 50 SMA.
 
 ### 🔍 5. Filter Drawer & Free-Form Filtering
+
 - **Free-Form Numeric Inputs**: Type flexible numeric expressions into the ADR Volatility and Liquidity boxes (e.g. `>50`, `20-50`, `<=4`, `>=10`).
 - **Series & Exchange Filters**: Toggle between Mainboard and SME for India, or NASDAQ, NYSE, and AMEX for US.
 - **Listing Horizon**: Quickly filter by listing age: 30 days (Recent IPOs), 60 days, 180 days, or 365 days.
 - **Active Filter Badges**: Every applied filter is visible as an interactive pill at the top of the radar with single-click dismissal (`✕`).
 
 ### 📋 6. Pipeline Integration: Tag & Import to Watchlist
-- **High-Contrast Selection**: Select individual rows or use the header *Select All* checkbox.
+
+- **High-Contrast Selection**: Select individual rows or use the header _Select All_ checkbox.
 - **Tag & Import**: Click **+ Tag & Import to Current Week** to immediately copy selected IPOs into your active week's Watchlist tagged as **IPO**.
 - **Unified Routine**: Once imported, evaluate setup checklist scores, run custom Gemini AI prompts, and track execution in the Trading Journal.
-

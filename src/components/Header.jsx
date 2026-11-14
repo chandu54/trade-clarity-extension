@@ -1,5 +1,4 @@
 import { useState, useRef, useEffect } from "react";
-import { useConfirm } from "./ConfirmContext";
 import { isMarketOpenForCountry } from "../utils/yahooFinanceMap";
 import { subscribeAutomationState, getActiveRunningAutomation } from "../services/automation/automationStateStore";
 
@@ -130,13 +129,12 @@ const BookIcon = () => (
   </svg>
 );
 
-export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll, onManageTags, onManageWatchlists, theme, onToggleTheme, isFullscreen, onToggleFullscreen, onShowSettings, onShowUserGuide, country, setCountry }) {
+export default function Header({ activeTab, onTabChange, onOpenModal, _onClearAll, onManageTags, onManageWatchlists, theme, onToggleTheme, isFullscreen, onToggleFullscreen, onShowSettings, onShowUserGuide, country, setCountry }) {
   const [open, setOpen] = useState(false);
   const [regionOpen, setRegionOpen] = useState(false);
   const [activeAutomation, setActiveAutomation] = useState(getActiveRunningAutomation);
   const menuRef = useRef(null);
   const regionRef = useRef(null);
-  const { confirm } = useConfirm();
 
   useEffect(() => {
     const unsubscribe = subscribeAutomationState(() => {
@@ -167,12 +165,6 @@ export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll
       onManageWatchlists();
     } else {
       onOpenModal(modalKey);
-    }
-  };
-
-  const handleClearAll = async () => {
-    if (await confirm("Are you sure? All data will be permanently deleted across all regions. Continue?", "delete all data")) {
-      onClearAll();
     }
   };
 
@@ -322,13 +314,6 @@ export default function Header({ activeTab, onTabChange, onOpenModal, onClearAll
             )}
           </div>
         </div>
-
-        <button className="system-reset-btn" onClick={handleClearAll} title="Reset All Application Data">
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <polyline points="3 6 5 6 21 6" /><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-          </svg>
-          <span>Reset All</span>
-        </button>
       </div>
     </div>
   );

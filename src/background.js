@@ -575,10 +575,10 @@ async function processQueue() {
         metrics: result.value,
       });
     } else if (result.status === "rejected") {
-      console.error(
-        `Failed to fetch metrics for ${item.symbol}:`,
-        result.reason,
-      );
+      const reason = result.reason;
+      const isAbort = reason?.name === "AbortError" || (typeof reason === "object" && reason?.toString()?.includes("AbortError"));
+      const msg = isAbort ? "Network timeout (exceeded 15s)" : (reason?.message || String(reason));
+      console.warn(`[Sync] Metrics fetch failed for ${item.symbol}: ${msg}`);
     }
   });
 
